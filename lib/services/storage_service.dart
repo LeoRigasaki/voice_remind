@@ -1,0 +1,139 @@
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../models/reminder.dart';
+
+class StorageService {
+  static SharedPreferences? _prefs;
+  static const String _remindersKey = 'reminders';
+
+  static Future<void> initialize() async {
+    _prefs = await SharedPreferences.getInstance();
+  }
+
+  // Get all reminders
+  static Future<List<Reminder>> getReminders() async {
+    final String? remindersJson = _prefs?.getString(_remindersKey);
+    if (remindersJson == null || remindersJson.isEmpty) {
+      return [];
+    }
+
+    try {
+      final List<dynamic> remindersList = json.decode(remindersJson);
+      return remindersList
+          .map((reminderMap) => Reminder.fromMap(reminderMap))
+          .toList();
+    } catch (e) {
+      // If there's an error parsing, return empty list
+      return [];
+    }
+  }
+
+  // Save all reminders
+  static Future<void> saveReminders(List<Reminder> reminders) async {
+    final List<Map<String, dynamic>> remindersMapList =
+        reminders.map((reminder) => reminder.toMap()).toList();
+    final String remindersJson = json.encode(remindersMapList);
+    await _prefs?.setString(_remindersKey, remindersJson);
+  }
+
+  // Add a new reminder
+  static Future<void> addReminder(Reminder reminder) async {
+    final List<Reminder> reminders = await getReminders();
+    reminders.add(reminder);
+    await saveReminders(reminders);
+  }
+
+  // Update an existing reminder
+  static Future<void> updateReminder(Reminder updatedReminder) async {
+    final List<Reminder> reminders = await getReminders();
+    final int index = reminders.indexWhere((r) => r.id == updatedReminder.id);
+
+    if (index != -1) {
+      reminders[index] = updatedReminder;
+      await saveReminders(reminders);
+    }
+  }
+
+  // Delete a reminder
+  static Future<void> deleteReminder(String reminderId) async {
+    final List<Reminder> reminders = await getReminders();
+    reminders.removeWhere((reminder) => reminder.id == reminderId);
+    await saveReminders(reminders);
+  }
+
+  // Get reminder by ID
+  static Future<Reminder?> getReminderById(String reminderId) async {
+    final List<Reminder> reminders = await getReminders();
+    try {
+      return reminders.firstWhere((reminder) => reminder.id == reminderId);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Clear all reminders
+  static Future<void> clearAllReminders() async {
+    await _prefs?.remove(_remindersKey);
+  }
+
+  // Get reminders by status
+  static Future<List<Reminder>> getRemindersByStatus(
+      ReminderStatus status) async {
+    final List<Reminder> allReminders = await getReminders();
+    return allReminders.where((reminder) => reminder.status == status).toList();
+  }
+
+  // Get upcoming reminders (next 24 hours)
+  static Future<List<Reminder>> getUpcomingReminders() async {
+    final List<Reminder> allReminders = await getReminders();
+    final DateTime now = DateTime.now();
+    final DateTime tomorrow = now.add(const Duration(days: 1));
+
+    return allReminders
+        .where((reminder) =>
+            reminder.status == ReminderStatus.pending &&
+            reminder.scheduledTime.isAfter(now) &&
+            reminder.scheduledTime.isBefore(tomorrow))
+        .toList()
+      ..sort((a, b) => a.scheduledTime.compareTo(b.scheduledTime));
+  }
+
+  // Get overdue reminders
+  static Future<List<Reminder>> getOverdueReminders() async {
+    final List<Reminder> allReminders = await getReminders();
+    final DateTime now = DateTime.now();
+
+    return allReminders
+        .where((reminder) =>
+            reminder.status == ReminderStatus.pending &&
+            reminder.scheduledTime.isBefore(now))
+        .toList()
+      ..sort((a, b) => b.scheduledTime.compareTo(a.scheduledTime));
+  }
+
+  // Update reminder status
+  static Future<void> updateReminderStatus(
+      String reminderId, ReminderStatus newStatus) async {
+    final Reminder? reminder = await getReminderById(reminderId);
+    if (reminder != null) {
+      final Reminder updatedReminder = reminder.copyWith(status: newStatus);
+      await updateReminder(updatedReminder);
+    }
+  }
+
+  // Statistics helpers
+  static Future<int> getTotalRemindersCount() async {
+    final List<Reminder> reminders = await getReminders();
+    return reminders.length;
+  }
+
+  static Future<int> getCompletedRemindersCount() async {
+    final List<Reminder> reminders = await getReminders();
+    return reminders.where((r) => r.status == ReminderStatus.completed).length;
+  }
+
+  static Future<int> getPendingRemindersCount() async {
+    final List<Reminder> reminders = await getReminders();
+    return reminders.where((r) => r.status == ReminderStatus.pending).length;
+  }
+}

@@ -1,0 +1,45 @@
+name: voice_remind
+description: A beautiful voice-first reminder application
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.5.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # UI & Material Design
+  cupertino_icons: ^1.0.8
+
+  # Simple Local Storage - No Hive for now, just SharedPreferences
+  shared_preferences: ^2.3.3
+
+  # Date & Time Utilities
+  intl: ^0.19.0
+
+  # Notifications (latest version)
+  flutter_local_notifications: ^18.0.1
+  timezone: ^0.10.1
+
+  # Utils
+  uuid: ^4.5.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  
+  # Assets (for future use)
+  # assets:
+  #   - images/
+  #   - sounds/
+
+  # Custom fonts (for future use)
+  # fonts:
+  #   - family: Roboto
+  #     fonts:
+  #       - asset: fonts/Roboto-Regular.ttf
