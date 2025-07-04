@@ -15,8 +15,12 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   List<Reminder> _reminders = [];
   bool _isLoading = true;
+  String? _error;
   late AnimationController _fabAnimationController;
   late AnimationController _refreshAnimationController;
+
+  // Stream subscription for real-time updates
+  late final Stream<List<Reminder>> _remindersStream;
 
   @override
   void initState() {
@@ -29,7 +33,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       duration: const Duration(milliseconds: 1200),
       vsync: this,
     );
-    _loadReminders();
+
+    // Initialize stream
+    _remindersStream = StorageService.remindersStream;
+
+    // Load initial data
+    _loadInitialReminders();
 
     // Start FAB animation after a short delay
     Future.delayed(const Duration(milliseconds: 500), () {
@@ -46,30 +55,38 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     super.dispose();
   }
 
-  Future<void> _loadReminders() async {
-    setState(() => _isLoading = true);
+  Future<void> _loadInitialReminders() async {
     try {
       final reminders = await StorageService.getReminders();
-      setState(() {
-        _reminders = reminders;
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() => _isLoading = false);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error loading reminders: $e'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        setState(() {
+          _reminders = reminders;
+          _isLoading = false;
+          _error = null;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _error = e.toString();
+        });
       }
     }
   }
 
   Future<void> _refreshReminders() async {
     _refreshAnimationController.forward();
-    await _loadReminders();
+    try {
+      await StorageService.refreshData();
+      if (mounted) {
+        setState(() => _error = null);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _error = e.toString());
+      }
+    }
     _refreshAnimationController.reset();
   }
 
@@ -91,52 +108,102 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       ),
     );
 
-    if (result == true) {
-      _loadReminders();
+    // No need to manually refresh - stream will handle it
+    if (result == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Reminder created successfully!'),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 2),
+        ),
+      );
     }
   }
 
   Future<void> _toggleReminderStatus(Reminder reminder) async {
-    final newStatus = reminder.isCompleted
-        ? ReminderStatus.pending
-        : ReminderStatus.completed;
+    try {
+      final newStatus = reminder.isCompleted
+          ? ReminderStatus.pending
+          : ReminderStatus.completed;
 
-    await StorageService.updateReminderStatus(reminder.id, newStatus);
+      await StorageService.updateReminderStatus(reminder.id, newStatus);
 
-    if (newStatus == ReminderStatus.completed) {
-      await NotificationService.cancelReminder(reminder.id);
-    } else if (reminder.scheduledTime.isAfter(DateTime.now())) {
-      await NotificationService.scheduleReminder(
-        reminder.copyWith(status: newStatus),
-      );
+      if (newStatus == ReminderStatus.completed) {
+        await NotificationService.cancelReminder(reminder.id);
+      } else if (reminder.scheduledTime.isAfter(DateTime.now())) {
+        await NotificationService.scheduleReminder(
+          reminder.copyWith(status: newStatus),
+        );
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              newStatus == ReminderStatus.completed
+                  ? 'Reminder completed! 🎉'
+                  : 'Reminder reopened',
+            ),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating reminder: $e'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
-
-    _loadReminders();
   }
 
   Future<void> _deleteReminder(Reminder reminder) async {
-    await StorageService.deleteReminder(reminder.id);
-    await NotificationService.cancelReminder(reminder.id);
-    _loadReminders();
+    try {
+      await StorageService.deleteReminder(reminder.id);
+      await NotificationService.cancelReminder(reminder.id);
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Reminder deleted'),
-          behavior: SnackBarBehavior.floating,
-          action: SnackBarAction(
-            label: 'Undo',
-            onPressed: () async {
-              await StorageService.addReminder(reminder);
-              if (reminder.isNotificationEnabled &&
-                  reminder.scheduledTime.isAfter(DateTime.now())) {
-                await NotificationService.scheduleReminder(reminder);
-              }
-              _loadReminders();
-            },
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Reminder deleted'),
+            behavior: SnackBarBehavior.floating,
+            action: SnackBarAction(
+              label: 'Undo',
+              onPressed: () async {
+                try {
+                  await StorageService.addReminder(reminder);
+                  if (reminder.isNotificationEnabled &&
+                      reminder.scheduledTime.isAfter(DateTime.now())) {
+                    await NotificationService.scheduleReminder(reminder);
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Error restoring reminder: $e'),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                }
+              },
+            ),
           ),
-        ),
-      );
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error deleting reminder: $e'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
   }
 
@@ -187,11 +254,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildStatsCards() {
-    final total = _reminders.length;
-    final completed = _reminders.where((r) => r.isCompleted).length;
-    final pending = _reminders.where((r) => r.isPending).length;
-    final overdue = _reminders.where((r) => r.isOverdue).length;
+  Widget _buildStatsCards(List<Reminder> reminders) {
+    final total = reminders.length;
+    final completed = reminders.where((r) => r.isCompleted).length;
+    final pending = reminders.where((r) => r.isPending).length;
+    final overdue = reminders.where((r) => r.isOverdue).length;
 
     return SliverToBoxAdapter(
       child: Padding(
@@ -267,14 +334,49 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildRemindersList() {
+  Widget _buildRemindersList(List<Reminder> reminders) {
     if (_isLoading) {
       return const SliverFillRemaining(
         child: Center(child: CircularProgressIndicator()),
       );
     }
 
-    if (_reminders.isEmpty) {
+    if (_error != null) {
+      return SliverFillRemaining(
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.error_outline,
+                size: 64,
+                color: Theme.of(context).colorScheme.error,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Error loading reminders',
+                style: Theme.of(context).textTheme.headlineSmall,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _error!,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _refreshReminders,
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (reminders.isEmpty) {
       return SliverFillRemaining(
         child: Center(
           child: Column(
@@ -306,10 +408,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return SliverList(
       delegate: SliverChildBuilderDelegate(
         (context, index) {
-          final reminder = _reminders[index];
+          final reminder = reminders[index];
           return _buildReminderCard(reminder);
         },
-        childCount: _reminders.length,
+        childCount: reminders.length,
       ),
     );
   }
@@ -437,16 +539,30 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return Scaffold(
       body: RefreshIndicator(
         onRefresh: _refreshReminders,
-        child: CustomScrollView(
-          slivers: [
-            _buildAppBar(),
-            _buildStatsCards(),
-            _buildRemindersList(),
-            // Add bottom padding for FAB
-            const SliverToBoxAdapter(
-              child: SizedBox(height: 80),
-            ),
-          ],
+        child: StreamBuilder<List<Reminder>>(
+          stream: _remindersStream,
+          initialData: _reminders,
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              _error = snapshot.error.toString();
+            } else if (snapshot.hasData) {
+              _reminders = snapshot.data!;
+              _error = null;
+              _isLoading = false;
+            }
+
+            return CustomScrollView(
+              slivers: [
+                _buildAppBar(),
+                _buildStatsCards(_reminders),
+                _buildRemindersList(_reminders),
+                // Add bottom padding for FAB
+                const SliverToBoxAdapter(
+                  child: SizedBox(height: 80),
+                ),
+              ],
+            );
+          },
         ),
       ),
       floatingActionButton: AnimatedBuilder(

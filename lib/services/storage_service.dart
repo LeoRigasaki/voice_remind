@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/reminder.dart';
@@ -6,8 +7,24 @@ class StorageService {
   static SharedPreferences? _prefs;
   static const String _remindersKey = 'reminders';
 
+  // Stream controller for real-time updates
+  static final StreamController<List<Reminder>> _remindersController =
+      StreamController<List<Reminder>>.broadcast();
+
+  // Stream getter for listening to reminder changes
+  static Stream<List<Reminder>> get remindersStream =>
+      _remindersController.stream;
+
   static Future<void> initialize() async {
     _prefs = await SharedPreferences.getInstance();
+    // Emit initial data
+    final initialReminders = await getReminders();
+    _remindersController.add(initialReminders);
+  }
+
+  // Dispose method to close stream controller
+  static void dispose() {
+    _remindersController.close();
   }
 
   // Get all reminders
@@ -21,19 +38,24 @@ class StorageService {
       final List<dynamic> remindersList = json.decode(remindersJson);
       return remindersList
           .map((reminderMap) => Reminder.fromMap(reminderMap))
-          .toList();
+          .toList()
+        ..sort((a, b) =>
+            a.scheduledTime.compareTo(b.scheduledTime)); // Sort by time
     } catch (e) {
       // If there's an error parsing, return empty list
       return [];
     }
   }
 
-  // Save all reminders
+  // Save all reminders and emit update
   static Future<void> saveReminders(List<Reminder> reminders) async {
     final List<Map<String, dynamic>> remindersMapList =
         reminders.map((reminder) => reminder.toMap()).toList();
     final String remindersJson = json.encode(remindersMapList);
     await _prefs?.setString(_remindersKey, remindersJson);
+
+    // Emit updated reminders to stream
+    _remindersController.add(reminders);
   }
 
   // Add a new reminder
@@ -74,6 +96,7 @@ class StorageService {
   // Clear all reminders
   static Future<void> clearAllReminders() async {
     await _prefs?.remove(_remindersKey);
+    _remindersController.add([]); // Emit empty list
   }
 
   // Get reminders by status
@@ -135,5 +158,11 @@ class StorageService {
   static Future<int> getPendingRemindersCount() async {
     final List<Reminder> reminders = await getReminders();
     return reminders.where((r) => r.status == ReminderStatus.pending).length;
+  }
+
+  // Force refresh - manually emit current data
+  static Future<void> refreshData() async {
+    final reminders = await getReminders();
+    _remindersController.add(reminders);
   }
 }

@@ -20,8 +20,38 @@ void main() async {
   runApp(const VoiceRemindApp());
 }
 
-class VoiceRemindApp extends StatelessWidget {
+class VoiceRemindApp extends StatefulWidget {
   const VoiceRemindApp({super.key});
+
+  @override
+  State<VoiceRemindApp> createState() => _VoiceRemindAppState();
+}
+
+class _VoiceRemindAppState extends State<VoiceRemindApp>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    // Dispose storage service when app is closed
+    StorageService.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // Handle app lifecycle changes
+    if (state == AppLifecycleState.resumed) {
+      // Refresh data when app comes back to foreground
+      StorageService.refreshData();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
