@@ -5,7 +5,9 @@ import '../services/storage_service.dart';
 import '../services/notification_service.dart';
 
 class AddReminderScreen extends StatefulWidget {
-  const AddReminderScreen({super.key});
+  final Reminder? reminder; // Optional reminder for editing
+
+  const AddReminderScreen({super.key, this.reminder});
 
   @override
   State<AddReminderScreen> createState() => _AddReminderScreenState();
@@ -21,14 +23,32 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
   RepeatType _selectedRepeat = RepeatType.none;
   bool _isNotificationEnabled = true;
   bool _isLoading = false;
+  bool _isEditing = false;
 
   @override
   void initState() {
     super.initState();
-    // Round to next hour
-    final now = DateTime.now();
-    _selectedTime = TimeOfDay(hour: now.hour + 1, minute: 0);
-    _selectedDate = DateTime(now.year, now.month, now.day, now.hour + 1, 0);
+
+    // Check if we're editing an existing reminder
+    if (widget.reminder != null) {
+      _isEditing = true;
+      _populateFieldsForEditing();
+    } else {
+      // Round to next hour for new reminders
+      final now = DateTime.now();
+      _selectedTime = TimeOfDay(hour: now.hour + 1, minute: 0);
+      _selectedDate = DateTime(now.year, now.month, now.day, now.hour + 1, 0);
+    }
+  }
+
+  void _populateFieldsForEditing() {
+    final reminder = widget.reminder!;
+    _titleController.text = reminder.title;
+    _descriptionController.text = reminder.description ?? '';
+    _selectedDate = reminder.scheduledTime;
+    _selectedTime = TimeOfDay.fromDateTime(reminder.scheduledTime);
+    _selectedRepeat = reminder.repeatType;
+    _isNotificationEnabled = reminder.isNotificationEnabled;
   }
 
   @override
@@ -85,27 +105,51 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final reminder = Reminder(
-        title: _titleController.text.trim(),
-        description: _descriptionController.text.trim().isEmpty
-            ? null
-            : _descriptionController.text.trim(),
-        scheduledTime: _selectedDate,
-        repeatType: _selectedRepeat,
-        isNotificationEnabled: _isNotificationEnabled,
-      );
+      if (_isEditing) {
+        // Update existing reminder
+        final updatedReminder = widget.reminder!.copyWith(
+          title: _titleController.text.trim(),
+          description: _descriptionController.text.trim().isEmpty
+              ? null
+              : _descriptionController.text.trim(),
+          scheduledTime: _selectedDate,
+          repeatType: _selectedRepeat,
+          isNotificationEnabled: _isNotificationEnabled,
+        );
 
-      await StorageService.addReminder(reminder);
+        await StorageService.updateReminder(updatedReminder);
 
-      if (_isNotificationEnabled && _selectedDate.isAfter(DateTime.now())) {
-        await NotificationService.scheduleReminder(reminder);
+        // Cancel old notification and schedule new one if needed
+        await NotificationService.cancelReminder(updatedReminder.id);
+        if (_isNotificationEnabled && _selectedDate.isAfter(DateTime.now())) {
+          await NotificationService.scheduleReminder(updatedReminder);
+        }
+      } else {
+        // Create new reminder
+        final reminder = Reminder(
+          title: _titleController.text.trim(),
+          description: _descriptionController.text.trim().isEmpty
+              ? null
+              : _descriptionController.text.trim(),
+          scheduledTime: _selectedDate,
+          repeatType: _selectedRepeat,
+          isNotificationEnabled: _isNotificationEnabled,
+        );
+
+        await StorageService.addReminder(reminder);
+
+        if (_isNotificationEnabled && _selectedDate.isAfter(DateTime.now())) {
+          await NotificationService.scheduleReminder(reminder);
+        }
       }
 
       if (mounted) {
         Navigator.pop(context, true);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Reminder created successfully!'),
+          SnackBar(
+            content: Text(_isEditing
+                ? 'Reminder updated successfully!'
+                : 'Reminder created successfully!'),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -115,7 +159,9 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error creating reminder: $e'),
+            content: Text(_isEditing
+                ? 'Error updating reminder: $e'
+                : 'Error creating reminder: $e'),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -127,7 +173,7 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Add Reminder'),
+        title: Text(_isEditing ? 'Edit Reminder' : 'Add Reminder'),
         actions: [
           TextButton(
             onPressed: _isLoading ? null : _saveReminder,
@@ -137,7 +183,7 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
                     height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Text('Save'),
+                : Text(_isEditing ? 'Update' : 'Save'),
           ),
         ],
       ),
@@ -277,8 +323,10 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
                         color: Colors.white,
                       ),
                     )
-                  : const Icon(Icons.save),
-              label: Text(_isLoading ? 'Creating...' : 'Create Reminder'),
+                  : Icon(_isEditing ? Icons.update : Icons.save),
+              label: Text(_isLoading
+                  ? (_isEditing ? 'Updating...' : 'Creating...')
+                  : (_isEditing ? 'Update Reminder' : 'Create Reminder')),
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.all(16),
               ),

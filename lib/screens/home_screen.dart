@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:intl/intl.dart';
 import '../models/reminder.dart';
 import '../services/storage_service.dart';
@@ -108,7 +109,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       ),
     );
 
-    // No need to manually refresh - stream will handle it
     if (result == true && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -161,48 +161,103 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
-  Future<void> _deleteReminder(Reminder reminder) async {
-    try {
-      await StorageService.deleteReminder(reminder.id);
-      await NotificationService.cancelReminder(reminder.id);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Reminder deleted'),
-            behavior: SnackBarBehavior.floating,
-            action: SnackBarAction(
-              label: 'Undo',
-              onPressed: () async {
-                try {
-                  await StorageService.addReminder(reminder);
-                  if (reminder.isNotificationEnabled &&
-                      reminder.scheduledTime.isAfter(DateTime.now())) {
-                    await NotificationService.scheduleReminder(reminder);
-                  }
-                } catch (e) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Error restoring reminder: $e'),
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
-                  }
-                }
-              },
+  Future<void> _editReminder(Reminder reminder) async {
+    final result = await Navigator.push<bool>(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            AddReminderScreen(reminder: reminder),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return SlideTransition(
+            position: animation.drive(
+              Tween(begin: const Offset(0.0, 1.0), end: Offset.zero)
+                  .chain(CurveTween(curve: Curves.easeInOut)),
             ),
+            child: child,
+          );
+        },
+      ),
+    );
+
+    if (result == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Reminder updated successfully!'),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  Future<void> _deleteReminder(Reminder reminder) async {
+    // Show confirmation dialog
+    final bool? shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Reminder'),
+        content: Text(
+          'Are you sure you want to delete "${reminder.title}"?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
           ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error deleting reminder: $e'),
-            behavior: SnackBarBehavior.floating,
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.red,
+            ),
+            child: const Text('Delete'),
           ),
-        );
+        ],
+      ),
+    );
+
+    if (shouldDelete == true) {
+      try {
+        await StorageService.deleteReminder(reminder.id);
+        await NotificationService.cancelReminder(reminder.id);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Reminder deleted'),
+              behavior: SnackBarBehavior.floating,
+              action: SnackBarAction(
+                label: 'Undo',
+                onPressed: () async {
+                  try {
+                    await StorageService.addReminder(reminder);
+                    if (reminder.isNotificationEnabled &&
+                        reminder.scheduledTime.isAfter(DateTime.now())) {
+                      await NotificationService.scheduleReminder(reminder);
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Error restoring reminder: $e'),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
+                  }
+                },
+              ),
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error deleting reminder: $e'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
       }
     }
   }
@@ -426,107 +481,261 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-      child: Card(
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: () => _toggleReminderStatus(reminder),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      reminder.isCompleted
-                          ? Icons.check_circle
-                          : isOverdue
-                              ? Icons.warning
-                              : Icons.schedule,
-                      color: statusColor,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        reminder.title,
-                        style:
-                            Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  decoration: reminder.isCompleted
-                                      ? TextDecoration.lineThrough
-                                      : null,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                      ),
-                    ),
-                    PopupMenuButton<String>(
-                      onSelected: (value) {
-                        if (value == 'delete') {
-                          _deleteReminder(reminder);
-                        }
-                      },
-                      itemBuilder: (context) => [
-                        const PopupMenuItem(
-                          value: 'delete',
-                          child: Row(
-                            children: [
-                              Icon(Icons.delete, color: Colors.red),
-                              SizedBox(width: 8),
-                              Text('Delete'),
-                            ],
+      child: Slidable(
+        // Unique key for each reminder
+        key: ValueKey(reminder.id),
+
+        // The end action pane is the one at the right or the bottom side.
+        endActionPane: ActionPane(
+          // A motion is a widget used to control how the pane animates.
+          motion: const BehindMotion(),
+          extentRatio: 0.35, // Actions take 35% of the width
+
+          // Clean Nothing-inspired design
+          children: [
+            // Edit Action
+            Expanded(
+              child: Container(
+                margin:
+                    const EdgeInsets.only(left: 4, right: 2, top: 2, bottom: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A1A1A), // Nothing's signature dark
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    width: 0.5,
+                  ),
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => _editReminder(reminder),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.1),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              width: 0.5,
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.edit_outlined,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Edit',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w400,
+                            letterSpacing: 0.5,
                           ),
                         ),
                       ],
-                      child: const Icon(Icons.more_vert),
                     ),
-                  ],
-                ),
-                if (reminder.description?.isNotEmpty == true) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    reminder.description!,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.outline,
-                        ),
                   ),
-                ],
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.access_time,
-                      size: 16,
-                      color: Theme.of(context).colorScheme.outline,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      DateFormat('MMM dd, yyyy • hh:mm a')
-                          .format(reminder.scheduledTime),
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.outline,
+                ),
+              ),
+            ),
+
+            // Delete Action
+            Expanded(
+              child: Container(
+                margin:
+                    const EdgeInsets.only(left: 2, right: 4, top: 2, bottom: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A1A1A), // Nothing's signature dark
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    width: 0.5,
+                  ),
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => _deleteReminder(reminder),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: Colors.red.withValues(alpha: 0.15),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Colors.red.withValues(alpha: 0.3),
+                              width: 0.5,
+                            ),
                           ),
+                          child: const Icon(
+                            Icons.close,
+                            color: Colors.red,
+                            size: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Delete',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w400,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
                     ),
-                    const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: statusColor.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        reminder.statusText,
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+
+        // Clean Nothing-inspired main card
+        child: Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color:
+                  Theme.of(context).colorScheme.outline.withValues(alpha: 0.1),
+              width: 0.5,
+            ),
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: () => _toggleReminderStatus(reminder),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        // Clean status indicator
+                        Container(
+                          width: 12,
+                          height: 12,
+                          decoration: BoxDecoration(
+                            color: statusColor.withValues(alpha: 0.2),
+                            shape: BoxShape.circle,
+                            border: Border.all(
                               color: statusColor,
-                              fontWeight: FontWeight.w600,
+                              width: 1.5,
+                            ),
+                          ),
+                          child: reminder.isCompleted
+                              ? Icon(
+                                  Icons.check,
+                                  color: statusColor,
+                                  size: 8,
+                                )
+                              : null,
+                        ),
+                        const SizedBox(width: 12),
+
+                        // Title with clean typography
+                        Expanded(
+                          child: Text(
+                            reminder.title,
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
+                                  decoration: reminder.isCompleted
+                                      ? TextDecoration.lineThrough
+                                      : null,
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 16,
+                                  letterSpacing: -0.2,
+                                ),
+                          ),
+                        ),
+
+                        // Minimal status badge
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            color: statusColor,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    // Description with minimal styling
+                    if (reminder.description?.isNotEmpty == true) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        reminder.description!,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurface
+                                  .withValues(alpha: 0.6),
+                              fontSize: 14,
+                              height: 1.4,
+                              letterSpacing: -0.1,
                             ),
                       ),
+                    ],
+
+                    const SizedBox(height: 16),
+
+                    // Clean bottom row
+                    Row(
+                      children: [
+                        // Minimal time display
+                        Text(
+                          DateFormat('MMM dd • h:mm a')
+                              .format(reminder.scheduledTime),
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurface
+                                        .withValues(alpha: 0.5),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w400,
+                                    letterSpacing: 0.2,
+                                  ),
+                        ),
+
+                        const Spacer(),
+
+                        // Minimal status text
+                        Text(
+                          reminder.statusText.toUpperCase(),
+                          style:
+                              Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: statusColor.withValues(alpha: 0.8),
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 1.2,
+                                  ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
+              ),
             ),
           ),
         ),

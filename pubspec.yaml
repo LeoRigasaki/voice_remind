@@ -20,6 +20,8 @@ dependencies:
 
   # Notifications (latest version)
   flutter_local_notifications: ^18.0.1
+  # Slidable for swipe actions
+  flutter_slidable: ^3.1.1
   timezone: ^0.10.1
 
   # Utils
