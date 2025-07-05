@@ -263,51 +263,137 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildAppBar() {
-    return SliverAppBar.large(
-      title: const Text(
-        'VoiceRemind',
-        style: TextStyle(fontWeight: FontWeight.bold),
-      ),
-      actions: [
-        RotationTransition(
-          turns: _refreshAnimationController,
-          child: IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _refreshReminders,
-            tooltip: 'Refresh',
-          ),
-        ),
-        IconButton(
-          icon: const Icon(Icons.settings_outlined),
-          onPressed: () {
-            // Settings functionality will be added later
-          },
-          tooltip: 'Settings',
-        ),
-        IconButton(
-          icon: const Icon(Icons.notification_add),
-          onPressed: () async {
-            await NotificationService.showImmediateNotification(
-              title: 'Test Notification',
-              body: 'If you see this, notifications are working! 🎉',
-            );
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Test notification sent!'),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
-            }
-          },
-          tooltip: 'Test Notification',
-        ),
-      ],
-      backgroundColor: Theme.of(context).colorScheme.surface,
+    return SliverAppBar(
+      expandedHeight: 120,
       floating: true,
       snap: true,
+      elevation: 0,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      surfaceTintColor: Colors.transparent,
+      flexibleSpace: FlexibleSpaceBar(
+        titlePadding: const EdgeInsets.only(left: 20, bottom: 16),
+        title: Text(
+          'VoiceRemind',
+          style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                fontWeight: FontWeight.w300,
+                letterSpacing: -1.2,
+              ),
+        ),
+        expandedTitleScale: 1.0,
+      ),
+      actions: [
+        // Clean minimal icon buttons
+        Container(
+          margin: const EdgeInsets.only(right: 4),
+          decoration: BoxDecoration(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color:
+                  Theme.of(context).colorScheme.outline.withValues(alpha: 0.1),
+              width: 0.5,
+            ),
+          ),
+          child: IconButton(
+            icon: RotationTransition(
+              turns: _refreshAnimationController,
+              child: Icon(
+                Icons.refresh,
+                size: 20,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
+            ),
+            onPressed: _refreshReminders,
+            tooltip: 'Refresh',
+            style: IconButton.styleFrom(
+              backgroundColor: Colors.transparent,
+              foregroundColor: Theme.of(context).colorScheme.onSurface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
+        ),
+        Container(
+          margin: const EdgeInsets.only(right: 4),
+          decoration: BoxDecoration(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color:
+                  Theme.of(context).colorScheme.outline.withValues(alpha: 0.1),
+              width: 0.5,
+            ),
+          ),
+          child: IconButton(
+            icon: Icon(
+              Icons.settings_outlined,
+              size: 20,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
+            onPressed: () {
+              // Settings functionality will be added later
+            },
+            tooltip: 'Settings',
+            style: IconButton.styleFrom(
+              backgroundColor: Colors.transparent,
+              foregroundColor: Theme.of(context).colorScheme.onSurface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
+        ),
+        Container(
+          margin: const EdgeInsets.only(right: 16),
+          decoration: BoxDecoration(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color:
+                  Theme.of(context).colorScheme.outline.withValues(alpha: 0.1),
+              width: 0.5,
+            ),
+          ),
+          child: IconButton(
+            icon: Icon(
+              Icons.notification_add_outlined,
+              size: 20,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
+            onPressed: () async {
+              await NotificationService.showImmediateNotification(
+                title: 'Test Notification',
+                body: 'If you see this, notifications are working! 🎉',
+              );
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text('Test notification sent!'),
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    margin: const EdgeInsets.all(16),
+                  ),
+                );
+              }
+            },
+            tooltip: 'Test Notification',
+            style: IconButton.styleFrom(
+              backgroundColor: Colors.transparent,
+              foregroundColor: Theme.of(context).colorScheme.onSurface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
+
+  // lib/screens/home_screen.dart - Replace your _buildStatsCards method
 
   Widget _buildStatsCards(List<Reminder> reminders) {
     final total = reminders.length;
@@ -317,43 +403,39 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     return SliverToBoxAdapter(
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.symmetric(horizontal: 16.0),
         child: Row(
           children: [
             Expanded(
-              child: _buildStatCard(
-                'Total',
+              child: _buildCleanStatCard(
+                'TOTAL',
                 total.toString(),
-                Icons.list_alt,
-                Theme.of(context).colorScheme.primary,
+                isHighlight: false,
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: _buildStatCard(
-                'Pending',
+              child: _buildCleanStatCard(
+                'PENDING',
                 pending.toString(),
-                Icons.schedule,
-                Colors.orange,
+                isHighlight: false,
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: _buildStatCard(
-                'Done',
+              child: _buildCleanStatCard(
+                'DONE',
                 completed.toString(),
-                Icons.check_circle,
-                Colors.green,
+                isHighlight: false,
               ),
             ),
             if (overdue > 0) ...[
               const SizedBox(width: 12),
               Expanded(
-                child: _buildStatCard(
-                  'Overdue',
+                child: _buildCleanStatCard(
+                  'OVERDUE',
                   overdue.toString(),
-                  Icons.warning,
-                  Colors.red,
+                  isHighlight: true, // Only overdue gets red accent
                 ),
               ),
             ],
@@ -363,25 +445,55 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildStatCard(
-      String title, String value, IconData icon, Color color) {
-    return Card(
+  Widget _buildCleanStatCard(String title, String value,
+      {required bool isHighlight}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      height: 70,
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF7F7F7),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isHighlight
+              ? const Color(0xFFFF3B30) // Nothing red for overdue
+              : (isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE5E5E5)),
+          width: 1,
+        ),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Icon(icon, color: color, size: 24),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: color,
-                  ),
-            ),
+            // Title with minimal styling
             Text(
               title,
-              style: Theme.of(context).textTheme.bodySmall,
+              style: TextStyle(
+                color:
+                    isDark ? const Color(0xFF8E8E93) : const Color(0xFF6D6D70),
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.8,
+              ),
+            ),
+
+            // Value with emphasis
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                value,
+                style: TextStyle(
+                  color: isHighlight
+                      ? const Color(0xFFFF3B30) // Red for overdue
+                      : (isDark ? Colors.white : const Color(0xFF1A1A1A)),
+                  fontSize: 24,
+                  fontWeight: FontWeight.w300,
+                  letterSpacing: -0.5,
+                  height: 1.0,
+                ),
+              ),
             ),
           ],
         ),
@@ -399,33 +511,107 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (_error != null) {
       return SliverFillRemaining(
         child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.error_outline,
-                size: 64,
-                color: Theme.of(context).colorScheme.error,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Error loading reminders',
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _error!,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.outline,
+          child: Container(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Nothing-style error icon
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: const Color(0xFFFF3B30).withValues(alpha: 0.3),
+                      width: 1.0,
                     ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: _refreshReminders,
-                child: const Text('Retry'),
-              ),
-            ],
+                  ),
+                  child: Stack(
+                    children: [
+                      // Red accent corner
+                      Positioned(
+                        top: 0,
+                        right: 0,
+                        child: Container(
+                          width: 20,
+                          height: 20,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFFF3B30),
+                            borderRadius: BorderRadius.only(
+                              topRight: Radius.circular(16),
+                              bottomLeft: Radius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ),
+                      // Center icon
+                      Center(
+                        child: Icon(
+                          Icons.error_outline,
+                          size: 32,
+                          color: const Color(0xFFFF3B30).withValues(alpha: 0.8),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  'ERROR LOADING',
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: const Color(0xFFFF3B30),
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 2.0,
+                      ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _error!,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withValues(alpha: 0.6),
+                        height: 1.4,
+                        letterSpacing: 0.1,
+                      ),
+                ),
+                const SizedBox(height: 24),
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.transparent,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: const Color(0xFFFF3B30).withValues(alpha: 0.3),
+                      width: 1.0,
+                    ),
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: _refreshReminders,
+                      child: const Padding(
+                        padding:
+                            EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                        child: Text(
+                          'RETRY',
+                          style: TextStyle(
+                            color: Color(0xFFFF3B30),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 1.5,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       );
@@ -434,32 +620,104 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (reminders.isEmpty) {
       return SliverFillRemaining(
         child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.voice_over_off,
-                size: 64,
-                color: Theme.of(context).colorScheme.outline,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'No reminders yet',
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Tap the + button to create your first reminder',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.outline,
+          child: Container(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Nothing-style geometric icon
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .outline
+                          .withValues(alpha: 0.2),
+                      width: 1.0,
                     ),
-              ),
-            ],
+                  ),
+                  child: Stack(
+                    children: [
+                      // Dot pattern
+                      Positioned(
+                        top: 16,
+                        left: 16,
+                        child: Container(
+                          width: 3,
+                          height: 3,
+                          decoration: BoxDecoration(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurface
+                                .withValues(alpha: 0.3),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        bottom: 16,
+                        right: 16,
+                        child: Container(
+                          width: 2,
+                          height: 2,
+                          decoration: BoxDecoration(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurface
+                                .withValues(alpha: 0.2),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                      // Center icon
+                      Center(
+                        child: Icon(
+                          Icons.voice_over_off_outlined,
+                          size: 32,
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withValues(alpha: 0.4),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  'NO REMINDERS',
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withValues(alpha: 0.6),
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 2.0,
+                      ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Tap ADD REMINDER to create\nyour first voice reminder',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withValues(alpha: 0.5),
+                        height: 1.5,
+                        letterSpacing: 0.2,
+                      ),
+                ),
+              ],
+            ),
           ),
         ),
       );
     }
-
     return SliverList(
       delegate: SliverChildBuilderDelegate(
         (context, index) {
@@ -779,12 +1037,67 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         builder: (context, child) {
           return Transform.scale(
             scale: _fabAnimationController.value,
-            child: FloatingActionButton.extended(
-              onPressed: _addReminder,
-              icon: const Icon(Icons.add),
-              label: const Text('Add Reminder'),
-              backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-              foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.onSurface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .outline
+                      .withValues(alpha: 0.1),
+                  width: 0.5,
+                ),
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: _addReminder,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 16),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 20,
+                          height: 20,
+                          decoration: BoxDecoration(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .surface
+                                .withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .surface
+                                  .withValues(alpha: 0.3),
+                              width: 0.5,
+                            ),
+                          ),
+                          child: Icon(
+                            Icons.add,
+                            size: 14,
+                            color: Theme.of(context).colorScheme.surface,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          'ADD REMINDER',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.surface,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             ),
           );
         },
