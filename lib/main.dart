@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'services/notification_service.dart';
 import 'services/storage_service.dart';
+import 'services/theme_service.dart';
 import 'screens/home_screen.dart';
 
 // Global notification plugin instance
@@ -17,6 +18,9 @@ void main() async {
   // Initialize storage
   await StorageService.initialize();
 
+  // Initialize theme service
+  await ThemeService.initialize();
+
   runApp(const VoiceRemindApp());
 }
 
@@ -29,17 +33,38 @@ class VoiceRemindApp extends StatefulWidget {
 
 class _VoiceRemindAppState extends State<VoiceRemindApp>
     with WidgetsBindingObserver {
+  // Current theme mode for the app
+  ThemeMode _themeMode = ThemeMode.system;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+
+    // Listen to theme changes
+    _setupThemeListener();
+  }
+
+  void _setupThemeListener() {
+    // Set initial theme
+    _themeMode = ThemeService.getThemeMode();
+
+    // Listen for theme changes
+    ThemeService.themeStream.listen((themeType) {
+      if (mounted) {
+        setState(() {
+          _themeMode = ThemeService.getThemeMode();
+        });
+      }
+    });
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    // Dispose storage service when app is closed
+    // Dispose services when app is closed
     StorageService.dispose();
+    ThemeService.dispose();
     super.dispose();
   }
 
@@ -55,17 +80,23 @@ class _VoiceRemindAppState extends State<VoiceRemindApp>
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'VoiceRemind',
-      debugShowCheckedModeBanner: false,
-      theme: _buildNothingLightTheme(),
-      darkTheme: _buildNothingDarkTheme(),
-      themeMode: ThemeMode.system,
-      home: const HomeScreen(),
+    return AnimatedTheme(
+      duration: const Duration(milliseconds: 300), // Smooth transition
+      data: _themeMode == ThemeMode.dark
+          ? _buildNothingDarkTheme()
+          : _buildNothingLightTheme(),
+      child: MaterialApp(
+        title: 'VoiceRemind',
+        debugShowCheckedModeBanner: false,
+        theme: _buildNothingLightTheme(),
+        darkTheme: _buildNothingDarkTheme(),
+        themeMode: _themeMode,
+        home: const HomeScreen(),
+      ),
     );
   }
 
-  // Nothing-inspired Light Theme
+  // Nothing-inspired Light Theme (Your original - kept intact!)
   ThemeData _buildNothingLightTheme() {
     const nothingWhite = Color(0xFFFAFAFA);
     const nothingBlack = Color(0xFF0A0A0A);
@@ -150,37 +181,11 @@ class _VoiceRemindAppState extends State<VoiceRemindApp>
           letterSpacing: 1.2,
           color: nothingBlack,
         ),
-        labelMedium: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 1.0,
-          color: nothingGray,
-        ),
-        labelSmall: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 1.5,
-          color: nothingGray,
-        ),
-      ),
-
-      // Minimal card design
-      cardTheme: CardThemeData(
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: const BorderSide(
-            color: Color(0xFFE5E5EA),
-            width: 0.5,
-          ),
-        ),
-        color: nothingWhite,
-        surfaceTintColor: Colors.transparent,
       ),
 
       // Clean button design
-      filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
           backgroundColor: nothingBlack,
           foregroundColor: nothingWhite,
           shape: RoundedRectangleBorder(
@@ -200,14 +205,14 @@ class _VoiceRemindAppState extends State<VoiceRemindApp>
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: const BorderSide(
-            color: Color(0xFFE5E5EA),
+            color: nothingGray,
             width: 0.5,
           ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: const BorderSide(
-            color: Color(0xFFE5E5EA),
+            color: nothingGray,
             width: 0.5,
           ),
         ),
@@ -219,7 +224,7 @@ class _VoiceRemindAppState extends State<VoiceRemindApp>
           ),
         ),
         filled: true,
-        fillColor: nothingWhite,
+        fillColor: nothingLightGray,
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         labelStyle: const TextStyle(
@@ -257,7 +262,7 @@ class _VoiceRemindAppState extends State<VoiceRemindApp>
     );
   }
 
-  // Nothing-inspired Dark Theme
+  // Nothing-inspired Dark Theme (Your original - kept intact!)
   ThemeData _buildNothingDarkTheme() {
     const nothingBlack = Color(0xFF0A0A0A);
     const nothingWhite = Color(0xFFFAFAFA);
@@ -343,37 +348,11 @@ class _VoiceRemindAppState extends State<VoiceRemindApp>
           letterSpacing: 1.2,
           color: nothingWhite,
         ),
-        labelMedium: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 1.0,
-          color: nothingGray,
-        ),
-        labelSmall: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 1.5,
-          color: nothingGray,
-        ),
-      ),
-
-      // Minimal card design
-      cardTheme: CardThemeData(
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: const BorderSide(
-            color: Color(0xFF3A3A3C),
-            width: 0.5,
-          ),
-        ),
-        color: nothingDarkGray,
-        surfaceTintColor: Colors.transparent,
       ),
 
       // Clean button design
-      filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
           backgroundColor: nothingWhite,
           foregroundColor: nothingBlack,
           shape: RoundedRectangleBorder(

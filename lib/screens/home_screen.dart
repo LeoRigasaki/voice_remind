@@ -7,6 +7,7 @@ import '../models/reminder.dart';
 import '../services/storage_service.dart';
 import '../services/notification_service.dart';
 import 'add_reminder_screen.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -42,7 +43,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _remindersStream = StorageService.remindersStream;
 
     // Load initial data
-    _loadInitialReminders();
+    StorageService.refreshData();
 
     // Start real-time timer for countdown updates
     _startRealTimeTimer();
@@ -53,6 +54,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         _fabAnimationController.forward();
       }
     });
+  }
+
+// Navigate to settings screen
+  void _openSettings() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const SettingsScreen(),
+      ),
+    );
   }
 
   @override
@@ -71,26 +81,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         });
       }
     });
-  }
-
-  Future<void> _loadInitialReminders() async {
-    try {
-      final reminders = await StorageService.getReminders();
-      if (mounted) {
-        setState(() {
-          _reminders = reminders;
-          _isLoading = false;
-          _error = null;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _error = e.toString();
-        });
-      }
-    }
   }
 
   Future<void> _refreshReminders() async {
@@ -480,9 +470,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               size: 20,
               color: Theme.of(context).colorScheme.onSurface,
             ),
-            onPressed: () {
-              // Settings functionality will be added later
-            },
+            onPressed: _openSettings,
             tooltip: 'Settings',
             style: IconButton.styleFrom(
               backgroundColor: Colors.transparent,
