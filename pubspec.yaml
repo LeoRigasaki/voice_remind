@@ -27,6 +27,12 @@ dependencies:
   # Utils
   uuid: ^4.5.1
 
+  # AI and HTTP Requests
+  google_generative_ai: ^0.4.6
+  http: ^1.1.0
+  # Secrets and Environment Variables
+  flutter_dotenv: ^5.1.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -36,7 +42,8 @@ flutter:
   uses-material-design: true
   
   # Assets (for future use)
-  # assets:
+  assets:
+  - .env
   #   - images/
   #   - sounds/
 
