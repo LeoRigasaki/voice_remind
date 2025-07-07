@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:intl/intl.dart';
+import 'dart:async';
+import 'dart:math' as math;
 import '../models/reminder.dart';
 import '../services/storage_service.dart';
 import '../services/notification_service.dart';
@@ -19,6 +21,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   String? _error;
   late AnimationController _fabAnimationController;
   late AnimationController _refreshAnimationController;
+  Timer? _realTimeTimer;
 
   // Stream subscription for real-time updates
   late final Stream<List<Reminder>> _remindersStream;
@@ -41,6 +44,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     // Load initial data
     _loadInitialReminders();
 
+    // Start real-time timer for countdown updates
+    _startRealTimeTimer();
+
     // Start FAB animation after a short delay
     Future.delayed(const Duration(milliseconds: 500), () {
       if (mounted) {
@@ -53,7 +59,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void dispose() {
     _fabAnimationController.dispose();
     _refreshAnimationController.dispose();
+    _realTimeTimer?.cancel();
     super.dispose();
+  }
+
+  void _startRealTimeTimer() {
+    _realTimeTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) {
+        setState(() {
+          // Force rebuild to update countdown timers
+        });
+      }
+    });
   }
 
   Future<void> _loadInitialReminders() async {
@@ -262,6 +279,138 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
+  // Progressive detail time formatting function
+  String _formatTimeRemaining(DateTime reminderTime) {
+    final now = DateTime.now();
+    final difference = reminderTime.difference(now);
+
+    if (difference.isNegative) {
+      final overdueDuration = now.difference(reminderTime);
+      if (overdueDuration.inDays > 0) {
+        return 'Overdue ${overdueDuration.inDays}d';
+      } else if (overdueDuration.inHours > 0) {
+        return 'Overdue ${overdueDuration.inHours}h';
+      } else {
+        return 'Overdue ${overdueDuration.inMinutes}m';
+      }
+    }
+
+    final totalMinutes = difference.inMinutes;
+    final totalHours = difference.inHours;
+    final totalDays = difference.inDays;
+
+    // > 1 week: "Jan 15" (just date)
+    if (totalDays > 7) {
+      return DateFormat('MMM dd').format(reminderTime);
+    }
+    // 1-7 days: "3 days"
+    else if (totalDays >= 1) {
+      return '$totalDays day${totalDays == 1 ? '' : 's'}';
+    }
+    // 1-24 hours: "5h 30m"
+    else if (totalHours >= 1) {
+      final remainingMinutes = totalMinutes % 60;
+      if (remainingMinutes == 0) {
+        return '${totalHours}h';
+      }
+      return '${totalHours}h ${remainingMinutes}m';
+    }
+    // < 1 hour but >= 10 min: "25 min"
+    else if (totalMinutes >= 10) {
+      return '${totalMinutes} min';
+    }
+    // < 10 min: "3 min 45s"
+    else {
+      final seconds = difference.inSeconds % 60;
+      if (totalMinutes == 0) {
+        return '${seconds}s';
+      }
+      return '${totalMinutes} min ${seconds}s';
+    }
+  }
+
+  // Calculate progress (0.0 to 1.0) for circular indicator
+  double _calculateProgress(Reminder reminder) {
+    final now = DateTime.now();
+    final createdTime = reminder.createdAt;
+    final scheduledTime = reminder.scheduledTime;
+
+    // If reminder is completed, show full progress
+    if (reminder.isCompleted) return 1.0;
+
+    // Calculate total duration from creation to scheduled time
+    final totalDuration = scheduledTime.difference(createdTime);
+
+    // If total duration is 0 or negative, return 0
+    if (totalDuration.inMilliseconds <= 0) return 0.0;
+
+    // Calculate elapsed duration from creation to now
+    final elapsedDuration = now.difference(createdTime);
+
+    // Calculate progress
+    final progress =
+        elapsedDuration.inMilliseconds / totalDuration.inMilliseconds;
+
+    // Clamp between 0.0 and 1.0
+    return progress.clamp(0.0, 1.0);
+  }
+
+  // Calculate dynamic color based on time remaining
+  // Calculate dynamic color based on time remaining
+  Color _calculateTimeBasedColor(DateTime reminderTime, bool isDark) {
+    final now = DateTime.now();
+    final difference = reminderTime.difference(now);
+
+    // If overdue, always red
+    if (difference.isNegative) {
+      return const Color(0xFFFF3B30); // Nothing red
+    }
+
+    final totalDays = difference.inDays;
+    final totalHours = difference.inHours;
+    final totalMinutes = difference.inMinutes;
+    final totalSeconds = difference.inSeconds;
+
+    // Months (30+ days): Cool Blue/Cyan
+    if (totalDays >= 30) {
+      return isDark
+          ? const Color(0xFF007AFF) // Bright blue for dark mode
+          : const Color(0xFF0066CC); // Deeper blue for light mode
+    }
+    // Weeks (7-29 days): Blue/Purple
+    else if (totalDays >= 7) {
+      return isDark
+          ? const Color(0xFF5856D6) // Purple for dark mode
+          : const Color(0xFF5A67D8); // Blue-purple for light mode
+    }
+    // Days (1-6 days): Green/Teal
+    else if (totalDays >= 1) {
+      return isDark
+          ? const Color(0xFF32D74B) // Green for dark mode
+          : const Color(0xFF10B981); // Teal for light mode
+    }
+    // Hours (1-23 hours): Yellow/Orange
+    else if (totalHours >= 1) {
+      return isDark
+          ? const Color(0xFFFF9F0A) // Orange for dark mode
+          : const Color(0xFFF59E0B); // Amber for light mode
+    }
+    // Minutes (1-59 minutes): Orange/Red-Orange
+    else if (totalMinutes >= 1) {
+      return isDark
+          ? const Color(0xFFFF6B35) // Red-orange for dark mode
+          : const Color(0xFFEF4444); // Red for light mode
+    }
+    // Seconds (< 1 minute): Urgent Red - NOW using totalSeconds!
+    else if (totalSeconds > 0) {
+      return const Color(0xFFFF3B30); // Nothing red - urgent!
+    }
+    // Exactly at time or past
+    else {
+      return const Color(0xFFFF3B30); // Nothing red - time's up!
+    }
+  }
+
   Widget _buildAppBar() {
     return SliverAppBar(
       expandedHeight: 120,
@@ -392,8 +541,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       ],
     );
   }
-
-  // lib/screens/home_screen.dart - Replace your _buildStatsCards method
 
   Widget _buildStatsCards(List<Reminder> reminders) {
     final total = reminders.length;
@@ -862,8 +1009,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
           ],
         ),
-
-        // Clean Nothing-inspired main card
         child: Container(
           decoration: BoxDecoration(
             color: Theme.of(context).colorScheme.surface,
@@ -926,15 +1071,64 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ),
                         ),
 
-                        // Minimal status badge
-                        Container(
-                          width: 6,
-                          height: 6,
-                          decoration: BoxDecoration(
-                            color: statusColor,
-                            shape: BoxShape.circle,
+                        // Real-time countdown and circular progress indicator
+                        if (!reminder.isCompleted) ...[
+                          const SizedBox(width: 8),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              // Circular progress indicator
+                              SizedBox(
+                                width: 32,
+                                height: 32,
+                                child: CustomPaint(
+                                  painter: CircularCountdownPainter(
+                                    progress: _calculateProgress(reminder),
+                                    backgroundColor: Theme.of(context)
+                                        .colorScheme
+                                        .outline
+                                        .withValues(alpha: 0.2),
+                                    progressColor: _calculateTimeBasedColor(
+                                      reminder.scheduledTime,
+                                      Theme.of(context).brightness ==
+                                          Brightness.dark,
+                                    ),
+                                    strokeWidth: 2.5,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              // Progressive time display
+                              Text(
+                                _formatTimeRemaining(reminder.scheduledTime),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(
+                                      color: isOverdue
+                                          ? Colors.red
+                                          : Theme.of(context)
+                                              .colorScheme
+                                              .onSurface
+                                              .withValues(alpha: 0.7),
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w500,
+                                      letterSpacing: 0.2,
+                                    ),
+                              ),
+                            ],
                           ),
-                        ),
+                        ] else ...[
+                          // Completed status badge
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: statusColor,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
 
@@ -1103,5 +1297,63 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         },
       ),
     );
+  }
+}
+
+// Custom painter for circular countdown progress indicator
+class CircularCountdownPainter extends CustomPainter {
+  final double progress;
+  final Color backgroundColor;
+  final Color progressColor;
+  final double strokeWidth;
+
+  CircularCountdownPainter({
+    required this.progress,
+    required this.backgroundColor,
+    required this.progressColor,
+    required this.strokeWidth,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = (size.width / 2) - (strokeWidth / 2);
+
+    // Background circle
+    final backgroundPaint = Paint()
+      ..color = backgroundColor
+      ..strokeWidth = strokeWidth
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawCircle(center, radius, backgroundPaint);
+
+    // Progress arc
+    final progressPaint = Paint()
+      ..color = progressColor
+      ..strokeWidth = strokeWidth
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    // Calculate sweep angle (progress from 0 to 2π)
+    final sweepAngle = 2 * math.pi * progress;
+
+    // Draw arc starting from top (-π/2) and sweeping clockwise
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      -math.pi / 2, // Start from top
+      sweepAngle, // Sweep angle
+      false, // Don't use center
+      progressPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(CustomPainter oldDelegate) {
+    return oldDelegate is CircularCountdownPainter &&
+        (oldDelegate.progress != progress ||
+            oldDelegate.backgroundColor != backgroundColor ||
+            oldDelegate.progressColor != progressColor ||
+            oldDelegate.strokeWidth != strokeWidth);
   }
 }
