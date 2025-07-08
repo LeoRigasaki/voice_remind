@@ -8,6 +8,7 @@ import '../services/storage_service.dart';
 import '../services/notification_service.dart';
 import 'add_reminder_screen.dart';
 import 'settings_screen.dart';
+import 'filtered_reminders_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -307,7 +308,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
     // < 1 hour but >= 10 min: "25 min"
     else if (totalMinutes >= 10) {
-      return '${totalMinutes} min';
+      return '$totalMinutes min';
     }
     // < 10 min: "3 min 45s"
     else {
@@ -315,7 +316,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       if (totalMinutes == 0) {
         return '${seconds}s';
       }
-      return '${totalMinutes} min ${seconds}s';
+      return '$totalMinutes min ${seconds}s';
     }
   }
 
@@ -343,62 +344,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     // Clamp between 0.0 and 1.0
     return progress.clamp(0.0, 1.0);
-  }
-
-  // Calculate dynamic color based on time remaining
-  // Calculate dynamic color based on time remaining
-  Color _calculateTimeBasedColor(DateTime reminderTime, bool isDark) {
-    final now = DateTime.now();
-    final difference = reminderTime.difference(now);
-
-    // If overdue, always red
-    if (difference.isNegative) {
-      return const Color(0xFFFF3B30); // Nothing red
-    }
-
-    final totalDays = difference.inDays;
-    final totalHours = difference.inHours;
-    final totalMinutes = difference.inMinutes;
-    final totalSeconds = difference.inSeconds;
-
-    // Months (30+ days): Cool Blue/Cyan
-    if (totalDays >= 30) {
-      return isDark
-          ? const Color(0xFF007AFF) // Bright blue for dark mode
-          : const Color(0xFF0066CC); // Deeper blue for light mode
-    }
-    // Weeks (7-29 days): Blue/Purple
-    else if (totalDays >= 7) {
-      return isDark
-          ? const Color(0xFF5856D6) // Purple for dark mode
-          : const Color(0xFF5A67D8); // Blue-purple for light mode
-    }
-    // Days (1-6 days): Green/Teal
-    else if (totalDays >= 1) {
-      return isDark
-          ? const Color(0xFF32D74B) // Green for dark mode
-          : const Color(0xFF10B981); // Teal for light mode
-    }
-    // Hours (1-23 hours): Yellow/Orange
-    else if (totalHours >= 1) {
-      return isDark
-          ? const Color(0xFFFF9F0A) // Orange for dark mode
-          : const Color(0xFFF59E0B); // Amber for light mode
-    }
-    // Minutes (1-59 minutes): Orange/Red-Orange
-    else if (totalMinutes >= 1) {
-      return isDark
-          ? const Color(0xFFFF6B35) // Red-orange for dark mode
-          : const Color(0xFFEF4444); // Red for light mode
-    }
-    // Seconds (< 1 minute): Urgent Red - NOW using totalSeconds!
-    else if (totalSeconds > 0) {
-      return const Color(0xFFFF3B30); // Nothing red - urgent!
-    }
-    // Exactly at time or past
-    else {
-      return const Color(0xFFFF3B30); // Nothing red - time's up!
-    }
   }
 
   Widget _buildAppBar() {
@@ -530,6 +475,35 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
+  void _navigateToFilteredReminders(FilterType filterType) {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            FilteredRemindersScreen(
+          filterType: filterType,
+          allReminders: _reminders,
+        ),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          // Nothing Phone-inspired slide transition
+          return SlideTransition(
+            position: animation.drive(
+              Tween(begin: const Offset(1.0, 0.0), end: Offset.zero)
+                  .chain(CurveTween(curve: Curves.easeInOut)),
+            ),
+            child: FadeTransition(
+              opacity: animation.drive(
+                Tween(begin: 0.0, end: 1.0)
+                    .chain(CurveTween(curve: Curves.easeOut)),
+              ),
+              child: child,
+            ),
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 400),
+      ),
+    );
+  }
+
   Widget _buildStatsCards(List<Reminder> reminders) {
     final total = reminders.length;
     final completed = reminders.where((r) => r.isCompleted).length;
@@ -545,6 +519,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               child: _buildCleanStatCard(
                 'TOTAL',
                 total.toString(),
+                FilterType.total,
                 isHighlight: false,
               ),
             ),
@@ -553,6 +528,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               child: _buildCleanStatCard(
                 'PENDING',
                 pending.toString(),
+                FilterType.pending,
                 isHighlight: false,
               ),
             ),
@@ -561,6 +537,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               child: _buildCleanStatCard(
                 'DONE',
                 completed.toString(),
+                FilterType.completed,
                 isHighlight: false,
               ),
             ),
@@ -570,6 +547,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 child: _buildCleanStatCard(
                   'OVERDUE',
                   overdue.toString(),
+                  FilterType.overdue,
                   isHighlight: true, // Only overdue gets red accent
                 ),
               ),
@@ -580,7 +558,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildCleanStatCard(String title, String value,
+  Widget _buildCleanStatCard(String title, String value, FilterType filterType,
       {required bool isHighlight}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -596,41 +574,49 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           width: 1,
         ),
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            // Title with minimal styling
-            Text(
-              title,
-              style: TextStyle(
-                color:
-                    isDark ? const Color(0xFF8E8E93) : const Color(0xFF6D6D70),
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.8,
-              ),
-            ),
-
-            // Value with emphasis
-            Align(
-              alignment: Alignment.centerRight,
-              child: Text(
-                value,
-                style: TextStyle(
-                  color: isHighlight
-                      ? const Color(0xFFFF3B30) // Red for overdue
-                      : (isDark ? Colors.white : const Color(0xFF1A1A1A)),
-                  fontSize: 24,
-                  fontWeight: FontWeight.w300,
-                  letterSpacing: -0.5,
-                  height: 1.0,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () => _navigateToFilteredReminders(filterType),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                // Title with minimal styling - no arrow to avoid overflow
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: isDark
+                        ? const Color(0xFF8E8E93)
+                        : const Color(0xFF6D6D70),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.8,
+                  ),
                 ),
-              ),
+
+                // Value with emphasis
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    value,
+                    style: TextStyle(
+                      color: isHighlight
+                          ? const Color(0xFFFF3B30) // Red for overdue
+                          : (isDark ? Colors.white : const Color(0xFF1A1A1A)),
+                      fontSize: 24,
+                      fontWeight: FontWeight.w300,
+                      letterSpacing: -0.5,
+                      height: 1.0,
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -1076,11 +1062,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                         .colorScheme
                                         .outline
                                         .withValues(alpha: 0.2),
-                                    progressColor: _calculateTimeBasedColor(
-                                      reminder.scheduledTime,
-                                      Theme.of(context).brightness ==
-                                          Brightness.dark,
-                                    ),
+                                    progressColor: isOverdue
+                                        ? const Color(
+                                            0xFFDC3545) // Softer red for overdue
+                                        : (Theme.of(context).brightness ==
+                                                Brightness.dark
+                                            ? Colors.white
+                                            : Colors
+                                                .black), // White for dark mode, black for light mode
                                     strokeWidth: 2.5,
                                   ),
                                 ),
