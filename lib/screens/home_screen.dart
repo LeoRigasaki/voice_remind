@@ -99,35 +99,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _refreshAnimationController.reset();
   }
 
-  Future<void> _addReminder() async {
-    final result = await Navigator.push<bool>(
-      context,
-      PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) =>
-            const AddReminderScreen(),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          return SlideTransition(
-            position: animation.drive(
-              Tween(begin: const Offset(0.0, 1.0), end: Offset.zero)
-                  .chain(CurveTween(curve: Curves.easeInOut)),
-            ),
-            child: child,
-          );
-        },
-      ),
-    );
-
-    if (result == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Reminder created successfully!'),
-          behavior: SnackBarBehavior.floating,
-          duration: Duration(seconds: 2),
-        ),
-      );
-    }
-  }
-
   Future<void> _toggleReminderStatus(Reminder reminder) async {
     try {
       final newStatus = reminder.isCompleted
@@ -1196,82 +1167,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 _buildRemindersList(_reminders),
                 // Add bottom padding for FAB
                 const SliverToBoxAdapter(
-                  child: SizedBox(height: 80),
+                  child: SizedBox(height: 100),
                 ),
               ],
             );
           },
         ),
-      ),
-      floatingActionButton: AnimatedBuilder(
-        animation: _fabAnimationController,
-        builder: (context, child) {
-          return Transform.scale(
-            scale: _fabAnimationController.value,
-            child: Container(
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.onSurface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .outline
-                      .withValues(alpha: 0.1),
-                  width: 0.5,
-                ),
-              ),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(16),
-                  onTap: _addReminder,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 24, vertical: 16),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 20,
-                          height: 20,
-                          decoration: BoxDecoration(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .surface
-                                .withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .surface
-                                  .withValues(alpha: 0.3),
-                              width: 0.5,
-                            ),
-                          ),
-                          child: Icon(
-                            Icons.add,
-                            size: 14,
-                            color: Theme.of(context).colorScheme.surface,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          'ADD REMINDER',
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.surface,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 1.2,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
       ),
     );
   }

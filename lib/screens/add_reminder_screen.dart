@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'dart:async';
 import '../models/reminder.dart';
 import '../services/storage_service.dart';
 import '../services/notification_service.dart';
 
 class AddReminderScreen extends StatefulWidget {
-  final Reminder? reminder; // Optional reminder for editing
+  final Reminder? reminder;
 
   const AddReminderScreen({super.key, this.reminder});
 
@@ -25,16 +26,27 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
   bool _isLoading = false;
   bool _isEditing = false;
 
+  // Real-time clock
+  DateTime _currentTime = DateTime.now();
+  Timer? _timeTimer;
+
   @override
   void initState() {
     super.initState();
 
-    // Check if we're editing an existing reminder
+    // Start real-time timer
+    _timeTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) {
+        setState(() {
+          _currentTime = DateTime.now();
+        });
+      }
+    });
+
     if (widget.reminder != null) {
       _isEditing = true;
       _populateFieldsForEditing();
     } else {
-      // Round to next hour for new reminders
       final now = DateTime.now();
       _selectedTime = TimeOfDay(hour: now.hour + 1, minute: 0);
       _selectedDate = DateTime(now.year, now.month, now.day, now.hour + 1, 0);
@@ -53,6 +65,7 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
 
   @override
   void dispose() {
+    _timeTimer?.cancel();
     _titleController.dispose();
     _descriptionController.dispose();
     super.dispose();
@@ -147,7 +160,6 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
 
     try {
       if (_isEditing) {
-        // Update existing reminder
         final updatedReminder = widget.reminder!.copyWith(
           title: _titleController.text.trim(),
           description: _descriptionController.text.trim().isEmpty
@@ -159,14 +171,12 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
         );
 
         await StorageService.updateReminder(updatedReminder);
-
-        // Cancel old notification and schedule new one if needed
         await NotificationService.cancelReminder(updatedReminder.id);
+
         if (_isNotificationEnabled && _selectedDate.isAfter(DateTime.now())) {
           await NotificationService.scheduleReminder(updatedReminder);
         }
       } else {
-        // Create new reminder
         final reminder = Reminder(
           title: _titleController.text.trim(),
           description: _descriptionController.text.trim().isEmpty
@@ -218,8 +228,19 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
     }
   }
 
+  bool _isCurrentTime() {
+    final now = _currentTime;
+    return _selectedDate.year == now.year &&
+        _selectedDate.month == now.month &&
+        _selectedDate.day == now.day &&
+        _selectedDate.hour == now.hour &&
+        _selectedDate.minute == now.minute;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
@@ -315,6 +336,65 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
         child: ListView(
           padding: const EdgeInsets.all(20.0),
           children: [
+            // Current Time Display
+            Container(
+              padding: const EdgeInsets.all(16),
+              margin: const EdgeInsets.only(bottom: 32),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? const Color(0xFF1C1C1E).withValues(alpha: 0.5)
+                    : const Color(0xFFF7F7F7).withValues(alpha: 0.8),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .outline
+                      .withValues(alpha: 0.1),
+                  width: 0.5,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: Colors.green,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'CURRENT TIME',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 1.2,
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withValues(alpha: 0.6),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        DateFormat('MMM d, yyyy • h:mm:ss a')
+                            .format(_currentTime),
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w500,
+                                  letterSpacing: -0.2,
+                                ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
             // Input Section
             _buildSection(
               'DETAILS',
@@ -355,12 +435,7 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
                   onTap: _selectDate,
                 ),
                 _buildDivider(),
-                _buildOptionTile(
-                  icon: Icons.access_time_outlined,
-                  title: 'Time',
-                  subtitle: _selectedTime.format(context),
-                  onTap: _selectTime,
-                ),
+                _buildTimeOptionTile(),
                 _buildDivider(),
                 _buildOptionTile(
                   icon: Icons.repeat,
@@ -444,6 +519,118 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
 
             const SizedBox(height: 20),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTimeOptionTile() {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _selectTime,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: _isCurrentTime()
+                      ? Colors.green.withValues(alpha: 0.1)
+                      : Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: _isCurrentTime()
+                        ? Colors.green.withValues(alpha: 0.3)
+                        : Theme.of(context)
+                            .colorScheme
+                            .outline
+                            .withValues(alpha: 0.1),
+                    width: 0.5,
+                  ),
+                ),
+                child: Icon(
+                  Icons.access_time_outlined,
+                  size: 20,
+                  color: _isCurrentTime()
+                      ? Colors.green
+                      : Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          'Time',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleMedium
+                              ?.copyWith(
+                                fontWeight: FontWeight.w500,
+                                color: _isCurrentTime() ? Colors.green : null,
+                              ),
+                        ),
+                        if (_isCurrentTime()) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(
+                                color: Colors.green.withValues(alpha: 0.3),
+                                width: 0.5,
+                              ),
+                            ),
+                            child: const Text(
+                              'NOW',
+                              style: TextStyle(
+                                color: Colors.green,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.8,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _selectedTime.format(context),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: _isCurrentTime()
+                                ? Colors.green
+                                : Theme.of(context)
+                                    .colorScheme
+                                    .onSurface
+                                    .withValues(alpha: 0.7),
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right,
+                size: 20,
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.4),
+              ),
+            ],
+          ),
         ),
       ),
     );

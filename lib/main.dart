@@ -3,7 +3,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'services/notification_service.dart';
 import 'services/storage_service.dart';
 import 'services/theme_service.dart';
-import 'screens/home_screen.dart';
+import 'screens/main_navigation.dart';
 
 // Global notification plugin instance
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
@@ -91,7 +91,7 @@ class _VoiceRemindAppState extends State<VoiceRemindApp>
         theme: _buildNothingLightTheme(),
         darkTheme: _buildNothingDarkTheme(),
         themeMode: _themeMode,
-        home: const HomeScreen(),
+        home: const MainNavigation(),
       ),
     );
   }
