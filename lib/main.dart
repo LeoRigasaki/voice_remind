@@ -80,19 +80,13 @@ class _VoiceRemindAppState extends State<VoiceRemindApp>
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedTheme(
-      duration: const Duration(milliseconds: 300), // Smooth transition
-      data: _themeMode == ThemeMode.dark
-          ? _buildNothingDarkTheme()
-          : _buildNothingLightTheme(),
-      child: MaterialApp(
-        title: 'VoiceRemind',
-        debugShowCheckedModeBanner: false,
-        theme: _buildNothingLightTheme(),
-        darkTheme: _buildNothingDarkTheme(),
-        themeMode: _themeMode,
-        home: const MainNavigation(),
-      ),
+    return MaterialApp(
+      title: 'VoiceRemind',
+      debugShowCheckedModeBanner: false,
+      theme: _buildNothingLightTheme(),
+      darkTheme: _buildNothingDarkTheme(),
+      themeMode: _themeMode,
+      home: const MainNavigation(),
     );
   }
 

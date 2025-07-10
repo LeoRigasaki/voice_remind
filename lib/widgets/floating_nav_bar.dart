@@ -20,28 +20,32 @@ class FloatingNavBar extends StatelessWidget {
       margin: const EdgeInsets.all(20),
       height: 72,
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+        //Inverted theme - dark navbar in light mode, light navbar in dark mode
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.75) // Light navbar in dark mode
+            : const Color(0xFF1C1C1E)
+                .withValues(alpha: 0.8), // Dark navbar in light mode
         borderRadius: BorderRadius.circular(36),
         boxShadow: [
           BoxShadow(
             color: isDark
-                ? Colors.black.withValues(alpha: 0.3)
-                : Colors.black.withValues(alpha: 0.1),
+                ? Colors.black.withValues(alpha: 0.1)
+                : Colors.black.withValues(alpha: 0.3),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
           BoxShadow(
             color: isDark
-                ? Colors.white.withValues(alpha: 0.05)
-                : Colors.white.withValues(alpha: 0.8),
+                ? Colors.white.withValues(alpha: 0.8)
+                : Colors.white.withValues(alpha: 0.05),
             blurRadius: 1,
             offset: const Offset(0, 1),
           ),
         ],
         border: Border.all(
           color: isDark
-              ? Colors.white.withValues(alpha: 0.1)
-              : Colors.black.withValues(alpha: 0.05),
+              ? Colors.black.withValues(alpha: 0.05)
+              : Colors.white.withValues(alpha: 0.1),
           width: 0.5,
         ),
       ),
@@ -110,8 +114,8 @@ class FloatingNavBar extends StatelessWidget {
               decoration: BoxDecoration(
                 color: isActive
                     ? (isDark
-                        ? Colors.white.withValues(alpha: 0.15)
-                        : Colors.black.withValues(alpha: 0.08))
+                        ? Colors.black.withValues(alpha: 0.12) // Inverted
+                        : Colors.white.withValues(alpha: 0.2)) // Inverted
                     : Colors.transparent,
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -120,13 +124,13 @@ class FloatingNavBar extends StatelessWidget {
                 size: 20,
                 color: isComingSoon
                     ? (isDark
-                        ? Colors.white.withValues(alpha: 0.3)
-                        : Colors.black.withValues(alpha: 0.3))
+                        ? Colors.black.withValues(alpha: 0.4) // Inverted
+                        : Colors.white.withValues(alpha: 0.4)) // Inverted
                     : isActive
-                        ? (isDark ? Colors.white : Colors.black)
+                        ? (isDark ? Colors.black : Colors.white) // Inverted
                         : (isDark
-                            ? Colors.white.withValues(alpha: 0.6)
-                            : Colors.black.withValues(alpha: 0.6)),
+                            ? Colors.black.withValues(alpha: 0.8) // Inverted
+                            : Colors.white.withValues(alpha: 0.8)), // Inverted
               ),
             ),
             const SizedBox(height: 4),
@@ -139,13 +143,13 @@ class FloatingNavBar extends StatelessWidget {
                 letterSpacing: 0.5,
                 color: isComingSoon
                     ? (isDark
-                        ? Colors.white.withValues(alpha: 0.3)
-                        : Colors.black.withValues(alpha: 0.3))
+                        ? Colors.black.withValues(alpha: 0.4) // Inverted
+                        : Colors.white.withValues(alpha: 0.4)) // Inverted
                     : isActive
-                        ? (isDark ? Colors.white : Colors.black)
+                        ? (isDark ? Colors.black : Colors.white) // Inverted
                         : (isDark
-                            ? Colors.white.withValues(alpha: 0.6)
-                            : Colors.black.withValues(alpha: 0.6)),
+                            ? Colors.black.withValues(alpha: 0.8) // Inverted
+                            : Colors.white.withValues(alpha: 0.8)), // Inverted
               ),
               child: Text(label),
             ),
@@ -164,6 +168,7 @@ class FloatingNavBar extends StatelessWidget {
         width: 56,
         height: 56,
         decoration: BoxDecoration(
+          // Keep add button the same (contrast with navbar)
           color: isDark ? Colors.white : Colors.black,
           shape: BoxShape.circle,
           boxShadow: [
@@ -181,32 +186,14 @@ class FloatingNavBar extends StatelessWidget {
             width: 0.5,
           ),
         ),
-        child: Stack(
-          children: [
-            // Main add icon
-            Center(
-              child: Icon(
-                Icons.add,
-                size: 24,
-                color: isDark ? Colors.black : Colors.white,
-              ),
-            ),
-            // Subtle accent dot (Nothing Phone style)
-            Positioned(
-              top: 8,
-              right: 8,
-              child: Container(
-                width: 4,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: (isDark ? Colors.black : Colors.white)
-                      .withValues(alpha: 0.4),
-                  shape: BoxShape.circle,
-                ),
-              ),
-            ),
-          ],
+        child: Center(
+          child: Icon(
+            Icons.add,
+            size: 24,
+            color: isDark ? Colors.black : Colors.white,
+          ),
         ),
+        //Removed the annoying grey dot completely
       ),
     );
   }

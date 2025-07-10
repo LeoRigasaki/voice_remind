@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../widgets/floating_nav_bar.dart';
+import '../services/theme_service.dart';
 import 'home_screen.dart';
 import 'settings_screen.dart';
 import 'add_reminder_screen.dart';
@@ -13,6 +14,19 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> {
   NavTab _currentTab = NavTab.home;
+
+  @override
+  void initState() {
+    super.initState();
+    // Listen to theme changes to rebuild the navigation
+    ThemeService.themeStream.listen((_) {
+      if (mounted) {
+        setState(() {
+          // Force rebuild when theme changes
+        });
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
