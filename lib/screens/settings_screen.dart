@@ -1,9 +1,16 @@
+// lib/screens/settings_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/theme_service.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  // Add a parameter to detect navigation method
+  final bool isFromNavbar;
+
+  const SettingsScreen({
+    super.key,
+    this.isFromNavbar = false,
+  });
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -30,10 +37,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Settings'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        // Only show back button if not from navbar OR if we can actually pop
+        leading: widget.isFromNavbar
+            ? null
+            : (Navigator.canPop(context)
+                ? IconButton(
+                    icon: const Icon(Icons.arrow_back),
+                    onPressed: () => Navigator.of(context).pop(),
+                  )
+                : null),
+        // Add automaticallyImplyLeading to prevent default back button
+        automaticallyImplyLeading:
+            !widget.isFromNavbar && Navigator.canPop(context),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -94,50 +109,67 @@ class _SettingsScreenState extends State<SettingsScreen> {
           width: 1,
         ),
       ),
-      child: ListTile(
-        leading: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 200),
-          child: Icon(
-            ThemeService.getThemeIcon(_selectedTheme),
-            key: ValueKey(_selectedTheme),
-            color: Theme.of(context).colorScheme.primary,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<ThemeType>(
+            value: _selectedTheme,
+            isExpanded: true,
+            icon: const Icon(Icons.expand_more),
+            onChanged: (ThemeType? newTheme) {
+              if (newTheme != null) {
+                setState(() {
+                  _selectedTheme = newTheme;
+                });
+                ThemeService.setTheme(newTheme);
+                HapticFeedback.lightImpact();
+              }
+            },
+            items: ThemeType.values.map((ThemeType theme) {
+              return DropdownMenuItem<ThemeType>(
+                value: theme,
+                child: Row(
+                  children: [
+                    Icon(
+                      _getThemeIcon(theme),
+                      size: 20,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      _getThemeName(theme),
+                      style: Theme.of(context).textTheme.bodyLarge,
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
           ),
-        ),
-        title: const Text('Theme'),
-        subtitle: Text(ThemeService.getThemeDisplayName(_selectedTheme)),
-        trailing: DropdownButton<ThemeType>(
-          value: _selectedTheme,
-          underline: const SizedBox(),
-          icon: const Icon(Icons.keyboard_arrow_down),
-          items: ThemeType.values.map((ThemeType theme) {
-            return DropdownMenuItem<ThemeType>(
-              value: theme,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    ThemeService.getThemeIcon(theme),
-                    size: 20,
-                    color: Theme.of(context).colorScheme.onSurface,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(ThemeService.getThemeDisplayName(theme)),
-                ],
-              ),
-            );
-          }).toList(),
-          onChanged: (ThemeType? newTheme) {
-            if (newTheme != null) {
-              // Haptic feedback for theme change
-              HapticFeedback.lightImpact();
-
-              // Set the new theme
-              ThemeService.setTheme(newTheme);
-            }
-          },
         ),
       ),
     );
+  }
+
+  IconData _getThemeIcon(ThemeType theme) {
+    switch (theme) {
+      case ThemeType.light:
+        return Icons.light_mode_outlined;
+      case ThemeType.dark:
+        return Icons.dark_mode_outlined;
+      case ThemeType.system:
+        return Icons.brightness_auto_outlined;
+    }
+  }
+
+  String _getThemeName(ThemeType theme) {
+    switch (theme) {
+      case ThemeType.light:
+        return 'Light';
+      case ThemeType.dark:
+        return 'Dark';
+      case ThemeType.system:
+        return 'System';
+    }
   }
 
   Widget _buildNotificationSettings() {
@@ -145,38 +177,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
       children: [
         _buildSettingsTile(
           icon: Icons.notifications_outlined,
-          title: 'Notification Sounds',
-          subtitle: 'Customize reminder sounds',
-          trailing: Switch(
-            value: true, // TODO: Connect to actual setting
-            onChanged: (value) {
-              // TODO: Implement notification sound toggle
-            },
-          ),
+          title: 'Reminder Notifications',
+          subtitle: 'Coming soon...',
+          trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+          enabled: false,
         ),
         const SizedBox(height: 8),
         _buildSettingsTile(
-          icon: Icons.vibration,
-          title: 'Vibration',
-          subtitle: 'Vibrate on reminders',
-          trailing: Switch(
-            value: true, // TODO: Connect to actual setting
-            onChanged: (value) {
-              // TODO: Implement vibration toggle
-            },
-          ),
-        ),
-        const SizedBox(height: 8),
-        _buildSettingsTile(
-          icon: Icons.timer_outlined,
-          title: 'Persistent Notifications',
-          subtitle: 'Keep notifications until acknowledged',
-          trailing: Switch(
-            value: true, // TODO: Connect to actual setting
-            onChanged: (value) {
-              // TODO: Implement persistent notifications toggle
-            },
-          ),
+          icon: Icons.schedule_outlined,
+          title: 'Smart Timing',
+          subtitle: 'Coming soon...',
+          trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+          enabled: false,
         ),
       ],
     );

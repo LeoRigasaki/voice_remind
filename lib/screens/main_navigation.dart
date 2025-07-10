@@ -1,3 +1,4 @@
+// lib/screens/main_navigation.dart
 import 'package:flutter/material.dart';
 import '../widgets/floating_nav_bar.dart';
 import '../services/theme_service.dart';
@@ -66,7 +67,8 @@ class _MainNavigationState extends State<MainNavigation> {
       case NavTab.spaces:
         return _buildComingSoonScreen('Spaces', Icons.apps_outlined);
       case NavTab.settings:
-        return const SettingsScreen();
+        // Pass isFromNavbar: true when accessed via navbar
+        return const SettingsScreen(isFromNavbar: true);
     }
   }
 
