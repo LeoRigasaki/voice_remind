@@ -4,6 +4,7 @@ import '../widgets/floating_nav_bar.dart';
 import '../services/theme_service.dart';
 import 'home_screen.dart';
 import 'settings_screen.dart';
+import 'spaces_screen.dart';
 import 'add_reminder_screen.dart';
 
 class MainNavigation extends StatefulWidget {
@@ -65,7 +66,7 @@ class _MainNavigationState extends State<MainNavigation> {
         // This won't be shown as add opens a modal
         return const HomeScreen();
       case NavTab.spaces:
-        return _buildComingSoonScreen('Spaces', Icons.apps_outlined);
+        return const SpacesScreen();
       case NavTab.settings:
         // Pass isFromNavbar: true when accessed via navbar
         return const SettingsScreen(isFromNavbar: true);

@@ -105,7 +105,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
           width: 1,
         ),
       ),
@@ -304,7 +304,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
           width: 1,
         ),
       ),
@@ -314,22 +314,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
           icon,
           color: enabled
               ? (textColor ?? Theme.of(context).colorScheme.primary)
-              : Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
+              : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
         ),
         title: Text(
           title,
           style: TextStyle(
             color: enabled
                 ? (textColor ?? Theme.of(context).colorScheme.onSurface)
-                : Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
+                : Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.4),
           ),
         ),
         subtitle: Text(
           subtitle,
           style: TextStyle(
             color: enabled
-                ? Theme.of(context).colorScheme.onSurface.withOpacity(0.7)
-                : Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
+                ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)
+                : Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.4),
           ),
         ),
         trailing: trailing,

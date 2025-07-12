@@ -10,6 +10,8 @@ import '../services/notification_service.dart';
 import 'add_reminder_screen.dart';
 import 'settings_screen.dart';
 import 'filtered_reminders_screen.dart';
+import '../models/space.dart';
+import '../services/spaces_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -284,6 +286,261 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
+  // Show space selector bottom sheet
+  void _showSpaceSelector(List<String> reminderIds) async {
+    final spaces = await SpacesService.getSpaces();
+
+    if (!mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Handle
+              Container(
+                margin: const EdgeInsets.only(top: 12, bottom: 20),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .outline
+                      .withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+
+              // Title
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    Text(
+                      'Add to Space',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      '${reminderIds.length} reminder${reminderIds.length == 1 ? '' : 's'}',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Theme.of(context).colorScheme.outline,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              // Create new space option
+              ListTile(
+                leading: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF28A745).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.add,
+                    color: Color(0xFF28A745),
+                    size: 20,
+                  ),
+                ),
+                title: const Text('Create New Space'),
+                subtitle: const Text('Quick create and assign'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _showQuickSpaceCreation(reminderIds);
+                },
+              ),
+
+              if (spaces.isNotEmpty) ...[
+                const Divider(),
+                // Existing spaces
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.4,
+                  ),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: spaces.length,
+                    itemBuilder: (context, index) {
+                      final space = spaces[index];
+                      final textColor = space.color.computeLuminance() > 0.5
+                          ? Colors.black87
+                          : Colors.white;
+
+                      return ListTile(
+                        leading: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: space.color,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(
+                            space.icon,
+                            color: textColor,
+                            size: 20,
+                          ),
+                        ),
+                        title: Text(space.name),
+                        subtitle: FutureBuilder<int>(
+                          future:
+                              StorageService.getSpaceReminderCount(space.id),
+                          builder: (context, snapshot) {
+                            final count = snapshot.data ?? 0;
+                            return Text(
+                                '$count reminder${count == 1 ? '' : 's'}');
+                          },
+                        ), // TODO: Get actual count
+                        onTap: () async {
+                          Navigator.of(context).pop();
+                          await _assignRemindersToSpace(reminderIds, space.id);
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+
+              const SizedBox(height: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+// Quick space creation dialog
+  void _showQuickSpaceCreation(List<String> reminderIds) {
+    final controller = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Create Space'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            hintText: 'Space name',
+            border: OutlineInputBorder(),
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              if (controller.text.trim().isNotEmpty) {
+                Navigator.of(context).pop();
+                await _createSpaceAndAssign(
+                    reminderIds, controller.text.trim());
+              }
+            },
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+  }
+
+// Create new space and assign reminders
+  Future<void> _createSpaceAndAssign(
+      List<String> reminderIds, String spaceName) async {
+    try {
+      final spaces = await SpacesService.getSpaces();
+      const availableColors = SpaceColors.presetColors;
+      const availableIcons = SpaceIcons.presetIcons;
+
+      // Use next available color and icon
+      final colorIndex = spaces.length % availableColors.length;
+      final iconIndex = spaces.length % availableIcons.length;
+
+      final newSpace = Space(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        name: spaceName,
+        color: availableColors[colorIndex],
+        icon: availableIcons[iconIndex],
+        createdAt: DateTime.now(),
+      );
+
+      await SpacesService.addSpace(newSpace);
+      await _assignRemindersToSpace(reminderIds, newSpace.id);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Created "$spaceName" and assigned ${reminderIds.length} reminder${reminderIds.length == 1 ? '' : 's'}'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error creating space: $e'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+// Assign reminders to space
+  Future<void> _assignRemindersToSpace(
+      List<String> reminderIds, String spaceId) async {
+    try {
+      for (final reminderId in reminderIds) {
+        final reminder = await StorageService.getReminderById(reminderId);
+        if (reminder != null) {
+          final updatedReminder = reminder.copyWith(spaceId: spaceId);
+          await StorageService.updateReminder(updatedReminder);
+        }
+      }
+
+      if (_isSelectionMode) {
+        _exitSelectionMode();
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Added ${reminderIds.length} reminder${reminderIds.length == 1 ? '' : 's'} to space'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error assigning reminders: $e'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _editReminder(Reminder reminder) async {
     final result = await Navigator.push<bool>(
       context,
@@ -528,6 +785,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   style: IconButton.styleFrom(
                     backgroundColor: Colors.transparent,
                     foregroundColor: const Color(0xFFDC3545),
+                  ),
+                ),
+              ),
+
+              Container(
+                margin: const EdgeInsets.only(right: 4),
+                decoration: BoxDecoration(
+                  color: Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: const Color(0xFF007AFF).withValues(alpha: 0.3),
+                    width: 0.5,
+                  ),
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.folder_outlined, size: 20),
+                  onPressed: () =>
+                      _showSpaceSelector(_selectedReminders.toList()),
+                  tooltip: 'Add to Space',
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    foregroundColor: const Color(0xFF007AFF),
                   ),
                 ),
               ),
@@ -1329,7 +1608,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         endActionPane: ActionPane(
           // A motion is a widget used to control how the pane animates.
           motion: const BehindMotion(),
-          extentRatio: 0.35, // Actions take 35% of the width
+          extentRatio: 0.52, // Actions take 35% of the width
 
           // Clean Nothing-inspired design
           children: [
@@ -1429,6 +1708,63 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         const SizedBox(height: 6),
                         const Text(
                           'Delete',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w400,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            // Add to Space Action
+            Expanded(
+              child: Container(
+                margin:
+                    const EdgeInsets.only(left: 2, right: 4, top: 2, bottom: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A1A1A),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    width: 0.5,
+                  ),
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => _showSpaceSelector([reminder.id]),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color:
+                                const Color(0xFF007AFF).withValues(alpha: 0.15),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: const Color(0xFF007AFF)
+                                  .withValues(alpha: 0.3),
+                              width: 0.5,
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.folder_outlined,
+                            color: Color(0xFF007AFF),
+                            size: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Space',
                           style: TextStyle(
                             color: Colors.white,
                             fontSize: 11,
@@ -1750,14 +2086,106 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 _buildAppBar(),
                 _buildStatsCards(_reminders),
                 _buildQuickFilters(),
+                _buildSpaceFilterChips(),
                 _buildRemindersList(_reminders),
-                // Add bottom padding for FAB
                 const SliverToBoxAdapter(
                   child: SizedBox(height: 100),
                 ),
               ],
             );
           },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSpaceFilterChips() {
+    return SliverToBoxAdapter(
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        height: 40,
+        child: FutureBuilder<List<Space>>(
+          future: SpacesService.getSpaces(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData || snapshot.data!.isEmpty) {
+              return const SizedBox.shrink();
+            }
+
+            final spaces = snapshot.data!;
+
+            return ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: spaces.length + 1, // +1 for "All" chip
+              separatorBuilder: (context, index) => const SizedBox(width: 8),
+              itemBuilder: (context, index) {
+                if (index == 0) {
+                  // "All" chip
+                  return _buildFilterChip(
+                    'All',
+                    Icons.apps,
+                    null,
+                    () => _showFilteredResults('All Reminders', _reminders),
+                  );
+                }
+
+                final space = spaces[index - 1];
+                return _buildFilterChip(
+                  space.name,
+                  space.icon,
+                  space.color,
+                  () async {
+                    final spaceReminders =
+                        await StorageService.getRemindersBySpace(space.id);
+                    _showFilteredResults(space.name, spaceReminders);
+                  },
+                );
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterChip(
+      String label, IconData icon, Color? color, VoidCallback onTap) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final chipColor = color ?? (isDark ? Colors.white : Colors.black);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color?.withOpacity(0.1) ?? Colors.transparent,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: chipColor.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: onTap,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 16,
+                color: chipColor,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: chipColor,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

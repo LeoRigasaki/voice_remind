@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'services/notification_service.dart';
 import 'services/storage_service.dart';
+import 'services/spaces_service.dart';
 import 'services/theme_service.dart';
 import 'screens/main_navigation.dart';
 
@@ -17,6 +18,9 @@ void main() async {
 
   // Initialize storage
   await StorageService.initialize();
+
+  // Initialize spaces service
+  await SpacesService.initialize();
 
   // Initialize theme service
   await ThemeService.initialize();

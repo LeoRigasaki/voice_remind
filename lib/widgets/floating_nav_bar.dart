@@ -95,7 +95,8 @@ class FloatingNavBar extends StatelessWidget {
   ) {
     final isActive = currentTab == tab;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final isComingSoon = tab == NavTab.calendar || tab == NavTab.spaces;
+    final isComingSoon =
+        tab == NavTab.calendar; // Only calendar is coming soon now
 
     return GestureDetector(
       onTap: isComingSoon ? null : () => onTabChanged(tab),
@@ -169,31 +170,27 @@ class FloatingNavBar extends StatelessWidget {
         height: 56,
         decoration: BoxDecoration(
           // Keep add button the same (contrast with navbar)
-          color: isDark ? Colors.white : Colors.black,
+          color: isDark
+              ? Colors.black // Black button in dark mode
+              : Colors.white, // White button in light mode
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color:
-                  (isDark ? Colors.white : Colors.black).withValues(alpha: 0.2),
-              blurRadius: 12,
+              color: isDark
+                  ? Colors.black.withValues(alpha: 0.3)
+                  : Colors.black.withValues(alpha: 0.15),
+              blurRadius: 8,
               offset: const Offset(0, 4),
             ),
           ],
-          border: Border.all(
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.1)
-                : Colors.black.withValues(alpha: 0.05),
-            width: 0.5,
-          ),
         ),
-        child: Center(
-          child: Icon(
-            Icons.add,
-            size: 24,
-            color: isDark ? Colors.black : Colors.white,
-          ),
+        child: Icon(
+          Icons.add,
+          size: 28,
+          color: isDark
+              ? Colors.white // White icon in dark mode
+              : Colors.black, // Black icon in light mode
         ),
-        //Removed the annoying grey dot completely
       ),
     );
   }

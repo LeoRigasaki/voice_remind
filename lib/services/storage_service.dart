@@ -165,4 +165,47 @@ class StorageService {
     final reminders = await getReminders();
     _remindersController.add(reminders);
   }
+
+  // Clear all data - for testing or reset purposes// Get reminders by space ID
+  static Future<List<Reminder>> getRemindersBySpace(String? spaceId) async {
+    final List<Reminder> allReminders = await getReminders();
+    return allReminders
+        .where((reminder) => reminder.spaceId == spaceId)
+        .toList();
+  }
+
+// Get reminders without space assignment
+  static Future<List<Reminder>> getRemindersWithoutSpace() async {
+    final List<Reminder> allReminders = await getReminders();
+    return allReminders.where((reminder) => reminder.spaceId == null).toList();
+  }
+
+// Update reminder space assignment
+  static Future<void> updateReminderSpace(
+      String reminderId, String? spaceId) async {
+    final Reminder? reminder = await getReminderById(reminderId);
+    if (reminder != null) {
+      final Reminder updatedReminder = reminder.copyWith(spaceId: spaceId);
+      await updateReminder(updatedReminder);
+    }
+  }
+
+// Get count of reminders in a space
+  static Future<int> getSpaceReminderCount(String spaceId) async {
+    final List<Reminder> spaceReminders = await getRemindersBySpace(spaceId);
+    return spaceReminders.length;
+  }
+
+// Remove all reminders from a space (when space is deleted)
+  static Future<void> removeRemindersFromSpace(String spaceId) async {
+    final List<Reminder> allReminders = await getReminders();
+    final List<Reminder> updatedReminders = allReminders.map((reminder) {
+      if (reminder.spaceId == spaceId) {
+        return reminder.copyWith(spaceId: null);
+      }
+      return reminder;
+    }).toList();
+
+    await saveReminders(updatedReminders);
+  }
 }

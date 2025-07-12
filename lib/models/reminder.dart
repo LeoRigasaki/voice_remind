@@ -23,6 +23,7 @@ class Reminder {
   final DateTime createdAt;
   final DateTime updatedAt;
   final bool isNotificationEnabled;
+  final String? spaceId; // New field for space association
 
   Reminder({
     String? id,
@@ -34,6 +35,7 @@ class Reminder {
     DateTime? createdAt,
     DateTime? updatedAt,
     this.isNotificationEnabled = true,
+    this.spaceId, // Optional space association
   })  : id = id ?? const Uuid().v4(),
         createdAt = createdAt ?? DateTime.now(),
         updatedAt = updatedAt ?? DateTime.now();
@@ -47,6 +49,7 @@ class Reminder {
     RepeatType? repeatType,
     DateTime? updatedAt,
     bool? isNotificationEnabled,
+    String? spaceId,
   }) {
     return Reminder(
       id: id,
@@ -59,6 +62,7 @@ class Reminder {
       updatedAt: updatedAt ?? DateTime.now(),
       isNotificationEnabled:
           isNotificationEnabled ?? this.isNotificationEnabled,
+      spaceId: spaceId ?? this.spaceId,
     );
   }
 
@@ -74,6 +78,7 @@ class Reminder {
       'createdAt': createdAt.millisecondsSinceEpoch,
       'updatedAt': updatedAt.millisecondsSinceEpoch,
       'isNotificationEnabled': isNotificationEnabled,
+      'spaceId': spaceId, // Include spaceId in serialization
     };
   }
 
@@ -89,6 +94,7 @@ class Reminder {
       createdAt: DateTime.fromMillisecondsSinceEpoch(map['createdAt']),
       updatedAt: DateTime.fromMillisecondsSinceEpoch(map['updatedAt']),
       isNotificationEnabled: map['isNotificationEnabled'] ?? true,
+      spaceId: map['spaceId'], // Include spaceId in deserialization
     );
   }
 
@@ -128,7 +134,7 @@ class Reminder {
 
   @override
   String toString() {
-    return 'Reminder(id: $id, title: $title, scheduledTime: $scheduledTime, status: $status)';
+    return 'Reminder(id: $id, title: $title, scheduledTime: $scheduledTime, status: $status, spaceId: $spaceId)';
   }
 
   @override

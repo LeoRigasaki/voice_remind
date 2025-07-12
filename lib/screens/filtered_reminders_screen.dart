@@ -14,11 +14,17 @@ enum FilterType { total, pending, completed, overdue }
 class FilteredRemindersScreen extends StatefulWidget {
   final FilterType filterType;
   final List<Reminder> allReminders;
+  final String? customTitle;
+  final IconData? customIcon;
+  final Color? customColor;
 
   const FilteredRemindersScreen({
     super.key,
     required this.filterType,
     required this.allReminders,
+    this.customTitle,
+    this.customIcon,
+    this.customColor,
   });
 
   @override
@@ -58,6 +64,19 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
 
     // Start fade animation
     _fadeController.forward();
+  }
+
+  String _getFilterTitle() {
+    switch (widget.filterType) {
+      case FilterType.total:
+        return 'All Reminders';
+      case FilterType.pending:
+        return 'Pending';
+      case FilterType.completed:
+        return 'Completed';
+      case FilterType.overdue:
+        return 'Overdue';
+    }
   }
 
   @override
@@ -493,6 +512,15 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.customTitle ?? _getFilterTitle()),
+        leading: IconButton(
+          icon: Icon(widget.customIcon ?? Icons.arrow_back),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        backgroundColor: widget.customColor?.withValues(alpha: 0.1),
+        elevation: 0,
+      ),
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: CustomScrollView(
         slivers: [
