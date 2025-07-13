@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- android/app/src/main/res/raw/keep.xml -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/*,@mipmap/*" />
