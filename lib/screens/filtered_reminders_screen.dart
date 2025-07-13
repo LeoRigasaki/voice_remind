@@ -38,6 +38,7 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
   Timer? _realTimeTimer;
   late AnimationController _fadeController;
   StreamSubscription<List<Reminder>>? _remindersSubscription;
+  String? _spaceId;
 
   // Selection mode for bulk actions
   bool _isSelectionMode = false;
@@ -48,6 +49,9 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
   void initState() {
     super.initState();
 
+    if (widget.customTitle != null && widget.allReminders.isNotEmpty) {
+      _spaceId = widget.allReminders.first.spaceId;
+    }
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 800),
       vsync: this,
@@ -99,17 +103,36 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
   }
 
   void _listenToReminderChanges() {
-    _remindersSubscription = StorageService.remindersStream.listen((reminders) {
+    _remindersSubscription =
+        StorageService.remindersStream.listen((allReminders) async {
       if (mounted) {
+        // If this is a space filter, get fresh space reminders
+        List<Reminder> remindersToFilter;
+        if (_spaceId != null) {
+          remindersToFilter =
+              await StorageService.getRemindersBySpace(_spaceId);
+        } else {
+          remindersToFilter = allReminders;
+        }
+
         setState(() {
-          _filteredReminders = _filterReminders(reminders);
+          _filteredReminders = _filterReminders(remindersToFilter);
         });
       }
     });
   }
 
-  void _applyFilter() {
-    _filteredReminders = _filterReminders(widget.allReminders);
+  void _applyFilter() async {
+    List<Reminder> remindersToFilter;
+    if (_spaceId != null) {
+      remindersToFilter = await StorageService.getRemindersBySpace(_spaceId);
+    } else {
+      remindersToFilter = widget.allReminders;
+    }
+
+    setState(() {
+      _filteredReminders = _filterReminders(remindersToFilter);
+    });
   }
 
   List<Reminder> _filterReminders(List<Reminder> reminders) {

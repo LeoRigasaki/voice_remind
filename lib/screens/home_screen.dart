@@ -489,6 +489,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             content: Text(
                 'Created "$spaceName" and assigned ${reminderIds.length} reminder${reminderIds.length == 1 ? '' : 's'}'),
             behavior: SnackBarBehavior.floating,
+            action: SnackBarAction(
+              label: 'View Space',
+              onPressed: () => _navigateToNewSpace(newSpace),
+            ),
           ),
         );
       }
@@ -501,6 +505,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ),
         );
       }
+    }
+  }
+
+  void _navigateToNewSpace(Space space) async {
+    final spaceReminders = await StorageService.getRemindersBySpace(space.id);
+
+    if (mounted) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => FilteredRemindersScreen(
+            filterType: FilterType.total,
+            allReminders: spaceReminders,
+            customTitle: space.name,
+            customIcon: space.icon,
+            customColor: space.color,
+          ),
+        ),
+      );
     }
   }
 
@@ -1204,6 +1226,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   // Advanced filter button for future features
+  // Advanced filter button for future features
   Widget _buildAdvancedFilterButton() {
     return Container(
       width: 36,
@@ -1222,23 +1245,154 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(6),
-          onTap: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: const Text('Advanced filters coming soon! 🔧'),
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-            );
-          },
+          onTap: _showAdvancedFilters, // Changed from showing snackbar
           child: Icon(
             Icons.tune_outlined,
             size: 16,
             color: Theme.of(context).brightness == Brightness.dark
                 ? Colors.white
                 : Colors.black,
+          ),
+        ),
+      ),
+    );
+  }
+
+// Add this new method for advanced filters
+  void _showAdvancedFilters() async {
+    final spaces = await SpacesService.getSpaces();
+
+    if (!mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Handle
+              Container(
+                margin: const EdgeInsets.only(top: 12, bottom: 20),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .outline
+                      .withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+
+              // Title
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    Text(
+                      'Filter Reminders',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              // All reminders option
+              ListTile(
+                leading: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .primary
+                        .withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    Icons.apps,
+                    color: Theme.of(context).colorScheme.primary,
+                    size: 20,
+                  ),
+                ),
+                title: const Text('All Reminders'),
+                subtitle: Text('${_reminders.length} reminders'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _showFilteredResults('All Reminders', _reminders);
+                },
+              ),
+
+              if (spaces.isNotEmpty) ...[
+                const Divider(),
+
+                // Space filters
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.4,
+                  ),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: spaces.length,
+                    itemBuilder: (context, index) {
+                      final space = spaces[index];
+                      final textColor = space.color.computeLuminance() > 0.5
+                          ? Colors.black87
+                          : Colors.white;
+
+                      return ListTile(
+                        leading: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: space.color,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(
+                            space.icon,
+                            color: textColor,
+                            size: 20,
+                          ),
+                        ),
+                        title: Text(space.name),
+                        subtitle: FutureBuilder<int>(
+                          future:
+                              StorageService.getSpaceReminderCount(space.id),
+                          builder: (context, snapshot) {
+                            final count = snapshot.data ?? 0;
+                            return Text(
+                                '$count reminder${count == 1 ? '' : 's'}');
+                          },
+                        ),
+                        onTap: () async {
+                          final ctx =
+                              context; // Store the context in a local variable
+                          final spaceReminders =
+                              await StorageService.getRemindersBySpace(
+                                  space.id);
+                          if (!ctx.mounted) return; // Add a mounted check
+                          Navigator.of(ctx).pop();
+                          _showFilteredResults(space.name, spaceReminders);
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+
+              const SizedBox(height: 20),
+            ],
           ),
         ),
       ),
@@ -2086,7 +2240,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 _buildAppBar(),
                 _buildStatsCards(_reminders),
                 _buildQuickFilters(),
-                _buildSpaceFilterChips(),
                 _buildRemindersList(_reminders),
                 const SliverToBoxAdapter(
                   child: SizedBox(height: 100),
@@ -2094,98 +2247,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ],
             );
           },
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSpaceFilterChips() {
-    return SliverToBoxAdapter(
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-        height: 40,
-        child: FutureBuilder<List<Space>>(
-          future: SpacesService.getSpaces(),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData || snapshot.data!.isEmpty) {
-              return const SizedBox.shrink();
-            }
-
-            final spaces = snapshot.data!;
-
-            return ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: spaces.length + 1, // +1 for "All" chip
-              separatorBuilder: (context, index) => const SizedBox(width: 8),
-              itemBuilder: (context, index) {
-                if (index == 0) {
-                  // "All" chip
-                  return _buildFilterChip(
-                    'All',
-                    Icons.apps,
-                    null,
-                    () => _showFilteredResults('All Reminders', _reminders),
-                  );
-                }
-
-                final space = spaces[index - 1];
-                return _buildFilterChip(
-                  space.name,
-                  space.icon,
-                  space.color,
-                  () async {
-                    final spaceReminders =
-                        await StorageService.getRemindersBySpace(space.id);
-                    _showFilteredResults(space.name, spaceReminders);
-                  },
-                );
-              },
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFilterChip(
-      String label, IconData icon, Color? color, VoidCallback onTap) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final chipColor = color ?? (isDark ? Colors.white : Colors.black);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: color?.withOpacity(0.1) ?? Colors.transparent,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: chipColor.withOpacity(0.3),
-          width: 1,
-        ),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(20),
-          onTap: onTap,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                size: 16,
-                color: chipColor,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: chipColor,
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );
