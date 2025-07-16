@@ -1007,46 +1007,50 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final pending = reminders.where((r) => r.isPending).length;
     final overdue = reminders.where((r) => r.isOverdue).length;
 
+    // Calculate number of cards to determine responsiveness
+    final cardCount = overdue > 0 ? 4 : 3;
+    final screenWidth = MediaQuery.of(context).size.width;
+
     return SliverToBoxAdapter(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16.0),
         child: Row(
           children: [
-            Expanded(
-              child: _buildCleanStatCard(
-                'TOTAL',
-                total.toString(),
-                FilterType.total,
-                isHighlight: false,
-              ),
+            _buildResponsiveStatCard(
+              'TOTAL',
+              total.toString(),
+              FilterType.total,
+              cardCount,
+              screenWidth,
+              isHighlight: false,
             ),
             const SizedBox(width: 12),
-            Expanded(
-              child: _buildCleanStatCard(
-                'PENDING',
-                pending.toString(),
-                FilterType.pending,
-                isHighlight: false,
-              ),
+            _buildResponsiveStatCard(
+              'PENDING',
+              pending.toString(),
+              FilterType.pending,
+              cardCount,
+              screenWidth,
+              isHighlight: false,
             ),
             const SizedBox(width: 12),
-            Expanded(
-              child: _buildCleanStatCard(
-                'DONE',
-                completed.toString(),
-                FilterType.completed,
-                isHighlight: false,
-              ),
+            _buildResponsiveStatCard(
+              'DONE',
+              completed.toString(),
+              FilterType.completed,
+              cardCount,
+              screenWidth,
+              isHighlight: false,
             ),
             if (overdue > 0) ...[
               const SizedBox(width: 12),
-              Expanded(
-                child: _buildCleanStatCard(
-                  'OVERDUE',
-                  overdue.toString(),
-                  FilterType.overdue,
-                  isHighlight: true, // Only overdue gets red accent
-                ),
+              _buildResponsiveStatCard(
+                'OVERDUE',
+                overdue.toString(),
+                FilterType.overdue,
+                cardCount,
+                screenWidth,
+                isHighlight: true,
               ),
             ],
           ],
@@ -1055,68 +1059,149 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildCleanStatCard(String title, String value, FilterType filterType,
+  Widget _buildResponsiveStatCard(String title, String value,
+      FilterType filterType, int cardCount, double screenWidth,
       {required bool isHighlight}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Container(
-      height: 70,
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF7F7F7),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: isHighlight
-              ? const Color(0xFFFF3B30) // Nothing red for overdue
-              : (isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE5E5E5)),
-          width: 1,
-        ),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(8),
-          onTap: () => _navigateToFilteredReminders(filterType),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                // Title with minimal styling - no arrow to avoid overflow
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: isDark
-                        ? const Color(0xFF8E8E93)
-                        : const Color(0xFF6D6D70),
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.8,
-                  ),
-                ),
+    // Responsive calculations
+    final availableWidth = screenWidth - 32; // 16px padding on each side
+    final spacingWidth = (cardCount - 1) * 12; // 12px spacing between cards
+    final cardWidth = (availableWidth - spacingWidth) / cardCount;
 
-                // Value with emphasis
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Text(
-                    value,
-                    style: TextStyle(
-                      color: isHighlight
-                          ? const Color(0xFFFF3B30) // Red for overdue
-                          : (isDark ? Colors.white : const Color(0xFF1A1A1A)),
-                      fontSize: 24,
-                      fontWeight: FontWeight.w300,
-                      letterSpacing: -0.5,
-                      height: 1.0,
+    // Auto-scale based on card width and content
+    final responsivePadding = _getResponsivePadding(cardWidth);
+    final titleFontSize = _getResponsiveTitleFontSize(cardWidth, title.length);
+    final valueFontSize = _getResponsiveValueFontSize(cardWidth);
+    final cardHeight = _getResponsiveCardHeight(screenWidth);
+
+    return Expanded(
+      child: Container(
+        height: cardHeight,
+        constraints: const BoxConstraints(
+          minWidth: 60, // Prevent cards from becoming too narrow
+          maxWidth: double.infinity,
+        ),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF7F7F7),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isHighlight
+                ? const Color(0xFFFF3B30) // Nothing red for overdue
+                : (isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE5E5E5)),
+            width: 1,
+          ),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () => _navigateToFilteredReminders(filterType),
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: responsivePadding,
+                vertical: 8,
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Auto-scaling title (fixed height area)
+                  SizedBox(
+                    height: 16, // Fixed height for title area
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          title,
+                          style: TextStyle(
+                            color: isDark
+                                ? const Color(0xFF8E8E93)
+                                : const Color(0xFF6D6D70),
+                            fontSize: titleFontSize,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.8,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.visible,
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ],
+
+                  // Auto-scaling value (fixed height area)
+                  SizedBox(
+                    height: cardHeight -
+                        40, // Remaining space for value (minus padding and title)
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          value,
+                          style: TextStyle(
+                            color: isHighlight
+                                ? const Color(0xFFFF3B30) // Red for overdue
+                                : (isDark ? Colors.white : Colors.black),
+                            fontSize: valueFontSize,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.5,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.visible,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
       ),
     );
+  }
+
+  // Responsive helper methods for auto-scaling
+  double _getResponsivePadding(double cardWidth) {
+    if (cardWidth < 70) return 6.0; // Very narrow cards
+    if (cardWidth < 90) return 8.0; // Narrow cards
+    if (cardWidth < 120) return 10.0; // Normal cards
+    return 12.0; // Wide cards
+  }
+
+  double _getResponsiveTitleFontSize(double cardWidth, int textLength) {
+    // Factor in both card width and text length
+    final baseSize = cardWidth < 70
+        ? 8.0
+        : cardWidth < 90
+            ? 9.0
+            : cardWidth < 120
+                ? 10.0
+                : 11.0;
+
+    // Adjust for longer text
+    if (textLength > 6) {
+      // "PENDING", "OVERDUE"
+      return baseSize - 1.0;
+    }
+    return baseSize;
+  }
+
+  double _getResponsiveValueFontSize(double cardWidth) {
+    if (cardWidth < 70) return 18.0; // Very narrow cards
+    if (cardWidth < 90) return 20.0; // Narrow cards
+    if (cardWidth < 120) return 22.0; // Normal cards
+    return 24.0; // Wide cards
+  }
+
+  double _getResponsiveCardHeight(double screenWidth) {
+    if (screenWidth < 320) return 65.0; // Very small screens
+    if (screenWidth < 400) return 68.0; // Small screens
+    return 70.0; // Normal screens
   }
 
   // Enhanced small filter buttons after stats
