@@ -8,6 +8,7 @@ import '../models/reminder.dart';
 import '../services/storage_service.dart';
 import '../services/notification_service.dart';
 import 'add_reminder_screen.dart';
+import '../services/spaces_service.dart';
 
 enum FilterType { total, pending, completed, overdue }
 
@@ -17,6 +18,7 @@ class FilteredRemindersScreen extends StatefulWidget {
   final String? customTitle;
   final IconData? customIcon;
   final Color? customColor;
+  final String? spaceId;
 
   const FilteredRemindersScreen({
     super.key,
@@ -25,6 +27,7 @@ class FilteredRemindersScreen extends StatefulWidget {
     this.customTitle,
     this.customIcon,
     this.customColor,
+    this.spaceId,
   });
 
   @override
@@ -42,12 +45,13 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
 
   // Selection mode for bulk actions
   bool _isSelectionMode = false;
-  Set<String> _selectedReminders = {};
+  final Set<String> _selectedReminders = {};
   late AnimationController _selectionAnimationController;
 
   @override
   void initState() {
     super.initState();
+    _spaceId = widget.spaceId;
 
     if (widget.customTitle != null && widget.allReminders.isNotEmpty) {
       _spaceId = widget.allReminders.first.spaceId;
@@ -130,9 +134,11 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
       remindersToFilter = widget.allReminders;
     }
 
-    setState(() {
-      _filteredReminders = _filterReminders(remindersToFilter);
-    });
+    if (mounted) {
+      setState(() {
+        _filteredReminders = _filterReminders(remindersToFilter);
+      });
+    }
   }
 
   List<Reminder> _filterReminders(List<Reminder> reminders) {
@@ -239,25 +245,9 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
           await NotificationService.cancelReminder(id);
         }
       }
-      final count = _selectedReminders.length;
       _exitSelectionMode();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('$count reminders completed! 🎉'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error completing reminders: $e'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
+      debugPrint('Error completing reminders: $e');
     }
   }
 
@@ -274,25 +264,9 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
           }
         }
       }
-      final count = _selectedReminders.length;
       _exitSelectionMode();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('$count reminders reopened'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error reopening reminders: $e'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
+      debugPrint('Error reopening reminders: $e');
     }
   }
 
@@ -302,25 +276,9 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
         await StorageService.deleteReminder(id);
         await NotificationService.cancelReminder(id);
       }
-      final count = _selectedReminders.length;
       _exitSelectionMode();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('$count reminders deleted'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error deleting reminders: $e'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
+      debugPrint('Error deleting reminders: $e');
     }
   }
 
@@ -343,33 +301,8 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
           reminder.copyWith(status: newStatus),
         );
       }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              newStatus == ReminderStatus.completed
-                  ? 'Reminder completed! 🎉'
-                  : 'Reminder reopened',
-            ),
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 2),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          ),
-        );
-      }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error updating reminder: $e'),
-            behavior: SnackBarBehavior.floating,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          ),
-        );
-      }
+      debugPrint('Error updating reminder: $e');
     }
   }
 
@@ -392,67 +325,17 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
     );
 
     if (result == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Reminder updated successfully!'),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 2),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-      );
+      // Reminder updated successfully - silent success
     }
   }
 
-  // Direct delete without confirmation
+  // Direct delete without confirmation - toast removed
   Future<void> _deleteReminder(Reminder reminder) async {
     try {
       await StorageService.deleteReminder(reminder.id);
       await NotificationService.cancelReminder(reminder.id);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Reminder deleted'),
-            behavior: SnackBarBehavior.floating,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            action: SnackBarAction(
-              label: 'Undo',
-              onPressed: () async {
-                try {
-                  await StorageService.addReminder(reminder);
-                  if (reminder.isNotificationEnabled &&
-                      reminder.scheduledTime.isAfter(DateTime.now())) {
-                    await NotificationService.scheduleReminder(reminder);
-                  }
-                } catch (e) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Error restoring reminder: $e'),
-                        behavior: SnackBarBehavior.floating,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8)),
-                      ),
-                    );
-                  }
-                }
-              },
-            ),
-          ),
-        );
-      }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error deleting reminder: $e'),
-            behavior: SnackBarBehavior.floating,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          ),
-        );
-      }
+      debugPrint('Error deleting reminder: $e');
     }
   }
 
@@ -532,6 +415,51 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
     return progress.clamp(0.0, 1.0);
   }
 
+  Widget _buildSpaceFAB() {
+    final backgroundColor =
+        widget.customColor ?? Theme.of(context).colorScheme.primary;
+    final foregroundColor = backgroundColor.computeLuminance() > 0.5
+        ? Colors.black87
+        : Colors.white;
+
+    return FloatingActionButton.extended(
+      onPressed: () => _navigateToAddReminderInSpace(),
+      backgroundColor: backgroundColor,
+      foregroundColor: foregroundColor,
+      label: const Text('Add Reminder'),
+      icon: const Icon(Icons.add),
+    );
+  }
+
+  Future<void> _navigateToAddReminderInSpace() async {
+    if (_spaceId == null) return;
+
+    // Get the space object
+    final space = await SpacesService.getSpaceById(_spaceId!);
+    if (space == null || !mounted) return;
+
+    final result = await Navigator.push<bool>(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            AddReminderScreen(preSelectedSpace: space),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return SlideTransition(
+            position: animation.drive(
+              Tween(begin: const Offset(0.0, 1.0), end: Offset.zero)
+                  .chain(CurveTween(curve: Curves.easeInOut)),
+            ),
+            child: child,
+          );
+        },
+      ),
+    );
+
+    if (result == true && mounted) {
+      _applyFilter();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -545,6 +473,7 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
         elevation: 0,
       ),
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      floatingActionButton: _spaceId != null ? _buildSpaceFAB() : null,
       body: CustomScrollView(
         slivers: [
           // Enhanced app bar with selection mode support
@@ -1128,7 +1057,6 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
                             ),
                           ),
 
-                          // FIXED: Consistent circular progress area for all states
                           if (!_isSelectionMode) ...[
                             const SizedBox(width: 8),
                             Column(

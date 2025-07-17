@@ -68,15 +68,12 @@ class _AddSpaceScreenState extends State<AddSpaceScreen> {
 
       if (mounted) {
         Navigator.of(context).pop();
+        // Space saved successfully - no toast shown
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error saving space: $e'),
-            backgroundColor: Theme.of(context).colorScheme.error,
-          ),
-        );
+        // Error saving space - just log it, no toast
+        debugPrint('Error saving space: $e');
       }
     } finally {
       if (mounted) {

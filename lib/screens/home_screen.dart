@@ -131,29 +131,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           reminder.copyWith(status: newStatus),
         );
       }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              newStatus == ReminderStatus.completed
-                  ? 'Reminder completed! 🎉'
-                  : 'Reminder reopened',
-            ),
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error updating reminder: $e'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
+      debugPrint('Error updating reminder: $e');
     }
   }
 
@@ -201,25 +180,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           await NotificationService.cancelReminder(id);
         }
       }
-      final count = _selectedReminders.length;
       _exitSelectionMode();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('$count reminders completed! 🎉'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error completing reminders: $e'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
+      debugPrint('Error completing reminders: $e');
     }
   }
 
@@ -236,25 +199,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           }
         }
       }
-      final count = _selectedReminders.length;
       _exitSelectionMode();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('$count reminders reopened'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error reopening reminders: $e'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
+      debugPrint('Error reopening reminders: $e');
     }
   }
 
@@ -264,25 +211,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         await StorageService.deleteReminder(id);
         await NotificationService.cancelReminder(id);
       }
-      final count = _selectedReminders.length;
       _exitSelectionMode();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('$count reminders deleted'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error deleting reminders: $e'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
+      debugPrint('Error deleting reminders: $e');
     }
   }
 
@@ -497,14 +428,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         );
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error creating space: $e'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
+      debugPrint('Error creating space: $e');
     }
   }
 
@@ -541,25 +465,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       if (_isSelectionMode) {
         _exitSelectionMode();
       }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-                'Added ${reminderIds.length} reminder${reminderIds.length == 1 ? '' : 's'} to space'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error assigning reminders: $e'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
+      debugPrint('Error assigning reminders: $e');
     }
   }
 
@@ -582,13 +489,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
 
     if (result == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Reminder updated successfully!'),
-          behavior: SnackBarBehavior.floating,
-          duration: Duration(seconds: 2),
-        ),
-      );
+      // Reminder updated successfully - silent success
     }
   }
 
@@ -597,45 +498,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     try {
       await StorageService.deleteReminder(reminder.id);
       await NotificationService.cancelReminder(reminder.id);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Reminder deleted'),
-            behavior: SnackBarBehavior.floating,
-            action: SnackBarAction(
-              label: 'Undo',
-              onPressed: () async {
-                try {
-                  await StorageService.addReminder(reminder);
-                  if (reminder.isNotificationEnabled &&
-                      reminder.scheduledTime.isAfter(DateTime.now())) {
-                    await NotificationService.scheduleReminder(reminder);
-                  }
-                } catch (e) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Error restoring reminder: $e'),
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
-                  }
-                }
-              },
-            ),
-          ),
-        );
-      }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error deleting reminder: $e'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
+      debugPrint('Error deleting reminder: $e');
     }
   }
 
@@ -945,18 +809,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       title: 'Test Notification',
                       body: 'If you see this, notifications are working! 🎉',
                     );
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: const Text('Test notification sent!'),
-                          behavior: SnackBarBehavior.floating,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          margin: const EdgeInsets.all(16),
-                        ),
-                      );
-                    }
+                    // Test notification sent - no toast shown
                   },
                   tooltip: 'Test Notification',
                   style: IconButton.styleFrom(
@@ -1106,9 +959,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Auto-scaling title (fixed height area)
+                  // Auto-scaling title
                   SizedBox(
-                    height: 16, // Fixed height for title area
+                    height: 16,
                     child: Align(
                       alignment: Alignment.centerLeft,
                       child: FittedBox(
@@ -1131,7 +984,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ),
                   ),
 
-                  // Auto-scaling value (fixed height area)
+                  // Auto-scaling value
                   SizedBox(
                     height: cardHeight -
                         40, // Remaining space for value (minus padding and title)
@@ -1488,7 +1341,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      isDismissible: true, // FIXED: Allows dismissing by tapping outside
+      isDismissible: true,
       backgroundColor: Colors.transparent,
       builder: (context) => DraggableScrollableSheet(
         initialChildSize: 0.7,
@@ -2124,8 +1977,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                   ),
                             ),
                           ),
-
-                          // FIXED: Consistent circular progress area for all states
                           if (!_isSelectionMode) ...[
                             const SizedBox(width: 8),
                             Column(

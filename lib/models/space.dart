@@ -26,7 +26,7 @@ class Space {
     };
   }
 
-  // Create Space from Map - FIXED to use constant IconData
+  // Create Space from Map
   factory Space.fromMap(Map<String, dynamic> map) {
     // Get the icon codePoint and find matching constant IconData
     final int iconCodePoint = map['icon'] ?? Icons.folder_outlined.codePoint;

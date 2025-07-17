@@ -4,11 +4,13 @@ import 'dart:async';
 import '../models/reminder.dart';
 import '../services/storage_service.dart';
 import '../services/notification_service.dart';
+import '../models/space.dart';
+import '../services/spaces_service.dart';
 
 class AddReminderScreen extends StatefulWidget {
   final Reminder? reminder;
-
-  const AddReminderScreen({super.key, this.reminder});
+  final Space? preSelectedSpace;
+  const AddReminderScreen({super.key, this.reminder, this.preSelectedSpace});
 
   @override
   State<AddReminderScreen> createState() => _AddReminderScreenState();
@@ -25,6 +27,8 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
   bool _isNotificationEnabled = true;
   bool _isLoading = false;
   bool _isEditing = false;
+  Space? _selectedSpace;
+  List<Space> _availableSpaces = [];
 
   // Real-time clock
   DateTime _currentTime = DateTime.now();
@@ -42,6 +46,8 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
         });
       }
     });
+    _loadSpaces();
+    _selectedSpace = widget.preSelectedSpace;
 
     if (widget.reminder != null) {
       _isEditing = true;
@@ -53,7 +59,20 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
     }
   }
 
-  void _populateFieldsForEditing() {
+  Future<void> _loadSpaces() async {
+    try {
+      final spaces = await SpacesService.getSpaces();
+      if (mounted) {
+        setState(() {
+          _availableSpaces = spaces;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading spaces: $e');
+    }
+  }
+
+  void _populateFieldsForEditing() async {
     final reminder = widget.reminder!;
     _titleController.text = reminder.title;
     _descriptionController.text = reminder.description ?? '';
@@ -61,6 +80,10 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
     _selectedTime = TimeOfDay.fromDateTime(reminder.scheduledTime);
     _selectedRepeat = reminder.repeatType;
     _isNotificationEnabled = reminder.isNotificationEnabled;
+    if (reminder.spaceId != null) {
+      _selectedSpace = await SpacesService.getSpaceById(reminder.spaceId!);
+      if (mounted) setState(() {});
+    }
   }
 
   @override
@@ -168,6 +191,7 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
           scheduledTime: _selectedDate,
           repeatType: _selectedRepeat,
           isNotificationEnabled: _isNotificationEnabled,
+          spaceId: _selectedSpace?.id,
         );
 
         await StorageService.updateReminder(updatedReminder);
@@ -185,6 +209,7 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
           scheduledTime: _selectedDate,
           repeatType: _selectedRepeat,
           isNotificationEnabled: _isNotificationEnabled,
+          spaceId: _selectedSpace?.id,
         );
 
         await StorageService.addReminder(reminder);
@@ -196,34 +221,15 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
 
       if (mounted) {
         Navigator.pop(context, true);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_isEditing
-                ? 'Reminder updated successfully!'
-                : 'Reminder created successfully!'),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-            margin: const EdgeInsets.all(16),
-          ),
-        );
+        // Toast removed - silent success
       }
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_isEditing
-                ? 'Error updating reminder: $e'
-                : 'Error creating reminder: $e'),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-            margin: const EdgeInsets.all(16),
-          ),
-        );
+        // Error logged instead of showing toast
+        debugPrint(_isEditing
+            ? 'Error updating reminder: $e'
+            : 'Error creating reminder: $e');
       }
     }
   }
@@ -235,6 +241,242 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
         _selectedDate.day == now.day &&
         _selectedDate.hour == now.hour &&
         _selectedDate.minute == now.minute;
+  }
+
+  Widget _buildSpaceSelector() {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          showModalBottomSheet(
+            context: context,
+            backgroundColor: Colors.transparent,
+            builder: (context) => _buildSpaceSelectorModal(),
+          );
+        },
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: _selectedSpace?.color ??
+                      Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .outline
+                        .withValues(alpha: 0.1),
+                    width: 0.5,
+                  ),
+                ),
+                child: Icon(
+                  _selectedSpace?.icon ?? Icons.folder_outlined,
+                  size: 20,
+                  color: _selectedSpace != null
+                      ? (_selectedSpace!.color.computeLuminance() > 0.5
+                          ? Colors.black87
+                          : Colors.white)
+                      : Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Space',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w500,
+                          ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _selectedSpace?.name ?? 'No space selected',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurface
+                                .withValues(alpha: 0.7),
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right,
+                size: 20,
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.4),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSpaceSelectorModal() {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.1),
+          width: 0.5,
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Header
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              children: [
+                Text(
+                  'SELECT SPACE',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 1.5,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withValues(alpha: 0.6),
+                      ),
+                ),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    padding: EdgeInsets.zero,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Flexible(
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // No space option
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () {
+                        setState(() {
+                          _selectedSpace = null;
+                        });
+                        Navigator.pop(context);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 20, vertical: 16),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 20,
+                              height: 20,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: _selectedSpace == null
+                                      ? Theme.of(context).colorScheme.onSurface
+                                      : Theme.of(context).colorScheme.outline,
+                                  width: _selectedSpace == null ? 6 : 2,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            const Expanded(
+                              child: Text('No space'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // Available spaces
+                  for (Space space in _availableSpaces)
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () {
+                          setState(() {
+                            _selectedSpace = space;
+                          });
+                          Navigator.pop(context);
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 20, vertical: 16),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 20,
+                                height: 20,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: _selectedSpace?.id == space.id
+                                        ? Theme.of(context)
+                                            .colorScheme
+                                            .onSurface
+                                        : Theme.of(context).colorScheme.outline,
+                                    width:
+                                        _selectedSpace?.id == space.id ? 6 : 2,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Container(
+                                width: 24,
+                                height: 24,
+                                decoration: BoxDecoration(
+                                  color: space.color,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Icon(
+                                  space.icon,
+                                  size: 14,
+                                  color: space.color.computeLuminance() > 0.5
+                                      ? Colors.black87
+                                      : Colors.white,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(space.name),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
   }
 
   @override
@@ -449,6 +691,15 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
                     );
                   },
                 ),
+              ],
+            ),
+            const SizedBox(height: 32),
+
+// Space Section
+            _buildSection(
+              'SPACE',
+              [
+                _buildSpaceSelector(),
               ],
             ),
 
