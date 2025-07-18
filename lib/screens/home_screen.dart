@@ -12,6 +12,7 @@ import 'settings_screen.dart';
 import 'filtered_reminders_screen.dart';
 import '../models/space.dart';
 import '../services/spaces_service.dart';
+import '../widgets/search_widget.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -28,6 +29,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late AnimationController _refreshAnimationController;
   Timer? _realTimeTimer;
 
+  // Search functionality
+  bool _isSearchMode = false;
+  String _searchQuery = '';
   // Selection mode for bulk actions
   bool _isSelectionMode = false;
   final Set<String> _selectedReminders = {};
@@ -110,6 +114,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       }
     }
     _refreshAnimationController.reset();
+  }
+
+  void _openSearch() {
+    HapticFeedback.lightImpact();
+    setState(() {
+      _isSearchMode = true;
+    });
+  }
+
+  void _closeSearch() {
+    setState(() {
+      _isSearchMode = false;
+      _searchQuery = '';
+    });
+  }
+
+  void _onSearchChanged(String query) {
+    setState(() {
+      _searchQuery = query.trim();
+    });
   }
 
   // Enhanced toggle for circular progress area with haptic feedback
@@ -597,7 +621,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                           fontWeight: FontWeight.w400,
                           letterSpacing: -0.8,
-                          color: const Color(0xFFFF453A), // Nothing red
+                          color: const Color(0xFFFF453A),
                         ),
                   ),
                 ],
@@ -613,7 +637,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       ),
       actions: _isSelectionMode
           ? [
-              // Bulk action buttons
               Container(
                 margin: const EdgeInsets.only(right: 4),
                 decoration: BoxDecoration(
@@ -674,7 +697,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                 ),
               ),
-
               Container(
                 margin: const EdgeInsets.only(right: 4),
                 decoration: BoxDecoration(
@@ -721,7 +743,36 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
             ]
           : [
-              // Regular action buttons
+              Container(
+                margin: const EdgeInsets.only(right: 4),
+                decoration: BoxDecoration(
+                  color: Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .outline
+                        .withValues(alpha: 0.1),
+                    width: 0.5,
+                  ),
+                ),
+                child: IconButton(
+                  icon: Icon(
+                    Icons.search,
+                    size: 20,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                  onPressed: _openSearch,
+                  tooltip: 'Search',
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    foregroundColor: Theme.of(context).colorScheme.onSurface,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+              ),
               Container(
                 margin: const EdgeInsets.only(right: 4),
                 decoration: BoxDecoration(
@@ -809,7 +860,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       title: 'Test Notification',
                       body: 'If you see this, notifications are working! 🎉',
                     );
-                    // Test notification sent - no toast shown
                   },
                   tooltip: 'Test Notification',
                   style: IconButton.styleFrom(
@@ -834,7 +884,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           allReminders: _reminders,
         ),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          // Nothing Phone-inspired slide transition
           return SlideTransition(
             position: animation.drive(
               Tween(begin: const Offset(1.0, 0.0), end: Offset.zero)
@@ -1962,20 +2011,36 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
                           // Title with clean typography
                           Expanded(
-                            child: Text(
-                              reminder.title,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleMedium
-                                  ?.copyWith(
-                                    decoration: reminder.isCompleted
-                                        ? TextDecoration.lineThrough
-                                        : null,
-                                    fontWeight: FontWeight.w500,
-                                    fontSize: 16,
-                                    letterSpacing: -0.2,
+                            child: _searchQuery.isNotEmpty
+                                ? HighlightedText(
+                                    text: reminder.title,
+                                    searchTerm: _searchQuery,
+                                    defaultStyle: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium
+                                        ?.copyWith(
+                                          decoration: reminder.isCompleted
+                                              ? TextDecoration.lineThrough
+                                              : null,
+                                          fontWeight: FontWeight.w500,
+                                          fontSize: 16,
+                                          letterSpacing: -0.2,
+                                        ),
+                                  )
+                                : Text(
+                                    reminder.title,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium
+                                        ?.copyWith(
+                                          decoration: reminder.isCompleted
+                                              ? TextDecoration.lineThrough
+                                              : null,
+                                          fontWeight: FontWeight.w500,
+                                          fontSize: 16,
+                                          letterSpacing: -0.2,
+                                        ),
                                   ),
-                            ),
                           ),
                           if (!_isSelectionMode) ...[
                             const SizedBox(width: 8),
@@ -2090,21 +2155,39 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       // Description with minimal styling
                       if (reminder.description?.isNotEmpty == true) ...[
                         const SizedBox(height: 12),
-                        Text(
-                          reminder.description!,
-                          style:
-                              Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurface
-                                        .withValues(alpha: 0.6),
-                                    fontSize: 14,
-                                    height: 1.4,
-                                    letterSpacing: -0.1,
-                                  ),
-                        ),
+                        _searchQuery.isNotEmpty
+                            ? HighlightedText(
+                                text: reminder.description!,
+                                searchTerm: _searchQuery,
+                                defaultStyle: Theme.of(context)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.copyWith(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurface
+                                          .withValues(alpha: 0.6),
+                                      fontSize: 14,
+                                      height: 1.4,
+                                      letterSpacing: -0.1,
+                                    ),
+                              )
+                            : Text(
+                                reminder.description!,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.copyWith(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurface
+                                          .withValues(alpha: 0.6),
+                                      fontSize: 14,
+                                      height: 1.4,
+                                      letterSpacing: -0.1,
+                                    ),
+                              ),
                       ],
-
                       const SizedBox(height: 16),
 
                       // Clean bottom row
@@ -2157,33 +2240,144 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: RefreshIndicator(
-        onRefresh: _refreshReminders,
-        child: StreamBuilder<List<Reminder>>(
-          stream: _remindersStream,
-          initialData: _reminders,
-          builder: (context, snapshot) {
-            if (snapshot.hasError) {
-              _error = snapshot.error.toString();
-            } else if (snapshot.hasData) {
-              _reminders = snapshot.data!;
-              _error = null;
-              _isLoading = false;
-            }
+      body: Stack(
+        children: [
+          RefreshIndicator(
+            onRefresh: _refreshReminders,
+            child: StreamBuilder<List<Reminder>>(
+              stream: _remindersStream,
+              initialData: _reminders,
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  _error = snapshot.error.toString();
+                } else if (snapshot.hasData) {
+                  _reminders = snapshot.data!;
+                  _error = null;
+                  _isLoading = false;
+                }
 
-            return CustomScrollView(
-              slivers: [
-                _buildAppBar(),
-                _buildStatsCards(_reminders),
-                _buildQuickFilters(),
-                _buildRemindersList(_reminders),
-                const SliverToBoxAdapter(
-                  child: SizedBox(height: 100),
+                // Filter reminders
+                List<Reminder> displayReminders;
+                if (_searchQuery.isNotEmpty) {
+                  displayReminders = _reminders.where((reminder) {
+                    final titleMatch = reminder.title
+                        .toLowerCase()
+                        .contains(_searchQuery.toLowerCase());
+                    final descriptionMatch = reminder.description
+                            ?.toLowerCase()
+                            .contains(_searchQuery.toLowerCase()) ??
+                        false;
+                    return titleMatch || descriptionMatch;
+                  }).toList();
+                } else {
+                  displayReminders = _reminders;
+                }
+
+                return CustomScrollView(
+                  slivers: [
+                    _buildAppBar(),
+
+                    // Show search results summary when searching
+                    if (_searchQuery.isNotEmpty)
+                      SliverToBoxAdapter(
+                        child: SearchResultsSummary(
+                          resultCount: displayReminders.length,
+                          searchQuery: _searchQuery,
+                        ),
+                      ),
+
+                    // Show stats and filters only when not searching
+                    if (!_isSearchMode) _buildStatsCards(_reminders),
+                    if (!_isSearchMode) _buildQuickFilters(),
+
+                    _buildRemindersList(displayReminders),
+
+                    const SliverToBoxAdapter(
+                      child: SizedBox(height: 100),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+
+          // Search overlay (covers entire screen when active)
+          if (_isSearchMode)
+            Container(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              child: SafeArea(
+                child: Column(
+                  children: [
+                    SearchWidget(
+                      onSearchChanged: _onSearchChanged,
+                      onClose: _closeSearch,
+                      hintText: 'Search reminders...',
+                    ),
+                    Expanded(
+                      child: _searchQuery.isEmpty
+                          ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.search,
+                                    size: 64,
+                                    color:
+                                        Theme.of(context).colorScheme.outline,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    'Start typing to search',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium
+                                        ?.copyWith(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onSurfaceVariant,
+                                        ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : ListView.builder(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16),
+                              itemCount: () {
+                                final filtered = _reminders.where((reminder) {
+                                  final titleMatch = reminder.title
+                                      .toLowerCase()
+                                      .contains(_searchQuery.toLowerCase());
+                                  final descriptionMatch = reminder.description
+                                          ?.toLowerCase()
+                                          .contains(
+                                              _searchQuery.toLowerCase()) ??
+                                      false;
+                                  return titleMatch || descriptionMatch;
+                                }).toList();
+                                return filtered.length;
+                              }(),
+                              itemBuilder: (context, index) {
+                                final filtered = _reminders.where((reminder) {
+                                  final titleMatch = reminder.title
+                                      .toLowerCase()
+                                      .contains(_searchQuery.toLowerCase());
+                                  final descriptionMatch = reminder.description
+                                          ?.toLowerCase()
+                                          .contains(
+                                              _searchQuery.toLowerCase()) ??
+                                      false;
+                                  return titleMatch || descriptionMatch;
+                                }).toList();
+                                return _buildReminderCard(filtered[index]);
+                              },
+                            ),
+                    ),
+                  ],
                 ),
-              ],
-            );
-          },
-        ),
+              ),
+            ),
+        ],
       ),
     );
   }
