@@ -1,7 +1,11 @@
 // lib/screens/settings_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/theme_service.dart';
+import '../services/update_service.dart';
+import '../widgets/update_dialog.dart';
 
 class SettingsScreen extends StatefulWidget {
   // Add a parameter to detect navigation method
@@ -19,9 +23,16 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   ThemeType _selectedTheme = ThemeService.currentTheme;
 
+  // Update checker variables
+  bool _autoCheckUpdates = true;
+  bool _isCheckingForUpdates = false;
+  String _lastUpdateCheck = 'Never';
+  String _currentVersion = '1.0.0';
+
   @override
   void initState() {
     super.initState();
+
     // Listen to theme changes
     ThemeService.themeStream.listen((themeType) {
       if (mounted) {
@@ -30,6 +41,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
         });
       }
     });
+
+    // Load update settings
+    _loadUpdateSettings();
+  }
+
+  Future<void> _loadUpdateSettings() async {
+    try {
+      // Load update settings
+      final autoCheck = await UpdateService.getAutoCheckEnabled();
+      final lastCheck = await UpdateService.getLastCheckTime();
+
+      // Get current app version
+      final packageInfo = await PackageInfo.fromPlatform();
+
+      if (mounted) {
+        setState(() {
+          _autoCheckUpdates = autoCheck;
+          _lastUpdateCheck = lastCheck;
+          _currentVersion = packageInfo.version;
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to load update settings: $e');
+    }
   }
 
   @override
@@ -81,6 +116,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           const SizedBox(height: 32),
 
+          // App Updates Section
+          _buildSectionHeader('App Updates'),
+          const SizedBox(height: 8),
+          _buildUpdateSettings(),
+
+          const SizedBox(height: 32),
+
           // About Section
           _buildSectionHeader('About'),
           const SizedBox(height: 8),
@@ -97,6 +139,68 @@ class _SettingsScreenState extends State<SettingsScreen> {
             fontWeight: FontWeight.w600,
             letterSpacing: -0.3,
           ),
+    );
+  }
+
+  Widget _buildUpdateSettings() {
+    return Column(
+      children: [
+        // Check for Updates Button
+        _buildSettingsTile(
+          icon: _isCheckingForUpdates
+              ? Icons.sync_rounded
+              : Icons.system_update_alt_rounded,
+          title: 'Check for Updates',
+          subtitle: 'Current version: $_currentVersion',
+          trailing: _isCheckingForUpdates
+              ? SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                )
+              : const Icon(Icons.arrow_forward_ios, size: 16),
+          onTap: _isCheckingForUpdates ? null : _checkForUpdates,
+          enabled: !_isCheckingForUpdates,
+        ),
+
+        const SizedBox(height: 8),
+
+        // Auto-check Toggle
+        _buildSwitchTile(
+          icon: Icons.autorenew_rounded,
+          title: 'Auto-check for Updates',
+          subtitle: 'Check for updates automatically on app start',
+          value: _autoCheckUpdates,
+          onChanged: _toggleAutoCheck,
+        ),
+
+        const SizedBox(height: 8),
+
+        // Last Check Time
+        _buildSettingsTile(
+          icon: Icons.history_rounded,
+          title: 'Last Update Check',
+          subtitle: _lastUpdateCheck,
+          trailing: const Icon(Icons.info_outline, size: 16),
+          enabled: false,
+        ),
+
+        const SizedBox(height: 8),
+
+        // GitHub Releases Link
+        _buildSettingsTile(
+          icon: Icons.open_in_new_rounded,
+          title: 'View All Releases',
+          subtitle: 'Browse all versions on GitHub',
+          trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+          onTap: _openGitHubReleases,
+        ),
+      ],
     );
   }
 
@@ -260,8 +364,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       children: [
         _buildSettingsTile(
           icon: Icons.info_outline,
-          title: 'Version',
-          subtitle: '1.0.0+1',
+          title: 'App Information',
+          subtitle: 'Version, build info, and credits',
           trailing: const Icon(Icons.arrow_forward_ios, size: 16),
           onTap: () {
             _showAboutDialog();
@@ -344,6 +448,163 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Widget _buildSwitchTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+    bool enabled = true,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
+          width: 1,
+        ),
+      ),
+      child: SwitchListTile(
+        secondary: Icon(
+          icon,
+          color: enabled
+              ? Theme.of(context).colorScheme.primary
+              : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+        ),
+        title: Text(
+          title,
+          style: TextStyle(
+            color: enabled
+                ? Theme.of(context).colorScheme.onSurface
+                : Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.4),
+          ),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: TextStyle(
+            color: enabled
+                ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)
+                : Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.4),
+          ),
+        ),
+        value: value,
+        onChanged: enabled ? onChanged : null,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+    );
+  }
+
+  // Update-related methods
+  Future<void> _checkForUpdates() async {
+    if (_isCheckingForUpdates) return;
+
+    setState(() {
+      _isCheckingForUpdates = true;
+    });
+
+    HapticFeedback.lightImpact();
+
+    try {
+      final result = await UpdateService.checkForUpdates();
+
+      if (mounted) {
+        setState(() {
+          _isCheckingForUpdates = false;
+          _lastUpdateCheck = 'Just now';
+        });
+
+        if (result.success) {
+          await UpdateDialog.show(context, result, isManualCheck: true);
+        } else {
+          await UpdateErrorDialog.show(
+              context, result.error ?? 'Unknown error');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isCheckingForUpdates = false;
+        });
+        await UpdateErrorDialog.show(
+            context, 'Failed to check for updates: $e');
+      }
+    }
+  }
+
+  Future<void> _toggleAutoCheck(bool value) async {
+    HapticFeedback.lightImpact();
+
+    setState(() {
+      _autoCheckUpdates = value;
+    });
+
+    await UpdateService.setAutoCheckEnabled(value);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            value
+                ? 'Auto-check enabled. App will check for updates daily.'
+                : 'Auto-check disabled.',
+          ),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      );
+    }
+  }
+
+  Future<void> _openGitHubReleases() async {
+    HapticFeedback.lightImpact();
+
+    try {
+      final url = UpdateService.getReleasesUrl();
+      final uri = Uri.parse(url);
+
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        // Fallback: show dialog with URL
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('GitHub Releases'),
+              content: SelectableText(url),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Close'),
+                ),
+              ],
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to open releases page: $e'),
+            behavior: SnackBarBehavior.floating,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        );
+      }
+    }
+  }
+
+  // Existing methods (kept intact)
   void _showComingSoonSnackBar(String feature) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -389,7 +650,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     showAboutDialog(
       context: context,
       applicationName: 'VoiceRemind',
-      applicationVersion: '1.0.0+1',
+      applicationVersion: _currentVersion,
       applicationIcon: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(

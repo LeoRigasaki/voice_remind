@@ -4,6 +4,8 @@ import 'services/notification_service.dart';
 import 'services/storage_service.dart';
 import 'services/spaces_service.dart';
 import 'services/theme_service.dart';
+import 'services/update_service.dart';
+import 'widgets/update_dialog.dart';
 import 'screens/main_navigation.dart';
 
 // Global notification plugin instance
@@ -39,14 +41,19 @@ class _VoiceRemindAppState extends State<VoiceRemindApp>
     with WidgetsBindingObserver {
   // Current theme mode for the app
   ThemeMode _themeMode = ThemeMode.system;
+  late final GlobalKey<NavigatorState> _navigatorKey;
 
   @override
   void initState() {
     super.initState();
+    _navigatorKey = GlobalKey<NavigatorState>();
     WidgetsBinding.instance.addObserver(this);
 
     // Listen to theme changes
     _setupThemeListener();
+
+    // Perform auto update check
+    _performAutoUpdateCheck();
   }
 
   void _setupThemeListener() {
@@ -61,6 +68,34 @@ class _VoiceRemindAppState extends State<VoiceRemindApp>
         });
       }
     });
+  }
+
+  Future<void> _performAutoUpdateCheck() async {
+    try {
+      // Wait a bit for the app to fully load
+      await Future.delayed(const Duration(seconds: 2));
+
+      final updateResult = await UpdateService.autoCheckForUpdates();
+
+      if (updateResult != null &&
+          updateResult.success &&
+          updateResult.isUpdateAvailable &&
+          _navigatorKey.currentContext != null) {
+        // Show update dialog if update is available
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_navigatorKey.currentContext != null) {
+            UpdateDialog.show(
+              _navigatorKey.currentContext!,
+              updateResult,
+              isManualCheck: false,
+            );
+          }
+        });
+      }
+    } catch (e) {
+      // Silently handle auto-check errors
+      debugPrint('Auto update check failed: $e');
+    }
   }
 
   @override
@@ -79,18 +114,30 @@ class _VoiceRemindAppState extends State<VoiceRemindApp>
     if (state == AppLifecycleState.resumed) {
       // Refresh data when app comes back to foreground
       StorageService.refreshData();
+
+      // Check for updates when app comes to foreground
+      _performAutoUpdateCheck();
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: _navigatorKey,
       title: 'VoiceRemind',
       debugShowCheckedModeBanner: false,
       theme: _buildNothingLightTheme(),
       darkTheme: _buildNothingDarkTheme(),
       themeMode: _themeMode,
       home: const MainNavigation(),
+      builder: (context, child) {
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: TextScaler.noScaling, // Prevent text scaling issues
+          ),
+          child: child!,
+        );
+      },
     );
   }
 

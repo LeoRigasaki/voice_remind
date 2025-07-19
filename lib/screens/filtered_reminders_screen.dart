@@ -10,11 +10,11 @@ import '../services/notification_service.dart';
 import 'add_reminder_screen.dart';
 import '../services/spaces_service.dart';
 
-enum FilterType { total, pending, completed, overdue }
+enum FilterType { total, pending, completed, overdue, today, thisWeek, recent }
 
 class FilteredRemindersScreen extends StatefulWidget {
   final FilterType filterType;
-  final List<Reminder> allReminders;
+  final List<Reminder>? allReminders;
   final String? customTitle;
   final IconData? customIcon;
   final Color? customColor;
@@ -23,7 +23,7 @@ class FilteredRemindersScreen extends StatefulWidget {
   const FilteredRemindersScreen({
     super.key,
     required this.filterType,
-    required this.allReminders,
+    this.allReminders,
     this.customTitle,
     this.customIcon,
     this.customColor,
@@ -53,8 +53,8 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
     super.initState();
     _spaceId = widget.spaceId;
 
-    if (widget.customTitle != null && widget.allReminders.isNotEmpty) {
-      _spaceId = widget.allReminders.first.spaceId;
+    if (widget.customTitle != null && widget.allReminders?.isNotEmpty == true) {
+      _spaceId = widget.allReminders!.first.spaceId;
     }
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 800),
@@ -84,6 +84,12 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
         return 'Completed';
       case FilterType.overdue:
         return 'Overdue';
+      case FilterType.today:
+        return 'Today';
+      case FilterType.thisWeek:
+        return 'This Week';
+      case FilterType.recent:
+        return 'Recently Completed';
     }
   }
 
@@ -110,12 +116,15 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
     _remindersSubscription =
         StorageService.remindersStream.listen((allReminders) async {
       if (mounted) {
-        // If this is a space filter, get fresh space reminders
         List<Reminder> remindersToFilter;
+
         if (_spaceId != null) {
           remindersToFilter =
-              await StorageService.getRemindersBySpace(_spaceId);
+              await StorageService.getRemindersBySpace(_spaceId!);
+        } else if (widget.allReminders != null) {
+          remindersToFilter = widget.allReminders!;
         } else {
+          // For time-based filters, use all reminders
           remindersToFilter = allReminders;
         }
 
@@ -128,10 +137,14 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
 
   void _applyFilter() async {
     List<Reminder> remindersToFilter;
+
     if (_spaceId != null) {
-      remindersToFilter = await StorageService.getRemindersBySpace(_spaceId);
+      remindersToFilter = await StorageService.getRemindersBySpace(_spaceId!);
+    } else if (widget.allReminders != null) {
+      remindersToFilter = widget.allReminders!;
     } else {
-      remindersToFilter = widget.allReminders;
+      // For time-based filters, get all reminders
+      remindersToFilter = await StorageService.getReminders();
     }
 
     if (mounted) {
@@ -157,6 +170,21 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
         return reminders
             .where((r) => !r.isCompleted && r.scheduledTime.isBefore(now))
             .toList();
+      case FilterType.today:
+        return reminders.where((r) {
+          return r.scheduledTime.year == now.year &&
+              r.scheduledTime.month == now.month &&
+              r.scheduledTime.day == now.day;
+        }).toList();
+      case FilterType.thisWeek:
+        final weekStart = now.subtract(Duration(days: now.weekday - 1));
+        final weekEnd = weekStart.add(const Duration(days: 6));
+        return reminders.where((r) {
+          return r.scheduledTime.isAfter(weekStart) &&
+              r.scheduledTime.isBefore(weekEnd.add(const Duration(days: 1)));
+        }).toList();
+      case FilterType.recent:
+        return reminders.where((r) => r.isCompleted).take(10).toList();
     }
   }
 
@@ -170,6 +198,12 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
         return 'COMPLETED';
       case FilterType.overdue:
         return 'OVERDUE';
+      case FilterType.today:
+        return 'TODAY';
+      case FilterType.thisWeek:
+        return 'THIS WEEK';
+      case FilterType.recent:
+        return 'RECENT';
     }
   }
 
@@ -182,9 +216,15 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
       case FilterType.pending:
         return isDark ? const Color(0xFF32D74B) : const Color(0xFF10B981);
       case FilterType.completed:
-        return const Color(0xFF28A745); // Warmer green
+        return const Color(0xFF28A745);
       case FilterType.overdue:
-        return const Color(0xFFDC3545); // Softer red
+        return const Color(0xFFDC3545);
+      case FilterType.today:
+        return isDark ? const Color(0xFFFF9500) : const Color(0xFFFF8C00);
+      case FilterType.thisWeek:
+        return isDark ? const Color(0xFF5856D6) : const Color(0xFF5856D6);
+      case FilterType.recent:
+        return isDark ? const Color(0xFF34C759) : const Color(0xFF30D158);
     }
   }
 
@@ -198,6 +238,12 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
         return Icons.check_circle_outline;
       case FilterType.overdue:
         return Icons.error_outline;
+      case FilterType.today:
+        return Icons.today_outlined;
+      case FilterType.thisWeek:
+        return Icons.date_range_outlined;
+      case FilterType.recent:
+        return Icons.history_outlined;
     }
   }
 
@@ -814,6 +860,12 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
         return 'No completed reminders yet.\nComplete some to see them here.';
       case FilterType.overdue:
         return 'No overdue reminders.\nGreat job staying on track!';
+      case FilterType.today:
+        return 'No reminders scheduled for today.\nEnjoy your free time!';
+      case FilterType.thisWeek:
+        return 'No reminders scheduled for this week.\nYou\'re ahead of schedule!';
+      case FilterType.recent:
+        return 'No recently completed reminders.\nComplete some to see them here.';
     }
   }
 

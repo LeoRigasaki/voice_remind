@@ -1,6 +1,6 @@
 name: voice_remind
 description: A beautiful voice-first reminder application
-version: 1.0.0+1
+version: 1.0.3+1
 
 environment:
   sdk: '>=3.5.0 <4.0.0'
@@ -30,6 +30,9 @@ dependencies:
   # AI and HTTP Requests
   google_generative_ai: ^0.4.6
   http: ^1.1.0
+  package_info_plus: ^8.3.0
+  url_launcher: ^6.2.4    
+  
   # Secrets and Environment Variables
   flutter_dotenv: ^5.1.0
 

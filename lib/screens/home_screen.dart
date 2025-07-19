@@ -881,7 +881,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         pageBuilder: (context, animation, secondaryAnimation) =>
             FilteredRemindersScreen(
           filterType: filterType,
-          allReminders: _reminders,
+          allReminders: (filterType == FilterType.total ||
+                  filterType == FilterType.pending ||
+                  filterType == FilterType.completed ||
+                  filterType == FilterType.overdue)
+              ? _reminders
+              : null,
         ),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return SlideTransition(
@@ -1106,7 +1111,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return 70.0; // Normal screens
   }
 
-  // Enhanced small filter buttons after stats
   Widget _buildQuickFilters() {
     return SliverToBoxAdapter(
       child: Container(
@@ -1148,7 +1152,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               _showFilteredResults('Recently Completed', recentCompleted);
             }),
             const SizedBox(width: 8),
-            // Advanced filter button for future features
             _buildAdvancedFilterButton(),
           ],
         ),
@@ -1386,7 +1389,32 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  void _showFilteredResults(String title, List<Reminder> filteredReminders) {
+  List<Reminder> _filterLiveData(
+      String filterTitle, List<Reminder> allReminders) {
+    final now = DateTime.now();
+
+    switch (filterTitle) {
+      case 'Today':
+        return allReminders.where((r) {
+          return r.scheduledTime.year == now.year &&
+              r.scheduledTime.month == now.month &&
+              r.scheduledTime.day == now.day;
+        }).toList();
+      case 'This Week':
+        final weekStart = now.subtract(Duration(days: now.weekday - 1));
+        final weekEnd = weekStart.add(const Duration(days: 6));
+        return allReminders.where((r) {
+          return r.scheduledTime.isAfter(weekStart) &&
+              r.scheduledTime.isBefore(weekEnd.add(const Duration(days: 1)));
+        }).toList();
+      case 'Recently Completed':
+        return allReminders.where((r) => r.isCompleted).take(10).toList();
+      default:
+        return allReminders;
+    }
+  }
+
+  void _showFilteredResults(String title, List<Reminder> initialReminders) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1428,23 +1456,61 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ),
                     ),
                     const Spacer(),
-                    Text(
-                      '${filteredReminders.length} reminders',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurface
-                                .withValues(alpha: 0.6),
-                          ),
+                    // Live count using StreamBuilder
+                    StreamBuilder<List<Reminder>>(
+                      stream: StorageService.remindersStream,
+                      builder: (context, snapshot) {
+                        if (!snapshot.hasData) {
+                          return Text(
+                            '${initialReminders.length} reminders',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurface
+                                      .withValues(alpha: 0.6),
+                                ),
+                          );
+                        }
+
+                        // Filter live data
+                        final liveReminders =
+                            _filterLiveData(title, snapshot.data!);
+
+                        return Text(
+                          '${liveReminders.length} reminders',
+                          style:
+                              Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurface
+                                        .withValues(alpha: 0.6),
+                                  ),
+                        );
+                      },
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: 16),
-              // List
+              // List with live data
               Expanded(
-                child: filteredReminders.isEmpty
-                    ? Center(
+                child: StreamBuilder<List<Reminder>>(
+                  stream: StorageService.remindersStream,
+                  initialData: initialReminders,
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+
+                    // Filter live data
+                    final filteredReminders =
+                        _filterLiveData(title, snapshot.data!);
+
+                    if (filteredReminders.isEmpty) {
+                      return Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
@@ -1484,15 +1550,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             ),
                           ],
                         ),
-                      )
-                    : ListView.builder(
-                        controller: scrollController,
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: filteredReminders.length,
-                        itemBuilder: (context, index) {
-                          return _buildReminderCard(filteredReminders[index]);
-                        },
-                      ),
+                      );
+                    }
+
+                    return ListView.builder(
+                      controller: scrollController,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: filteredReminders.length,
+                      itemBuilder: (context, index) {
+                        return _buildReminderCard(filteredReminders[index]);
+                      },
+                    );
+                  },
+                ),
               ),
             ],
           ),

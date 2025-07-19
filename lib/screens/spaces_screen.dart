@@ -27,6 +27,8 @@ class _SpacesScreenState extends State<SpacesScreen>
   bool _isSelectionMode = false;
   final Set<String> _selectedSpaces = {};
   late AnimationController _selectionAnimationController;
+  late AnimationController _wiggleController;
+  final Set<String> _wigglingSpaces = {};
 
   // Delete expansion state
   bool _isDeleteExpanded = false;
@@ -43,6 +45,11 @@ class _SpacesScreenState extends State<SpacesScreen>
       duration: const Duration(milliseconds: 300),
       vsync: this,
     );
+
+    _wiggleController = AnimationController(
+      duration: const Duration(milliseconds: 100),
+      vsync: this,
+    );
   }
 
   @override
@@ -50,6 +57,7 @@ class _SpacesScreenState extends State<SpacesScreen>
     _spacesSubscription?.cancel();
     _remindersSubscription?.cancel();
     _selectionAnimationController.dispose();
+    _wiggleController.dispose();
     super.dispose();
   }
 
@@ -72,6 +80,13 @@ class _SpacesScreenState extends State<SpacesScreen>
         });
       }
     });
+  }
+
+  void _startWiggle(String spaceId) {
+    setState(() {
+      _wigglingSpaces.add(spaceId);
+    });
+    _wiggleController.repeat(reverse: true);
   }
 
   Future<void> _loadSpaces() async {
@@ -99,8 +114,10 @@ class _SpacesScreenState extends State<SpacesScreen>
     setState(() {
       _isSelectionMode = true;
       _selectedSpaces.add(spaceId);
+      _wigglingSpaces.add(spaceId);
     });
     _selectionAnimationController.forward();
+    _wiggleController.repeat(reverse: true);
   }
 
   void _exitSelectionMode() {
@@ -109,8 +126,11 @@ class _SpacesScreenState extends State<SpacesScreen>
       _isSelectionMode = false;
       _selectedSpaces.clear();
       _isDeleteExpanded = false;
+      _wigglingSpaces.clear();
     });
     _selectionAnimationController.reverse();
+    _wiggleController.stop();
+    _wiggleController.reset();
   }
 
   void _toggleSelection(String spaceId) {
@@ -118,13 +138,20 @@ class _SpacesScreenState extends State<SpacesScreen>
     setState(() {
       if (_selectedSpaces.contains(spaceId)) {
         _selectedSpaces.remove(spaceId);
+        _wigglingSpaces.remove(spaceId);
         if (_selectedSpaces.isEmpty) {
           _exitSelectionMode();
+          return;
         }
       } else {
         _selectedSpaces.add(spaceId);
+        _wigglingSpaces.add(spaceId);
       }
     });
+
+    if (_selectedSpaces.isNotEmpty && !_wiggleController.isAnimating) {
+      _wiggleController.repeat(reverse: true);
+    }
   }
 
   // === INDIVIDUAL SPACE ACTIONS ===
@@ -494,8 +521,10 @@ class _SpacesScreenState extends State<SpacesScreen>
   Future<void> _applyColorToSelected(Color color) async {
     try {
       await SpacesService.bulkUpdateSpaceColor(_selectedSpaces.toList(), color);
-      Navigator.of(context).pop(); // Close color picker
-      _exitSelectionMode();
+      if (mounted) {
+        Navigator.of(context).pop(); // Close color picker
+        _exitSelectionMode();
+      }
     } catch (e) {
       debugPrint('Error updating space colors: $e');
     }
@@ -504,8 +533,10 @@ class _SpacesScreenState extends State<SpacesScreen>
   Future<void> _applyIconToSelected(IconData icon) async {
     try {
       await SpacesService.bulkUpdateSpaceIcon(_selectedSpaces.toList(), icon);
-      Navigator.of(context).pop(); // Close icon picker
-      _exitSelectionMode();
+      if (mounted) {
+        Navigator.of(context).pop(); // Close icon picker
+        _exitSelectionMode();
+      }
     } catch (e) {
       debugPrint('Error updating space icons: $e');
     }
@@ -746,7 +777,7 @@ class _SpacesScreenState extends State<SpacesScreen>
                           );
                         },
                       );
-                    }).toList(),
+                    }),
                   ],
                 ),
               ),
@@ -905,8 +936,10 @@ class _SpacesScreenState extends State<SpacesScreen>
             deleteReminders: false);
       }
 
-      Navigator.of(context).pop(); // Close merge modal
-      _exitSelectionMode();
+      if (mounted) {
+        Navigator.of(context).pop(); // Close merge modal
+        _exitSelectionMode();
+      }
     } catch (e) {
       debugPrint('Error merging reminders: $e');
     }
@@ -1379,60 +1412,168 @@ class _SpacesScreenState extends State<SpacesScreen>
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 100,
-            height: 60,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  Theme.of(context).colorScheme.outline.withValues(alpha: 0.1),
-                  Theme.of(context).colorScheme.outline.withValues(alpha: 0.05),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: Theme.of(context)
-                    .colorScheme
-                    .outline
-                    .withValues(alpha: 0.2),
-                width: 1,
-              ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Responsive values
+        final isSmallScreen = constraints.maxWidth < 400;
+        final iconSize = isSmallScreen ? 64.0 : 80.0;
+        final titleSize = isSmallScreen ? 22.0 : 26.0;
+        final bodySize = isSmallScreen ? 15.0 : 16.0;
+        final buttonHeight = isSmallScreen ? 52.0 : 56.0;
+
+        return SingleChildScrollView(
+          padding: EdgeInsets.symmetric(
+            horizontal: isSmallScreen ? 24.0 : 32.0,
+            vertical: 20,
+          ),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: constraints.maxHeight - 140, // More space for navbar
             ),
-            child: Icon(
-              Icons.view_module_outlined,
-              size: 32,
-              color: Theme.of(context).colorScheme.outline,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Simple, clean icon
+                Container(
+                  width: iconSize + 24,
+                  height: iconSize + 24,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primaryContainer,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.create_new_folder_rounded,
+                    size: iconSize,
+                    color: Theme.of(context).colorScheme.onPrimaryContainer,
+                  ),
+                ),
+
+                SizedBox(height: isSmallScreen ? 24 : 32),
+
+                // Clean title
+                Text(
+                  'No spaces yet',
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        fontSize: titleSize,
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                  textAlign: TextAlign.center,
+                ),
+
+                SizedBox(height: isSmallScreen ? 12 : 16),
+
+                // Simple description
+                Text(
+                  'Create spaces to organize your reminders\nby themes like Work, Home, or Personal',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontSize: bodySize,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withValues(alpha: 0.7),
+                        height: 1.4,
+                      ),
+                  textAlign: TextAlign.center,
+                ),
+
+                SizedBox(height: isSmallScreen ? 32 : 40),
+
+                // Simple examples in one row
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isSmallScreen ? 16 : 20,
+                    vertical: isSmallScreen ? 16 : 20,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .surfaceContainerHighest
+                        .withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _buildQuickExample(
+                          Icons.work_outline_rounded, 'Work', Colors.blue),
+                      _buildQuickExample(
+                          Icons.home_outlined, 'Home', Colors.green),
+                      _buildQuickExample(
+                          Icons.school_outlined, 'Study', Colors.orange),
+                    ],
+                  ),
+                ),
+
+                SizedBox(height: isSmallScreen ? 32 : 40),
+
+                // Fixed button with proper theme colors
+                SizedBox(
+                  width: double.infinity,
+                  height: buttonHeight,
+                  child: FilledButton.icon(
+                    onPressed: () => _navigateToAddSpace(),
+                    icon: const Icon(Icons.add_rounded),
+                    label: Text(
+                      'Create Space',
+                      style: TextStyle(
+                        fontSize: bodySize,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Theme.of(context).colorScheme.primary,
+                      foregroundColor: Theme.of(context)
+                          .colorScheme
+                          .onPrimary, // This fixes dark mode text
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Add extra bottom padding to avoid navbar overlap
+                SizedBox(
+                    height: isSmallScreen
+                        ? 100
+                        : 120), // Extra space for floating navbar
+              ],
             ),
           ),
-          const SizedBox(height: 24),
-          Text(
-            'No spaces yet',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurface,
-                ),
+        );
+      },
+    );
+  }
+
+  Widget _buildQuickExample(IconData icon, String label, Color color) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(10),
           ),
-          const SizedBox(height: 8),
-          Text(
-            'Create workspace-style blocks to organize reminders',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.outline,
-                ),
-            textAlign: TextAlign.center,
+          child: Icon(
+            icon,
+            size: 20,
+            color: color,
           ),
-          const SizedBox(height: 24),
-          ElevatedButton.icon(
-            onPressed: () => _navigateToAddSpace(),
-            icon: const Icon(Icons.add),
-            label: const Text('Create Space'),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            color:
+                Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.8),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -1484,296 +1625,324 @@ class _SpacesScreenState extends State<SpacesScreen>
         space.color.computeLuminance() > 0.5 ? Colors.black87 : Colors.white;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isSelected = _selectedSpaces.contains(space.id);
+    final isWiggling = _wigglingSpaces.contains(space.id);
 
-    return Row(
-      children: [
-        // External selection checkbox (only visible in selection mode)
-        if (_isSelectionMode) ...[
-          GestureDetector(
-            onTap: () => _toggleSelection(space.id),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 20,
-              height: 20,
-              margin: const EdgeInsets.only(right: 12),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? (isDark ? Colors.white : Colors.black)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(
-                  color: isDark ? Colors.white : Colors.black,
-                  width: 1.5,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Responsive sizing
+        final isSmallScreen = constraints.maxWidth < 400;
+        final cardHeight = isSmallScreen ? 72.0 : 80.0;
+        final iconSize = isSmallScreen ? 36.0 : 40.0;
+        final titleFontSize = isSmallScreen ? 15.0 : 16.0;
+        final subtitleFontSize = isSmallScreen ? 12.0 : 13.0;
+
+        return Row(
+          children: [
+            // Selection checkbox
+            if (_isSelectionMode) ...[
+              GestureDetector(
+                onTap: () => _toggleSelection(space.id),
+                child: Container(
+                  width: 20,
+                  height: 20,
+                  margin: const EdgeInsets.only(right: 12),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? (isDark ? Colors.white : Colors.black)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                      color: isDark ? Colors.white : Colors.black,
+                      width: 1.5,
+                    ),
+                  ),
+                  child: isSelected
+                      ? Icon(
+                          Icons.check,
+                          color: isDark ? Colors.black : Colors.white,
+                          size: 14,
+                        )
+                      : null,
                 ),
               ),
-              child: isSelected
-                  ? Icon(
-                      Icons.check,
-                      color: isDark ? Colors.black : Colors.white,
-                      size: 14,
-                    )
-                  : null,
-            ),
-          ),
-        ],
+            ],
 
-        // Space card (always maintains original appearance)
-        Expanded(
-          child: Slidable(
-            key: ValueKey(space.id),
-            enabled: !_isSelectionMode,
-            endActionPane: ActionPane(
-              motion: const BehindMotion(),
-              extentRatio: 0.35,
-              children: [
-                // Edit Action
-                Expanded(
-                  child: Container(
-                    margin: const EdgeInsets.only(
-                        left: 4, right: 2, top: 2, bottom: 2),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1A1A1A),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.1),
-                        width: 0.5,
-                      ),
-                    ),
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(12),
-                        onTap: () => _editSpace(space),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              width: 32,
-                              height: 32,
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.1),
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: Colors.white.withValues(alpha: 0.2),
-                                  width: 0.5,
-                                ),
-                              ),
-                              child: const Icon(
-                                Icons.edit_outlined,
-                                color: Colors.white,
-                                size: 16,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            const Text(
-                              'Edit',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w400,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // Delete Action
-                Expanded(
-                  child: Container(
-                    margin: const EdgeInsets.only(
-                        left: 2, right: 4, top: 2, bottom: 2),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1A1A1A),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.1),
-                        width: 0.5,
-                      ),
-                    ),
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(12),
-                        onTap: () => _deleteSpace(space),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              width: 32,
-                              height: 32,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFDC3545)
-                                    .withValues(alpha: 0.15),
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: const Color(0xFFDC3545)
-                                      .withValues(alpha: 0.3),
-                                  width: 0.5,
-                                ),
-                              ),
-                              child: const Icon(
-                                Icons.delete_outline,
-                                color: Color(0xFFDC3545),
-                                size: 16,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            const Text(
-                              'Delete',
-                              style: TextStyle(
-                                color: Color(0xFFDC3545),
-                                fontSize: 11,
-                                fontWeight: FontWeight.w400,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            child: GestureDetector(
-              onLongPress: () {
-                if (!_isSelectionMode) {
-                  _enterSelectionMode(space.id);
-                }
-              },
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: _isSelectionMode
-                      ? () => _toggleSelection(space.id)
-                      : () => _navigateToSpaceReminders(space),
-                  borderRadius: BorderRadius.circular(16),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    height: 80,
-                    decoration: BoxDecoration(
-                      color: space.color,
-                      borderRadius: BorderRadius.circular(16),
-                      border: isSelected
-                          ? Border.all(
-                              color: isDark ? Colors.white : Colors.black,
-                              width: 2,
-                            )
-                          : null,
-                      boxShadow: [
-                        BoxShadow(
-                          color: space.color.withValues(alpha: 0.3),
-                          blurRadius: 8,
-                          offset: const Offset(0, 4),
-                        ),
-                        BoxShadow(
-                          color: isDark
-                              ? Colors.black.withValues(alpha: 0.2)
-                              : Colors.white.withValues(alpha: 0.8),
-                          blurRadius: 1,
-                          offset: const Offset(0, 1),
-                        ),
-                      ],
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Row(
-                        children: [
-                          // Always show the original icon
-                          Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: textColor.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Icon(
-                              space.icon,
-                              size: 20,
-                              color: textColor,
-                            ),
+            // Space card
+            Expanded(
+              child: Slidable(
+                key: ValueKey(space.id),
+                enabled: !_isSelectionMode,
+                endActionPane: ActionPane(
+                  motion: const BehindMotion(),
+                  extentRatio: 0.35,
+                  children: [
+                    // Edit Action
+                    Expanded(
+                      child: Container(
+                        margin: const EdgeInsets.only(
+                            left: 4, right: 2, top: 2, bottom: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1A1A1A),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.1),
+                            width: 0.5,
                           ),
-
-                          const SizedBox(width: 16),
-
-                          // Content section
-                          Expanded(
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () => _editSpace(space),
                             child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
                               mainAxisAlignment: MainAxisAlignment.center,
-                              mainAxisSize: MainAxisSize.min,
                               children: [
-                                Flexible(
-                                  child: Text(
-                                    space.name,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleMedium
-                                        ?.copyWith(
-                                          fontWeight: FontWeight.w700,
-                                          color: textColor,
-                                          letterSpacing: -0.3,
-                                        ),
-                                    overflow: TextOverflow.ellipsis,
-                                    maxLines: 1,
+                                Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.1),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.edit_outlined,
+                                    color: Colors.white,
+                                    size: 16,
                                   ),
                                 ),
-                                const SizedBox(height: 2),
-                                Flexible(
-                                  child: FutureBuilder<int>(
-                                    future:
-                                        StorageService.getSpaceReminderCount(
-                                            space.id),
-                                    builder: (context, snapshot) {
-                                      final count = snapshot.data ?? 0;
-                                      return Text(
-                                        '$count reminder${count == 1 ? '' : 's'}',
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .bodySmall
-                                            ?.copyWith(
-                                              color: textColor.withValues(
-                                                  alpha: 0.8),
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                        overflow: TextOverflow.ellipsis,
-                                        maxLines: 1,
-                                      );
-                                    },
+                                const SizedBox(height: 4),
+                                const Text(
+                                  'Edit',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w400,
                                   ),
                                 ),
                               ],
                             ),
                           ),
-
-                          // Action indicator (only when not in selection mode)
-                          if (!_isSelectionMode)
-                            Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: textColor.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Icon(
-                                Icons.arrow_forward_ios,
-                                size: 14,
-                                color: textColor.withValues(alpha: 0.8),
-                              ),
-                            ),
-                        ],
+                        ),
                       ),
                     ),
+
+                    // Delete Action
+                    Expanded(
+                      child: Container(
+                        margin: const EdgeInsets.only(
+                            left: 2, right: 4, top: 2, bottom: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1A1A1A),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.1),
+                            width: 0.5,
+                          ),
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () => _deleteSpace(space),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFDC3545)
+                                        .withValues(alpha: 0.15),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.delete_outline,
+                                    color: Color(0xFFDC3545),
+                                    size: 16,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                const Text(
+                                  'Delete',
+                                  style: TextStyle(
+                                    color: Color(0xFFDC3545),
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w400,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                child: GestureDetector(
+                  onLongPress: () {
+                    if (!_isSelectionMode) {
+                      HapticFeedback.mediumImpact();
+                      _enterSelectionMode(space.id);
+                      _startWiggle(space.id);
+                    }
+                  },
+                  child: AnimatedBuilder(
+                    animation: _wiggleController,
+                    builder: (context, child) {
+                      // Simple wiggle transform - ONLY for spaces that should wiggle
+                      double rotation = 0.0;
+                      double translateX = 0.0;
+
+                      if (isWiggling && _wiggleController.isAnimating) {
+                        rotation = ((_wiggleController.value - 0.5) *
+                            0.02); // Small rotation
+                        translateX = ((_wiggleController.value - 0.5) *
+                            2); // Small horizontal movement
+                      }
+
+                      return Transform(
+                        alignment: Alignment.center,
+                        transform: Matrix4.identity()
+                          ..rotateZ(rotation)
+                          ..translate(translateX),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: _isSelectionMode
+                                ? () => _toggleSelection(space.id)
+                                : () => _navigateToSpaceReminders(space),
+                            borderRadius: BorderRadius.circular(16),
+                            child: Container(
+                              height: cardHeight,
+                              decoration: BoxDecoration(
+                                color: space.color,
+                                borderRadius: BorderRadius.circular(16),
+                                border: isSelected
+                                    ? Border.all(
+                                        color: isDark
+                                            ? Colors.white
+                                            : Colors.black,
+                                        width: 2,
+                                      )
+                                    : null,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: space.color.withValues(alpha: 0.3),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              child: Padding(
+                                padding:
+                                    EdgeInsets.all(isSmallScreen ? 16 : 20),
+                                child: Row(
+                                  children: [
+                                    // Icon container
+                                    Container(
+                                      width: iconSize,
+                                      height: iconSize,
+                                      decoration: BoxDecoration(
+                                        color: textColor.withValues(alpha: 0.2),
+                                        borderRadius: BorderRadius.circular(
+                                            isSmallScreen ? 8 : 10),
+                                      ),
+                                      child: Icon(
+                                        space.icon,
+                                        size: isSmallScreen ? 18 : 20,
+                                        color: textColor,
+                                      ),
+                                    ),
+
+                                    SizedBox(width: isSmallScreen ? 12 : 16),
+
+                                    // Text content - FIXED LAYOUT
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          // Space name with proper spacing
+                                          Text(
+                                            space.name,
+                                            style: TextStyle(
+                                              fontSize: titleFontSize,
+                                              fontWeight: FontWeight.w700,
+                                              color: textColor,
+                                              letterSpacing: -0.3,
+                                              height: 1.2, // Proper line height
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                            maxLines: 1,
+                                          ),
+
+                                          // Add proper spacing between title and subtitle
+                                          SizedBox(
+                                              height: isSmallScreen ? 2 : 4),
+
+                                          // Reminder count with proper spacing
+                                          FutureBuilder<int>(
+                                            future: StorageService
+                                                .getSpaceReminderCount(
+                                                    space.id),
+                                            builder: (context, snapshot) {
+                                              final count = snapshot.data ?? 0;
+                                              return Text(
+                                                '$count reminder${count == 1 ? '' : 's'}',
+                                                style: TextStyle(
+                                                  fontSize: subtitleFontSize,
+                                                  color: textColor.withValues(
+                                                      alpha: 0.8),
+                                                  fontWeight: FontWeight.w500,
+                                                  height:
+                                                      1.2, // Proper line height
+                                                ),
+                                                overflow: TextOverflow.ellipsis,
+                                                maxLines: 1,
+                                              );
+                                            },
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+
+                                    // Arrow indicator
+                                    if (!_isSelectionMode) ...[
+                                      SizedBox(width: isSmallScreen ? 8 : 12),
+                                      Container(
+                                        padding: EdgeInsets.all(
+                                            isSmallScreen ? 4 : 6),
+                                        decoration: BoxDecoration(
+                                          color:
+                                              textColor.withValues(alpha: 0.1),
+                                          borderRadius:
+                                              BorderRadius.circular(6),
+                                        ),
+                                        child: Icon(
+                                          Icons.arrow_forward_ios_rounded,
+                                          size: isSmallScreen ? 12 : 14,
+                                          color:
+                                              textColor.withValues(alpha: 0.8),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ),
               ),
             ),
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     );
   }
 
