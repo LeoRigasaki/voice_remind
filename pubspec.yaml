@@ -1,6 +1,6 @@
 name: voice_remind
 description: A beautiful voice-first reminder application
-version: 1.0.3+1
+version: 1.0.4+1
 
 environment:
   sdk: '>=3.5.0 <4.0.0'
