@@ -13,6 +13,9 @@ import 'filtered_reminders_screen.dart';
 import '../models/space.dart';
 import '../services/spaces_service.dart';
 import '../widgets/search_widget.dart';
+import '../widgets/filter_bottom_sheet.dart';
+import '../models/filter_state.dart';
+import '../models/sort_option.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -39,6 +42,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   // Stream subscription for real-time updates
   late final Stream<List<Reminder>> _remindersStream;
+  FilterState _filterState = const FilterState();
 
   @override
   void initState() {
@@ -1072,6 +1076,199 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
+  Widget _buildFilterButton() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final hasFilters = _filterState.hasActiveFilters;
+
+    return Container(
+      height: 44,
+      decoration: BoxDecoration(
+        color: hasFilters
+            ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.1)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: hasFilters
+              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)
+              : Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
+          width: hasFilters ? 1.0 : 0.5,
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: _showFilterBottomSheet,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                // Dynamic sort icon based on current sort
+                Icon(
+                  SortOption.getIconForType(_filterState.sortOption.type),
+                  size: 18,
+                  color: hasFilters
+                      ? Theme.of(context).colorScheme.primary
+                      : (isDark
+                          ? const Color(0xFF8E8E93)
+                          : const Color(0xFF6D6D70)),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Filter',
+                  style: TextStyle(
+                    color: hasFilters
+                        ? Theme.of(context).colorScheme.primary
+                        : (isDark
+                            ? const Color(0xFF8E8E93)
+                            : const Color(0xFF6D6D70)),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+                const Spacer(),
+                if (hasFilters)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      _getActiveFilterCount().toString(),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onPrimary,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                Icon(
+                  Icons.tune_outlined,
+                  size: 16,
+                  color: hasFilters
+                      ? Theme.of(context).colorScheme.primary
+                      : (isDark
+                          ? const Color(0xFF8E8E93)
+                          : const Color(0xFF6D6D70)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActiveFilterChip() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
+          width: 0.5,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.filter_alt_outlined,
+            size: 14,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            _getActiveFilterSummary(),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.primary,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              letterSpacing: 0.2,
+            ),
+          ),
+          const SizedBox(width: 6),
+          GestureDetector(
+            onTap: _clearAllFilters,
+            child: Icon(
+              Icons.close,
+              size: 14,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showFilterBottomSheet() {
+    HapticFeedback.lightImpact();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => FilterBottomSheet(
+        initialState: _filterState,
+        onApply: _applyFilters,
+        onRefresh: _clearAllFilters,
+        onSearch: _handleFilterSearch,
+      ),
+    );
+  }
+
+  void _applyFilters(FilterState newState) {
+    setState(() {
+      _filterState = newState;
+    });
+    // The StreamBuilder will automatically update with the new filters
+  }
+
+  void _clearAllFilters() {
+    HapticFeedback.lightImpact();
+    setState(() {
+      _filterState = _filterState.reset();
+    });
+  }
+
+  void _handleFilterSearch(String query) {
+    setState(() {
+      _filterState = _filterState.copyWith(searchQuery: query);
+    });
+  }
+
+  int _getActiveFilterCount() {
+    int count = 0;
+    if (_filterState.status != FilterStatus.all) count++;
+    if (_filterState.selectedSpaceId != null) count++;
+    if (_filterState.dateRange != FilterDateRange.allTime) count++;
+    if (_filterState.timeOfDay != FilterTimeOfDay.anyTime) count++;
+    if (_filterState.searchQuery.isNotEmpty) count++;
+    return count;
+  }
+
+  String _getActiveFilterSummary() {
+    List<String> active = [];
+    if (_filterState.status != FilterStatus.all) {
+      active.add(_filterState.statusLabel);
+    }
+    if (_filterState.dateRange != FilterDateRange.allTime) {
+      active.add(_filterState.dateRangeLabel);
+    }
+    if (_filterState.selectedSpaceId != null) {
+      active.add('Space');
+    }
+
+    if (active.isEmpty) return 'Active';
+    if (active.length == 1) return active.first;
+    return '${active.length} filters';
+  }
+
   // Responsive helper methods for auto-scaling
   double _getResponsivePadding(double cardWidth) {
     if (cardWidth < 70) return 6.0; // Very narrow cards
@@ -1117,42 +1314,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         margin: const EdgeInsets.fromLTRB(16, 20, 16, 8),
         child: Row(
           children: [
-            _buildSmallFilterButton('Today', Icons.today_outlined, () {
-              // Filter today's reminders
-              final today = DateTime.now();
-              final todayReminders = _reminders.where((r) {
-                return r.scheduledTime.year == today.year &&
-                    r.scheduledTime.month == today.month &&
-                    r.scheduledTime.day == today.day;
-              }).toList();
+            // Pinned quick filters (if any are active)
+            if (_filterState.hasActiveFilters) ...[
+              _buildActiveFilterChip(),
+              const SizedBox(width: 8),
+            ],
 
-              _showFilteredResults('Today', todayReminders);
-            }),
-            const SizedBox(width: 8),
-            _buildSmallFilterButton('This Week', Icons.date_range_outlined, () {
-              // Filter this week's reminders
-              final now = DateTime.now();
-              final weekStart = now.subtract(Duration(days: now.weekday - 1));
-              final weekEnd = weekStart.add(const Duration(days: 6));
-
-              final weekReminders = _reminders.where((r) {
-                return r.scheduledTime.isAfter(weekStart) &&
-                    r.scheduledTime
-                        .isBefore(weekEnd.add(const Duration(days: 1)));
-              }).toList();
-
-              _showFilteredResults('This Week', weekReminders);
-            }),
-            const SizedBox(width: 8),
-            _buildSmallFilterButton('Recent', Icons.history_outlined, () {
-              // Show recently completed
-              final recentCompleted =
-                  _reminders.where((r) => r.isCompleted).take(10).toList();
-
-              _showFilteredResults('Recently Completed', recentCompleted);
-            }),
-            const SizedBox(width: 8),
-            _buildAdvancedFilterButton(),
+            // Main Filter Button
+            Expanded(
+              child: _buildFilterButton(),
+            ),
           ],
         ),
       ),
@@ -2326,9 +2497,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   _isLoading = false;
                 }
 
-                // Filter reminders
+                // Apply filters using the new filter state
                 List<Reminder> displayReminders;
                 if (_searchQuery.isNotEmpty) {
+                  // Legacy search mode
                   displayReminders = _reminders.where((reminder) {
                     final titleMatch = reminder.title
                         .toLowerCase()
@@ -2340,7 +2512,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     return titleMatch || descriptionMatch;
                   }).toList();
                 } else {
-                  displayReminders = _reminders;
+                  // Use new filter system
+                  displayReminders = _filterState.applyFilters(_reminders);
                 }
 
                 return CustomScrollView(
