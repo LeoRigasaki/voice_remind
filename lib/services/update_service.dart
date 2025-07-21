@@ -1,8 +1,12 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class UpdateService {
   static const String _githubApiUrl =
@@ -57,10 +61,23 @@ class UpdateService {
         final publishedAt = latestRelease['published_at']?.toString() ?? '';
         final isPrerelease = latestRelease['prerelease'] ?? false;
 
+        // **NEW: Find APK download URL**
+        String? apkDownloadUrl;
+        final assets = latestRelease['assets'] as List<dynamic>? ?? [];
+
+        for (final asset in assets) {
+          final assetName = asset['name']?.toString() ?? '';
+          if (assetName.toLowerCase().endsWith('.apk')) {
+            apkDownloadUrl = asset['browser_download_url']?.toString();
+            break;
+          }
+        }
+
         if (kDebugMode) {
           print('Current version: $currentVersion');
           print('Latest version: $latestVersion');
           print('Is prerelease: $isPrerelease');
+          print('APK download URL: $apkDownloadUrl');
         }
 
         // Store last check time
@@ -79,6 +96,7 @@ class UpdateService {
           publishedAt: publishedAt,
           success: true,
           isPrerelease: isPrerelease,
+          apkDownloadUrl: apkDownloadUrl,
         );
       } else if (response.statusCode == 404) {
         return UpdateResult(
@@ -100,6 +118,130 @@ class UpdateService {
         success: false,
         error: 'Network error: ${e.toString()}\n'
             'API URL: $_githubApiUrl',
+      );
+    }
+  }
+
+  // **NEW: Download APK file**
+  static Future<DownloadResult> downloadApk(
+    String downloadUrl,
+    Function(double progress) onProgress,
+  ) async {
+    try {
+      // Request storage permission
+      final storagePermission = await Permission.storage.request();
+      if (storagePermission != PermissionStatus.granted) {
+        return DownloadResult(
+          success: false,
+          error: 'Storage permission is required to download the update',
+        );
+      }
+
+      // Get downloads directory
+      final directory = await getExternalStorageDirectory();
+      if (directory == null) {
+        return DownloadResult(
+          success: false,
+          error: 'Unable to access storage directory',
+        );
+      }
+
+      // Create file path
+      const fileName = 'voice_remind_update.apk';
+      final filePath = '${directory.path}/$fileName';
+      final file = File(filePath);
+
+      // Delete existing file if it exists
+      if (await file.exists()) {
+        await file.delete();
+      }
+
+      if (kDebugMode) {
+        print('Downloading APK to: $filePath');
+      }
+
+      // Download with progress tracking
+      final request = http.Request('GET', Uri.parse(downloadUrl));
+      final streamedResponse = await request.send();
+
+      if (streamedResponse.statusCode != 200) {
+        return DownloadResult(
+          success: false,
+          error: 'Download failed with status ${streamedResponse.statusCode}',
+        );
+      }
+
+      final contentLength = streamedResponse.contentLength ?? 0;
+      int downloadedBytes = 0;
+
+      final sink = file.openWrite();
+
+      await streamedResponse.stream.listen(
+        (chunk) {
+          sink.add(chunk);
+          downloadedBytes += chunk.length;
+
+          if (contentLength > 0) {
+            final progress = downloadedBytes / contentLength;
+            onProgress(progress);
+          }
+        },
+        onDone: () async {
+          await sink.close();
+        },
+        onError: (error) async {
+          await sink.close();
+          throw error;
+        },
+      ).asFuture();
+
+      if (kDebugMode) {
+        print('APK downloaded successfully to: $filePath');
+      }
+
+      return DownloadResult(
+        success: true,
+        filePath: filePath,
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        print('Download error: $e');
+      }
+      return DownloadResult(
+        success: false,
+        error: 'Download failed: ${e.toString()}',
+      );
+    }
+  }
+
+  // **NEW: Install APK file**
+  static Future<InstallResult> installApk(String filePath) async {
+    try {
+      // Request install permission
+      final installPermission =
+          await Permission.requestInstallPackages.request();
+      if (installPermission != PermissionStatus.granted) {
+        return InstallResult(
+          success: false,
+          error: 'Install permission is required to install the update',
+        );
+      }
+
+      // Open APK file for installation
+      final result = await OpenFilex.open(filePath);
+
+      if (result.type == ResultType.done) {
+        return InstallResult(success: true);
+      } else {
+        return InstallResult(
+          success: false,
+          error: 'Failed to open APK installer: ${result.message}',
+        );
+      }
+    } catch (e) {
+      return InstallResult(
+        success: false,
+        error: 'Installation failed: ${e.toString()}',
       );
     }
   }
@@ -273,6 +415,7 @@ class UpdateResult {
   final String publishedAt;
   final String? error;
   final bool isPrerelease;
+  final String? apkDownloadUrl; // **NEW: APK download URL**
 
   UpdateResult({
     this.success = false,
@@ -284,12 +427,37 @@ class UpdateResult {
     this.publishedAt = '',
     this.error,
     this.isPrerelease = false,
+    this.apkDownloadUrl, // **NEW**
   });
 
   @override
   String toString() {
     return 'UpdateResult(success: $success, isUpdateAvailable: $isUpdateAvailable, '
         'currentVersion: $currentVersion, latestVersion: $latestVersion, '
-        'isPrerelease: $isPrerelease, error: $error)';
+        'isPrerelease: $isPrerelease, apkDownloadUrl: $apkDownloadUrl, error: $error)';
   }
+}
+
+// **NEW: Download result class**
+class DownloadResult {
+  final bool success;
+  final String? filePath;
+  final String? error;
+
+  DownloadResult({
+    required this.success,
+    this.filePath,
+    this.error,
+  });
+}
+
+// **NEW: Install result class**
+class InstallResult {
+  final bool success;
+  final String? error;
+
+  InstallResult({
+    required this.success,
+    this.error,
+  });
 }

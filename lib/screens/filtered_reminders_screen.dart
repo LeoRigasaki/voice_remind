@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:intl/intl.dart';
+import 'package:voice_remind/models/space.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import '../models/reminder.dart';
@@ -72,25 +73,6 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
 
     // Start fade animation
     _fadeController.forward();
-  }
-
-  String _getFilterTitle() {
-    switch (widget.filterType) {
-      case FilterType.total:
-        return 'All Reminders';
-      case FilterType.pending:
-        return 'Pending';
-      case FilterType.completed:
-        return 'Completed';
-      case FilterType.overdue:
-        return 'Overdue';
-      case FilterType.today:
-        return 'Today';
-      case FilterType.thisWeek:
-        return 'This Week';
-      case FilterType.recent:
-        return 'Recently Completed';
-    }
   }
 
   @override
@@ -509,26 +491,17 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.customTitle ?? _getFilterTitle()),
-        leading: IconButton(
-          icon: Icon(widget.customIcon ?? Icons.arrow_back),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        backgroundColor: widget.customColor?.withValues(alpha: 0.1),
-        elevation: 0,
-      ),
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       floatingActionButton: _spaceId != null ? _buildSpaceFAB() : null,
       body: CustomScrollView(
         slivers: [
-          // Enhanced app bar with selection mode support
           SliverAppBar(
             expandedHeight: _isSelectionMode ? 140 : 120,
             floating: true,
             snap: true,
             elevation: 0,
-            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+            backgroundColor: widget.customColor?.withValues(alpha: 0.1) ??
+                Theme.of(context).scaffoldBackgroundColor,
             surfaceTintColor: Colors.transparent,
             leading: Container(
               margin: const EdgeInsets.only(left: 16, top: 8, bottom: 8),
@@ -562,7 +535,6 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
             ),
             actions: _isSelectionMode
                 ? [
-                    // Bulk action buttons
                     Container(
                       margin: const EdgeInsets.only(right: 4),
                       decoration: BoxDecoration(
@@ -646,18 +618,18 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
                     )
                   : Row(
                       children: [
-                        // Nothing-style accent indicator
+                        // Custom title with accent indicator
                         Container(
                           width: 3,
                           height: 24,
                           decoration: BoxDecoration(
-                            color: _accentColor,
+                            color: widget.customColor ?? _accentColor,
                             borderRadius: BorderRadius.circular(2),
                           ),
                         ),
                         const SizedBox(width: 12),
                         Text(
-                          _screenTitle,
+                          widget.customTitle ?? _screenTitle,
                           style: Theme.of(context)
                               .textTheme
                               .headlineLarge
@@ -686,10 +658,12 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
                         padding: const EdgeInsets.symmetric(
                             horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
-                          color: _accentColor.withValues(alpha: 0.1),
+                          color: (widget.customColor ?? _accentColor)
+                              .withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
-                            color: _accentColor.withValues(alpha: 0.3),
+                            color: (widget.customColor ?? _accentColor)
+                                .withValues(alpha: 0.3),
                             width: 0.5,
                           ),
                         ),
@@ -697,15 +671,15 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
-                              _screenIcon,
+                              widget.customIcon ?? _screenIcon,
                               size: 16,
-                              color: _accentColor,
+                              color: widget.customColor ?? _accentColor,
                             ),
                             const SizedBox(width: 6),
                             Text(
                               _filteredReminders.length.toString(),
                               style: TextStyle(
-                                color: _accentColor,
+                                color: widget.customColor ?? _accentColor,
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
                                 letterSpacing: 0.5,
@@ -1012,9 +986,8 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
               _enterSelectionMode(reminder.id);
             }
           },
-          // Enhanced long press with reduced delay
           onLongPressStart: (details) {
-            HapticFeedback.selectionClick(); // Immediate feedback
+            HapticFeedback.selectionClick();
           },
           child: Container(
             decoration: BoxDecoration(
@@ -1037,7 +1010,7 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
                 borderRadius: BorderRadius.circular(16),
                 onTap: _isSelectionMode
                     ? () => _toggleSelection(reminder.id)
-                    : null, // Remove main card tap when not in selection mode
+                    : null,
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
@@ -1045,8 +1018,8 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
                     children: [
                       Row(
                         children: [
-                          // Selection checkbox or status indicator
-                          if (_isSelectionMode)
+                          // Selection checkbox (ONLY in selection mode)
+                          if (_isSelectionMode) ...[
                             Container(
                               width: 20,
                               height: 20,
@@ -1067,48 +1040,65 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
                                       size: 14,
                                     )
                                   : null,
-                            )
-                          else
-                            // Nothing-style status indicator
-                            Container(
-                              width: 12,
-                              height: 12,
-                              decoration: BoxDecoration(
-                                color: statusColor.withValues(alpha: 0.2),
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: statusColor,
-                                  width: 1.5,
-                                ),
-                              ),
-                              child: reminder.isCompleted
-                                  ? Icon(
-                                      Icons.check,
-                                      color: statusColor,
-                                      size: 8,
-                                    )
-                                  : null,
                             ),
-                          const SizedBox(width: 12),
+                            const SizedBox(width: 12),
+                          ],
 
-                          // Title
+                          // Title and Space Name Column
                           Expanded(
-                            child: Text(
-                              reminder.title,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleMedium
-                                  ?.copyWith(
-                                    decoration: reminder.isCompleted
-                                        ? TextDecoration.lineThrough
-                                        : null,
-                                    fontWeight: FontWeight.w500,
-                                    fontSize: 16,
-                                    letterSpacing: -0.2,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Title
+                                Text(
+                                  reminder.title,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleMedium
+                                      ?.copyWith(
+                                        decoration: reminder.isCompleted
+                                            ? TextDecoration.lineThrough
+                                            : null,
+                                        fontWeight: FontWeight.w500,
+                                        fontSize: 16,
+                                        letterSpacing: -0.2,
+                                      ),
+                                ),
+
+                                // Space Name (Option 2 implementation)
+                                if (reminder.spaceId != null) ...[
+                                  const SizedBox(height: 4),
+                                  FutureBuilder<Space?>(
+                                    future: SpacesService.getSpaceById(
+                                        reminder.spaceId!),
+                                    builder: (context, snapshot) {
+                                      if (snapshot.hasData &&
+                                          snapshot.data != null) {
+                                        return Text(
+                                          snapshot.data!.name,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall
+                                              ?.copyWith(
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .onSurface
+                                                    .withValues(alpha: 0.6),
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w400,
+                                                letterSpacing: 0.2,
+                                              ),
+                                        );
+                                      }
+                                      return const SizedBox.shrink();
+                                    },
                                   ),
+                                ],
+                              ],
                             ),
                           ),
 
+                          // Progress Circle (ONLY when not in selection mode)
                           if (!_isSelectionMode) ...[
                             const SizedBox(width: 8),
                             Column(
