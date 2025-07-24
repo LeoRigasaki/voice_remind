@@ -10,7 +10,6 @@ import '../services/storage_service.dart';
 import '../widgets/update_dialog.dart';
 
 class SettingsScreen extends StatefulWidget {
-  // Add a parameter to detect navigation method
   final bool isFromNavbar;
 
   const SettingsScreen({
@@ -35,8 +34,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _selectedAIProvider = 'none';
   bool _hasGeminiKey = false;
   bool _hasGroqKey = false;
-  String _geminiKeyStatus = 'Not configured';
-  String _groqKeyStatus = 'Not configured';
 
   @override
   void initState() {
@@ -51,20 +48,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     });
 
-    // Load update settings
-    _loadUpdateSettings();
+    _loadSettings();
+  }
 
-    // Load AI settings
-    _loadAISettings();
+  Future<void> _loadSettings() async {
+    await Future.wait([
+      _loadUpdateSettings(),
+      _loadAISettings(),
+    ]);
   }
 
   Future<void> _loadUpdateSettings() async {
     try {
-      // Load update settings
       final autoCheck = await UpdateService.getAutoCheckEnabled();
       final lastCheck = await UpdateService.getLastCheckTime();
-
-      // Get current app version
       final packageInfo = await PackageInfo.fromPlatform();
 
       if (mounted) {
@@ -90,13 +87,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _hasGeminiKey = geminiKey?.isNotEmpty == true;
           _hasGroqKey = groqKey?.isNotEmpty == true;
           _selectedAIProvider = selectedProvider ?? 'none';
-
-          _geminiKeyStatus = _hasGeminiKey
-              ? 'Configured (${geminiKey!.substring(0, 8)}...)'
-              : 'Not configured';
-          _groqKeyStatus = _hasGroqKey
-              ? 'Configured (${groqKey!.substring(0, 8)}...)'
-              : 'Not configured';
         });
       }
     } catch (e) {
@@ -109,7 +99,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Settings'),
-        // Only show back button if not from navbar OR if we can actually pop
         leading: widget.isFromNavbar
             ? null
             : (Navigator.canPop(context)
@@ -118,842 +107,565 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     onPressed: () => Navigator.of(context).pop(),
                   )
                 : null),
-        // Add automaticallyImplyLeading to prevent default back button
         automaticallyImplyLeading:
             !widget.isFromNavbar && Navigator.canPop(context),
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         children: [
-          // AI Settings Section
-          _buildSectionHeader('AI Configuration'),
+          // AI Configuration
+          _buildCleanSettingTile(
+            icon: Icons.auto_awesome,
+            title: 'AI Configuration',
+            subtitle: _getAIStatusText(),
+            onTap: () => _navigateToAISettings(),
+          ),
+
           const SizedBox(height: 8),
-          _buildAISettings(),
 
-          const SizedBox(height: 32),
+          // Appearance
+          _buildCleanSettingTile(
+            icon: Icons.palette_outlined,
+            title: 'Appearance',
+            subtitle: 'Change the vibe of your app',
+            onTap: () => _navigateToAppearanceSettings(),
+          ),
 
-          // Appearance Section
-          _buildSectionHeader('Appearance'),
           const SizedBox(height: 8),
-          _buildThemeDropdown(),
 
-          const SizedBox(height: 32),
+          // Notifications
+          _buildCleanSettingTile(
+            icon: Icons.notifications_outlined,
+            title: 'Notifications',
+            subtitle: 'Reminder and alert settings',
+            onTap: () => _showComingSoonSnackBar('Notifications'),
+          ),
 
-          // Notifications Section
-          _buildSectionHeader('Notifications'),
           const SizedBox(height: 8),
-          _buildNotificationSettings(),
 
-          const SizedBox(height: 32),
+          // Voice Settings
+          _buildCleanSettingTile(
+            icon: Icons.mic_outlined,
+            title: 'Voice',
+            subtitle: 'Voice recognition and playback',
+            onTap: () => _showComingSoonSnackBar('Voice settings'),
+          ),
 
-          // Voice Settings Section (for future)
-          _buildSectionHeader('Voice'),
           const SizedBox(height: 8),
-          _buildVoiceSettings(),
 
-          const SizedBox(height: 32),
+          // Data Management
+          _buildCleanSettingTile(
+            icon: Icons.storage_outlined,
+            title: 'Data',
+            subtitle: 'Export, import, and manage your data',
+            onTap: () => _navigateToDataSettings(),
+          ),
 
-          // Data Section
-          _buildSectionHeader('Data'),
           const SizedBox(height: 8),
-          _buildDataSettings(),
 
-          const SizedBox(height: 32),
+          // App Updates
+          _buildCleanSettingTile(
+            icon: Icons.system_update_alt_outlined,
+            title: 'App Updates',
+            subtitle: 'Version $_currentVersion • Check for updates',
+            onTap: () => _navigateToUpdateSettings(),
+          ),
 
-          // App Updates Section
-          _buildSectionHeader('App Updates'),
           const SizedBox(height: 8),
-          _buildUpdateSettings(),
 
-          const SizedBox(height: 32),
-
-          // About Section
-          _buildSectionHeader('About'),
-          const SizedBox(height: 8),
-          _buildAboutSettings(),
+          // About
+          _buildCleanSettingTile(
+            icon: Icons.info_outline,
+            title: 'About',
+            subtitle: 'App info, help, and privacy',
+            onTap: () => _navigateToAboutSettings(),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildSectionHeader(String title) {
-    return Text(
-      title,
-      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w600,
-            letterSpacing: -0.3,
-          ),
-    );
-  }
-
-  Widget _buildAISettings() {
-    return Column(
-      children: [
-        // AI Provider Selection
-        Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color:
-                  Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
-              width: 1,
-            ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: _selectedAIProvider,
-                isExpanded: true,
-                icon: const Icon(Icons.expand_more),
-                hint: const Text('Select AI Provider'),
-                onChanged: (String? newProvider) {
-                  if (newProvider != null) {
-                    _updateAIProvider(newProvider);
-                  }
-                },
-                items: [
-                  DropdownMenuItem<String>(
-                    value: 'none',
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.cancel_outlined,
-                          size: 20,
-                          color: Theme.of(context).colorScheme.outline,
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          'No AI Provider',
-                          style: Theme.of(context).textTheme.bodyLarge,
-                        ),
-                      ],
-                    ),
-                  ),
-                  DropdownMenuItem<String>(
-                    value: 'gemini',
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.auto_awesome,
-                          size: 20,
-                          color: _hasGeminiKey
-                              ? Colors.green
-                              : Theme.of(context).colorScheme.outline,
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          'Google Gemini',
-                          style: Theme.of(context).textTheme.bodyLarge,
-                        ),
-                        if (_hasGeminiKey) ...[
-                          const Spacer(),
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: const BoxDecoration(
-                              color: Colors.green,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  DropdownMenuItem<String>(
-                    value: 'groq',
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.flash_on,
-                          size: 20,
-                          color: _hasGroqKey
-                              ? Colors.blue
-                              : Theme.of(context).colorScheme.outline,
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          'Groq',
-                          style: Theme.of(context).textTheme.bodyLarge,
-                        ),
-                        if (_hasGroqKey) ...[
-                          const Spacer(),
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: const BoxDecoration(
-                              color: Colors.blue,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ].map((item) {
-                  return DropdownMenuItem<String>(
-                    value: item.value,
-                    child: item.child,
-                  );
-                }).toList(),
-              ),
-            ),
-          ),
-        ),
-
-        const SizedBox(height: 8),
-
-        // Gemini API Key Configuration
-        _buildSettingsTile(
-          icon: Icons.auto_awesome,
-          title: 'Gemini API Key',
-          subtitle: _geminiKeyStatus,
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (_hasGeminiKey)
-                IconButton(
-                  onPressed: () => _removeApiKey('gemini'),
-                  icon: const Icon(Icons.delete_outline, size: 20),
-                  style: IconButton.styleFrom(
-                    foregroundColor: Theme.of(context).colorScheme.error,
-                  ),
-                ),
-              IconButton(
-                onPressed: () => _showAPIKeyDialog('gemini'),
-                icon: Icon(
-                  _hasGeminiKey ? Icons.edit : Icons.add,
-                  size: 20,
-                ),
-              ),
-            ],
-          ),
-          onTap: () => _showAPIKeyDialog('gemini'),
-        ),
-
-        const SizedBox(height: 8),
-
-        // Groq API Key Configuration
-        _buildSettingsTile(
-          icon: Icons.flash_on,
-          title: 'Groq API Key',
-          subtitle: _groqKeyStatus,
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (_hasGroqKey)
-                IconButton(
-                  onPressed: () => _removeApiKey('groq'),
-                  icon: const Icon(Icons.delete_outline, size: 20),
-                  style: IconButton.styleFrom(
-                    foregroundColor: Theme.of(context).colorScheme.error,
-                  ),
-                ),
-              IconButton(
-                onPressed: () => _showAPIKeyDialog('groq'),
-                icon: Icon(
-                  _hasGroqKey ? Icons.edit : Icons.add,
-                  size: 20,
-                ),
-              ),
-            ],
-          ),
-          onTap: () => _showAPIKeyDialog('groq'),
-        ),
-
-        const SizedBox(height: 8),
-
-        // Get API Keys Help
-        _buildSettingsTile(
-          icon: Icons.help_outline,
-          title: 'How to get API Keys',
-          subtitle: 'Free guide to obtain Gemini & Groq API keys',
-          trailing: const Icon(Icons.open_in_new, size: 16),
-          onTap: _showAPIKeyHelpDialog,
-        ),
-
-        const SizedBox(height: 8),
-
-        // Test AI Connection
-        if (_selectedAIProvider != 'none')
-          _buildSettingsTile(
-            icon: Icons.network_check,
-            title: 'Test AI Connection',
-            subtitle: 'Verify your API key is working',
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: _testAIConnection,
-          ),
-      ],
-    );
-  }
-
-  Widget _buildUpdateSettings() {
-    return Column(
-      children: [
-        // Check for Updates Button
-        _buildSettingsTile(
-          icon: _isCheckingForUpdates
-              ? Icons.sync_rounded
-              : Icons.system_update_alt_rounded,
-          title: 'Check for Updates',
-          subtitle: 'Current version: $_currentVersion',
-          trailing: _isCheckingForUpdates
-              ? SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                )
-              : const Icon(Icons.arrow_forward_ios, size: 16),
-          onTap: _isCheckingForUpdates ? null : _checkForUpdates,
-          enabled: !_isCheckingForUpdates,
-        ),
-
-        const SizedBox(height: 8),
-
-        // Auto-check Toggle
-        _buildSwitchTile(
-          icon: Icons.autorenew_rounded,
-          title: 'Auto-check for Updates',
-          subtitle: 'Check for updates automatically on app start',
-          value: _autoCheckUpdates,
-          onChanged: _toggleAutoCheck,
-        ),
-
-        const SizedBox(height: 8),
-
-        // Last Check Time
-        _buildSettingsTile(
-          icon: Icons.history_rounded,
-          title: 'Last Update Check',
-          subtitle: _lastUpdateCheck,
-          trailing: const Icon(Icons.info_outline, size: 16),
-          enabled: false,
-        ),
-
-        const SizedBox(height: 8),
-
-        // GitHub Releases Link
-        _buildSettingsTile(
-          icon: Icons.open_in_new_rounded,
-          title: 'View All Releases',
-          subtitle: 'Browse all versions on GitHub',
-          trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-          onTap: _openGitHubReleases,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildThemeDropdown() {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
-          width: 1,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        child: DropdownButtonHideUnderline(
-          child: DropdownButton<ThemeType>(
-            value: _selectedTheme,
-            isExpanded: true,
-            icon: const Icon(Icons.expand_more),
-            onChanged: (ThemeType? newTheme) {
-              if (newTheme != null) {
-                setState(() {
-                  _selectedTheme = newTheme;
-                });
-                ThemeService.setTheme(newTheme);
-                HapticFeedback.lightImpact();
-              }
-            },
-            items: ThemeType.values.map((ThemeType theme) {
-              return DropdownMenuItem<ThemeType>(
-                value: theme,
-                child: Row(
-                  children: [
-                    Icon(
-                      _getThemeIcon(theme),
-                      size: 20,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      _getThemeName(theme),
-                      style: Theme.of(context).textTheme.bodyLarge,
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-      ),
-    );
-  }
-
-  IconData _getThemeIcon(ThemeType theme) {
-    switch (theme) {
-      case ThemeType.light:
-        return Icons.light_mode_outlined;
-      case ThemeType.dark:
-        return Icons.dark_mode_outlined;
-      case ThemeType.system:
-        return Icons.brightness_auto_outlined;
-    }
-  }
-
-  String _getThemeName(ThemeType theme) {
-    switch (theme) {
-      case ThemeType.light:
-        return 'Light';
-      case ThemeType.dark:
-        return 'Dark';
-      case ThemeType.system:
-        return 'System';
-    }
-  }
-
-  Widget _buildNotificationSettings() {
-    return Column(
-      children: [
-        _buildSettingsTile(
-          icon: Icons.notifications_outlined,
-          title: 'Reminder Notifications',
-          subtitle: 'Coming soon...',
-          trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-          enabled: false,
-        ),
-        const SizedBox(height: 8),
-        _buildSettingsTile(
-          icon: Icons.schedule_outlined,
-          title: 'Smart Timing',
-          subtitle: 'Coming soon...',
-          trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-          enabled: false,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildVoiceSettings() {
-    return Column(
-      children: [
-        _buildSettingsTile(
-          icon: Icons.mic_outlined,
-          title: 'Voice Recognition',
-          subtitle: 'Coming soon...',
-          trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-          enabled: false,
-        ),
-        const SizedBox(height: 8),
-        _buildSettingsTile(
-          icon: Icons.volume_up_outlined,
-          title: 'Voice Playback',
-          subtitle: 'Coming soon...',
-          trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-          enabled: false,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDataSettings() {
-    return Column(
-      children: [
-        _buildSettingsTile(
-          icon: Icons.upload_outlined,
-          title: 'Export Data',
-          subtitle: 'Export your reminders',
-          trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-          onTap: () {
-            // TODO: Implement data export
-            _showComingSoonSnackBar('Export data');
-          },
-        ),
-        const SizedBox(height: 8),
-        _buildSettingsTile(
-          icon: Icons.download_outlined,
-          title: 'Import Data',
-          subtitle: 'Import reminders from file',
-          trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-          onTap: () {
-            // TODO: Implement data import
-            _showComingSoonSnackBar('Import data');
-          },
-        ),
-        const SizedBox(height: 8),
-        _buildSettingsTile(
-          icon: Icons.delete_outline,
-          title: 'Clear All Data',
-          subtitle: 'Delete all reminders',
-          trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-          textColor: Theme.of(context).colorScheme.error,
-          onTap: () {
-            _showClearDataDialog();
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildAboutSettings() {
-    return Column(
-      children: [
-        _buildSettingsTile(
-          icon: Icons.info_outline,
-          title: 'App Information',
-          subtitle: 'Version, build info, and credits',
-          trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-          onTap: () {
-            _showAboutDialog();
-          },
-        ),
-        const SizedBox(height: 8),
-        _buildSettingsTile(
-          icon: Icons.help_outline,
-          title: 'Help & Support',
-          subtitle: 'Get help using VoiceRemind',
-          trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-          onTap: () {
-            _showComingSoonSnackBar('Help & Support');
-          },
-        ),
-        const SizedBox(height: 8),
-        _buildSettingsTile(
-          icon: Icons.privacy_tip_outlined,
-          title: 'Privacy Policy',
-          subtitle: 'How we handle your data',
-          trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-          onTap: () {
-            _showComingSoonSnackBar('Privacy Policy');
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSettingsTile({
+  Widget _buildCleanSettingTile({
     required IconData icon,
     required String title,
     required String subtitle,
-    Widget? trailing,
-    VoidCallback? onTap,
-    Color? textColor,
+    required VoidCallback onTap,
     bool enabled = true,
   }) {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
-          width: 1,
-        ),
+    return ListTile(
+      enabled: enabled,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      leading: Icon(
+        icon,
+        size: 24,
+        color: enabled
+            ? Theme.of(context).colorScheme.primary
+            : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
       ),
-      child: ListTile(
-        enabled: enabled,
-        leading: Icon(
-          icon,
-          color: enabled
-              ? (textColor ?? Theme.of(context).colorScheme.primary)
-              : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
-        ),
-        title: Text(
-          title,
-          style: TextStyle(
-            color: enabled
-                ? (textColor ?? Theme.of(context).colorScheme.onSurface)
-                : Theme.of(context)
-                    .colorScheme
-                    .onSurface
-                    .withValues(alpha: 0.4),
-          ),
-        ),
-        subtitle: Text(
-          subtitle,
-          style: TextStyle(
-            color: enabled
-                ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)
-                : Theme.of(context)
-                    .colorScheme
-                    .onSurface
-                    .withValues(alpha: 0.4),
-          ),
-        ),
-        trailing: trailing,
-        onTap: enabled ? onTap : null,
+      title: Text(
+        title,
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w500,
+              color: enabled
+                  ? Theme.of(context).colorScheme.onSurface
+                  : Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.4),
+            ),
       ),
+      subtitle: Text(
+        subtitle,
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: enabled
+                  ? Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.7)
+                  : Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.4),
+            ),
+      ),
+      trailing: Icon(
+        Icons.arrow_forward_ios,
+        size: 16,
+        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+      ),
+      onTap: enabled ? onTap : null,
     );
   }
 
-  Widget _buildSwitchTile({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-    bool enabled = true,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
-          width: 1,
-        ),
-      ),
-      child: SwitchListTile(
-        secondary: Icon(
-          icon,
-          color: enabled
-              ? Theme.of(context).colorScheme.primary
-              : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
-        ),
-        title: Text(
-          title,
-          style: TextStyle(
-            color: enabled
-                ? Theme.of(context).colorScheme.onSurface
-                : Theme.of(context)
-                    .colorScheme
-                    .onSurface
-                    .withValues(alpha: 0.4),
-          ),
-        ),
-        subtitle: Text(
-          subtitle,
-          style: TextStyle(
-            color: enabled
-                ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)
-                : Theme.of(context)
-                    .colorScheme
-                    .onSurface
-                    .withValues(alpha: 0.4),
-          ),
-        ),
-        value: value,
-        onChanged: enabled ? onChanged : null,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
+  String _getAIStatusText() {
+    if (_selectedAIProvider == 'none') {
+      return 'No AI provider selected';
+    } else if (_selectedAIProvider == 'gemini' && _hasGeminiKey) {
+      return 'Google Gemini configured';
+    } else if (_selectedAIProvider == 'groq' && _hasGroqKey) {
+      return 'Groq configured';
+    } else {
+      return '${_selectedAIProvider.toUpperCase()} - needs API key';
+    }
+  }
+
+  // Navigation methods
+  void _navigateToAISettings() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => _AISettingsPage(
+          selectedProvider: _selectedAIProvider,
+          hasGeminiKey: _hasGeminiKey,
+          hasGroqKey: _hasGroqKey,
+          onProviderChanged: (provider) {
+            setState(() {
+              _selectedAIProvider = provider;
+            });
+          },
+          onKeysChanged: () {
+            _loadAISettings();
+          },
         ),
       ),
     );
   }
 
-  // AI Configuration Methods
-  Future<void> _updateAIProvider(String provider) async {
+  void _navigateToAppearanceSettings() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => _AppearanceSettingsPage(
+          selectedTheme: _selectedTheme,
+          onThemeChanged: (theme) {
+            setState(() {
+              _selectedTheme = theme;
+            });
+            ThemeService.setTheme(theme);
+            HapticFeedback.lightImpact();
+          },
+        ),
+      ),
+    );
+  }
+
+  void _navigateToDataSettings() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const _DataSettingsPage(),
+      ),
+    );
+  }
+
+  void _navigateToUpdateSettings() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => _UpdateSettingsPage(
+          currentVersion: _currentVersion,
+          autoCheckUpdates: _autoCheckUpdates,
+          lastUpdateCheck: _lastUpdateCheck,
+          isCheckingForUpdates: _isCheckingForUpdates,
+          onAutoCheckChanged: (value) {
+            setState(() {
+              _autoCheckUpdates = value;
+            });
+            _toggleAutoCheck(value);
+          },
+          onCheckForUpdates: _checkForUpdates,
+        ),
+      ),
+    );
+  }
+
+  void _navigateToAboutSettings() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => _AboutSettingsPage(
+          currentVersion: _currentVersion,
+        ),
+      ),
+    );
+  }
+
+  // Update-related methods
+  Future<void> _checkForUpdates() async {
+    if (_isCheckingForUpdates) return;
+
     setState(() {
-      _selectedAIProvider = provider;
+      _isCheckingForUpdates = true;
     });
 
-    await StorageService.setSelectedAIProvider(provider);
-
-    if (provider != 'none') {
-      // Check if the selected provider has an API key
-      bool hasKey = false;
-      if (provider == 'gemini' && _hasGeminiKey) {
-        hasKey = true;
-      } else if (provider == 'groq' && _hasGroqKey) {
-        hasKey = true;
-      }
-
-      if (hasKey) {
-        // Reinitialize AI service with selected provider
-        try {
-          await AIReminderService.reinitializeWithStoredKeys();
-          _showSuccessSnackBar(
-              'AI provider updated to ${provider.toUpperCase()}');
-        } catch (e) {
-          _showErrorSnackBar('Failed to initialize $provider: $e');
-          setState(() {
-            _selectedAIProvider = 'none';
-          });
-        }
-      } else {
-        // Prompt user to add API key
-        _showAPIKeyDialog(provider);
-      }
-    } else {
-      _showSuccessSnackBar('AI features disabled');
-    }
-
     HapticFeedback.lightImpact();
+
+    try {
+      final result = await UpdateService.checkForUpdates();
+
+      if (mounted) {
+        setState(() {
+          _isCheckingForUpdates = false;
+          _lastUpdateCheck = 'Just now';
+        });
+
+        if (result.success) {
+          await UpdateDialog.show(context, result, isManualCheck: true);
+        } else {
+          await UpdateErrorDialog.show(
+              context, result.error ?? 'Unknown error');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isCheckingForUpdates = false;
+        });
+        await UpdateErrorDialog.show(
+            context, 'Failed to check for updates: $e');
+      }
+    }
   }
 
-  Future<void> _showAPIKeyDialog(String provider) async {
-    final controller = TextEditingController();
-    final isEdit = provider == 'gemini' ? _hasGeminiKey : _hasGroqKey;
-    bool obscureText = !isEdit; // Show text when editing, hide when adding new
+  Future<void> _toggleAutoCheck(bool value) async {
+    HapticFeedback.lightImpact();
+    await UpdateService.setAutoCheckEnabled(value);
 
-    if (isEdit) {
-      // Load existing key for editing
-      final existingKey = provider == 'gemini'
-          ? await StorageService.getGeminiApiKey()
-          : await StorageService.getGroqApiKey();
-      controller.text = existingKey ?? '';
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            value
+                ? 'Auto-check enabled. App will check for updates daily.'
+                : 'Auto-check disabled.',
+          ),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      );
     }
+  }
 
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          return AlertDialog(
-            title: Text(
-                '${isEdit ? 'Edit' : 'Add'} ${provider.toUpperCase()} API Key'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${provider == 'gemini' ? 'Enter your Google Gemini' : 'Enter your Groq'} API key:',
-                  style: Theme.of(context).textTheme.bodyMedium,
+  // Helper methods
+  void _showComingSoonSnackBar(String feature) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$feature is coming soon!'),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
+  }
+}
+
+// AI Settings Page
+class _AISettingsPage extends StatefulWidget {
+  final String selectedProvider;
+  final bool hasGeminiKey;
+  final bool hasGroqKey;
+  final Function(String) onProviderChanged;
+  final VoidCallback onKeysChanged;
+
+  const _AISettingsPage({
+    required this.selectedProvider,
+    required this.hasGeminiKey,
+    required this.hasGroqKey,
+    required this.onProviderChanged,
+    required this.onKeysChanged,
+  });
+
+  @override
+  State<_AISettingsPage> createState() => _AISettingsPageState();
+}
+
+class _AISettingsPageState extends State<_AISettingsPage> {
+  late String _selectedProvider;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedProvider = widget.selectedProvider;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('AI Configuration'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        children: [
+          // AI Provider Selection
+          Text(
+            'AI Provider',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w500,
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.7),
                 ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: controller,
-                  decoration: InputDecoration(
-                    hintText:
-                        'Paste your ${provider.toUpperCase()} API key here',
-                    border: const OutlineInputBorder(),
-                    prefixIcon: const Icon(Icons.key),
-                    suffixIcon: !isEdit
-                        ? IconButton(
-                            icon: Icon(
-                              obscureText
-                                  ? Icons.visibility
-                                  : Icons.visibility_off,
-                              size: 20,
-                            ),
-                            onPressed: () {
-                              setDialogState(() {
-                                obscureText = !obscureText;
-                              });
-                            },
-                          )
-                        : null,
-                  ),
-                  obscureText: obscureText,
-                  maxLines: 1, // API keys are single line
-                  keyboardType: TextInputType.visiblePassword,
+          ),
+          const SizedBox(height: 8),
+
+          // None option
+          _buildProviderTile(
+            icon: Icons.cancel_outlined,
+            title: 'No AI Provider',
+            subtitle: 'Disable AI features',
+            value: 'none',
+            isSelected: _selectedProvider == 'none',
+            statusColor: Colors.grey,
+          ),
+
+          const SizedBox(height: 4),
+
+          // Gemini option
+          _buildProviderTile(
+            icon: Icons.auto_awesome,
+            title: 'Google Gemini',
+            subtitle: widget.hasGeminiKey ? 'Configured' : 'Needs API key',
+            value: 'gemini',
+            isSelected: _selectedProvider == 'gemini',
+            statusColor: widget.hasGeminiKey ? Colors.green : Colors.orange,
+            hasKey: widget.hasGeminiKey,
+          ),
+
+          const SizedBox(height: 4),
+
+          // Groq option
+          _buildProviderTile(
+            icon: Icons.flash_on,
+            title: 'Groq',
+            subtitle: widget.hasGroqKey ? 'Configured' : 'Needs API key',
+            value: 'groq',
+            isSelected: _selectedProvider == 'groq',
+            statusColor: widget.hasGroqKey ? Colors.green : Colors.orange,
+            hasKey: widget.hasGroqKey,
+          ),
+
+          const SizedBox(height: 24),
+
+          // API Key Management
+          Text(
+            'API Key Management',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w500,
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.7),
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  '💡 Your API key is stored securely on your device and never shared.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                ),
-              ],
+          ),
+          const SizedBox(height: 8),
+
+          // Gemini API Key
+          ListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            leading: const Icon(Icons.auto_awesome, size: 24),
+            title: const Text('Gemini API Key'),
+            subtitle: Text(widget.hasGeminiKey
+                ? 'Configured'
+                : 'Add your Google Gemini API key'),
+            trailing: Icon(
+              widget.hasGeminiKey ? Icons.edit : Icons.add,
+              size: 20,
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () async {
-                  final apiKey = controller.text.trim();
-                  if (apiKey.isEmpty) {
-                    _showErrorSnackBar('Please enter a valid API key');
-                    return;
-                  }
+            onTap: () => _showAPIKeyBottomSheet('gemini'),
+          ),
 
-                  Navigator.pop(context);
-                  await _saveAPIKey(provider, apiKey);
-                },
-                child: Text(isEdit ? 'Update' : 'Save'),
+          const SizedBox(height: 4),
+
+          // Groq API Key
+          ListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            leading: const Icon(Icons.flash_on, size: 24),
+            title: const Text('Groq API Key'),
+            subtitle: Text(
+                widget.hasGroqKey ? 'Configured' : 'Add your Groq API key'),
+            trailing: Icon(
+              widget.hasGroqKey ? Icons.edit : Icons.add,
+              size: 20,
+            ),
+            onTap: () => _showAPIKeyBottomSheet('groq'),
+          ),
+
+          const SizedBox(height: 4),
+
+          // Help
+          ListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            leading: const Icon(Icons.help_outline, size: 24),
+            title: const Text('How to get API Keys'),
+            subtitle: const Text('Free guide to obtain API keys'),
+            trailing: const Icon(Icons.open_in_new, size: 16),
+            onTap: _showAPIKeyHelpDialog,
+          ),
+
+          if (_selectedProvider != 'none') ...[
+            const SizedBox(height: 4),
+
+            // Test Connection
+            ListTile(
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              leading: const Icon(Icons.network_check, size: 24),
+              title: const Text('Test AI Connection'),
+              subtitle: const Text('Verify your API key is working'),
+              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+              onTap: _testAIConnection,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProviderTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required String value,
+    required bool isSelected,
+    required Color statusColor,
+    bool hasKey = false,
+  }) {
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      leading: Icon(
+        icon,
+        size: 24,
+        color: isSelected
+            ? Theme.of(context).colorScheme.primary
+            : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+      ),
+      title: Text(title),
+      subtitle: Text(subtitle),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (hasKey) ...[
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: statusColor,
+                shape: BoxShape.circle,
               ),
-            ],
-          );
+            ),
+            const SizedBox(width: 8),
+          ],
+          Radio<String>(
+            value: value,
+            groupValue: _selectedProvider,
+            onChanged: (String? newValue) {
+              if (newValue != null) {
+                setState(() {
+                  _selectedProvider = newValue;
+                });
+                widget.onProviderChanged(newValue);
+                _updateAIProvider(newValue);
+              }
+            },
+          ),
+        ],
+      ),
+      onTap: () {
+        setState(() {
+          _selectedProvider = value;
+        });
+        widget.onProviderChanged(value);
+        _updateAIProvider(value);
+      },
+    );
+  }
+
+  void _showAPIKeyBottomSheet(String provider) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _APIKeyBottomSheet(
+        provider: provider,
+        onSaved: () {
+          widget.onKeysChanged();
+          Navigator.pop(context);
         },
       ),
     );
   }
 
-  Future<void> _saveAPIKey(String provider, String apiKey) async {
-    try {
-      if (provider == 'gemini') {
-        await StorageService.setGeminiApiKey(apiKey);
+  Future<void> _updateAIProvider(String provider) async {
+    await StorageService.setSelectedAIProvider(provider);
+
+    if (provider != 'none') {
+      bool hasKey = false;
+      if (provider == 'gemini' && widget.hasGeminiKey) {
+        hasKey = true;
+      } else if (provider == 'groq' && widget.hasGroqKey) {
+        hasKey = true;
+      }
+
+      if (hasKey) {
+        try {
+          await AIReminderService.reinitializeWithStoredKeys();
+          _showSnackBar(
+              'AI provider updated to ${provider.toUpperCase()}', Colors.green);
+        } catch (e) {
+          _showSnackBar('Failed to initialize $provider: $e', Colors.red);
+        }
       } else {
-        await StorageService.setGroqApiKey(apiKey);
+        _showAPIKeyBottomSheet(provider);
       }
-
-      // Update the selected provider if not already set
-      if (_selectedAIProvider == 'none') {
-        await StorageService.setSelectedAIProvider(provider);
-        setState(() {
-          _selectedAIProvider = provider;
-        });
-      }
-
-      // Reinitialize AI service
-      await AIReminderService.reinitializeWithStoredKeys();
-
-      await _loadAISettings(); // Refresh the UI
-
-      _showSuccessSnackBar(
-          '${provider.toUpperCase()} API key saved and configured!');
-      HapticFeedback.mediumImpact();
-    } catch (e) {
-      _showErrorSnackBar('Failed to save API key: $e');
+    } else {
+      _showSnackBar('AI features disabled', Colors.green);
     }
-  }
 
-  Future<void> _removeApiKey(String provider) async {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Remove ${provider.toUpperCase()} API Key'),
-        content: Text(
-          'Are you sure you want to remove your ${provider.toUpperCase()} API key? You\'ll need to add it again to use AI features.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-
-              if (provider == 'gemini') {
-                await StorageService.setGeminiApiKey(null);
-              } else {
-                await StorageService.setGroqApiKey(null);
-              }
-
-              // If this was the selected provider, switch to none
-              if (_selectedAIProvider == provider) {
-                await StorageService.setSelectedAIProvider('none');
-                setState(() {
-                  _selectedAIProvider = 'none';
-                });
-              }
-
-              await _loadAISettings();
-              _showSuccessSnackBar('${provider.toUpperCase()} API key removed');
-              HapticFeedback.lightImpact();
-            },
-            style: TextButton.styleFrom(
-              foregroundColor: Theme.of(context).colorScheme.error,
-            ),
-            child: const Text('Remove'),
-          ),
-        ],
-      ),
-    );
+    HapticFeedback.lightImpact();
   }
 
   Future<void> _testAIConnection() async {
-    if (_selectedAIProvider == 'none') {
-      _showErrorSnackBar('Please select an AI provider first');
+    if (_selectedProvider == 'none') {
+      _showSnackBar('Please select an AI provider first', Colors.red);
       return;
     }
 
@@ -989,9 +701,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                    '${_selectedAIProvider.toUpperCase()} is working correctly!'),
+                    '${_selectedProvider.toUpperCase()} is working correctly!'),
                 const SizedBox(height: 16),
-                Text('Generated test reminder:'),
+                const Text('Generated test reminder:'),
                 const SizedBox(height: 8),
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -1005,10 +717,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           .withValues(alpha: 0.2),
                     ),
                   ),
-                  child: Text(
-                    '• ${response.reminders.first.title}',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
+                  child: Text('• ${response.reminders.first.title}'),
                 ),
               ],
             ),
@@ -1022,11 +731,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
         HapticFeedback.mediumImpact();
       } else {
-        _showErrorSnackBar('Connection successful but no reminders generated');
+        _showSnackBar(
+            'Connection successful but no reminders generated', Colors.orange);
       }
     } catch (e) {
       Navigator.pop(context); // Close loading dialog
-      _showErrorSnackBar('Connection failed: ${e.toString()}');
+      _showSnackBar('Connection failed: ${e.toString()}', Colors.red);
     }
   }
 
@@ -1064,33 +774,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ],
                 benefits: 'Free tier: 14,400 requests/day',
               ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: Colors.blue.withValues(alpha: 0.3),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      '🔒 Privacy & Security',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '• API keys are stored locally on your device\n'
-                      '• Keys are never shared or uploaded\n'
-                      '• You have full control over your data',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                ),
-              ),
             ],
           ),
         ),
@@ -1098,9 +781,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           TextButton(
             onPressed: () async {
               Navigator.pop(context);
-              final uri = Uri.parse('https://aistudio.google.com/apikey');
-              if (await canLaunchUrl(uri)) {
+              try {
+                final uri = Uri.parse('https://aistudio.google.com/apikey');
                 await launchUrl(uri, mode: LaunchMode.externalApplication);
+              } catch (e) {
+                // Handle error silently or show snackbar
+                debugPrint('Failed to open Gemini URL: $e');
               }
             },
             child: const Text('Open Gemini'),
@@ -1108,9 +794,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           TextButton(
             onPressed: () async {
               Navigator.pop(context);
-              final uri = Uri.parse('https://console.groq.com/keys');
-              if (await canLaunchUrl(uri)) {
+              try {
+                final uri = Uri.parse('https://console.groq.com/keys');
                 await launchUrl(uri, mode: LaunchMode.externalApplication);
+              } catch (e) {
+                // Handle error silently or show snackbar
+                debugPrint('Failed to open Groq URL: $e');
               }
             },
             child: const Text('Open Groq'),
@@ -1167,96 +856,534 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // Update-related methods
-  Future<void> _checkForUpdates() async {
-    if (_isCheckingForUpdates) return;
+  void _showSnackBar(String message, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: color,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
+  }
+}
 
-    setState(() {
-      _isCheckingForUpdates = true;
-    });
+// API Key Bottom Sheet
+class _APIKeyBottomSheet extends StatefulWidget {
+  final String provider;
+  final VoidCallback onSaved;
 
-    HapticFeedback.lightImpact();
+  const _APIKeyBottomSheet({
+    required this.provider,
+    required this.onSaved,
+  });
+
+  @override
+  State<_APIKeyBottomSheet> createState() => _APIKeyBottomSheetState();
+}
+
+class _APIKeyBottomSheetState extends State<_APIKeyBottomSheet> {
+  final _controller = TextEditingController();
+  bool _obscureText = true;
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadExistingKey();
+  }
+
+  Future<void> _loadExistingKey() async {
+    final existingKey = widget.provider == 'gemini'
+        ? await StorageService.getGeminiApiKey()
+        : await StorageService.getGroqApiKey();
+
+    if (existingKey?.isNotEmpty == true) {
+      _controller.text = existingKey!;
+      _obscureText = false; // Show existing key
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 24,
+          right: 24,
+          top: 24,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Row(
+              children: [
+                Text(
+                  '${widget.provider.toUpperCase()} API Key',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+                const Spacer(),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+
+            // Description
+            Text(
+              'Enter your ${widget.provider == 'gemini' ? 'Google Gemini' : 'Groq'} API key to enable AI features.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.7),
+                  ),
+            ),
+
+            const SizedBox(height: 24),
+
+            // Text Field
+            TextField(
+              controller: _controller,
+              decoration: InputDecoration(
+                labelText: 'API Key',
+                hintText:
+                    'Paste your ${widget.provider.toUpperCase()} API key here',
+                border: const OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.key),
+                suffixIcon: IconButton(
+                  icon: Icon(
+                      _obscureText ? Icons.visibility : Icons.visibility_off),
+                  onPressed: () => setState(() => _obscureText = !_obscureText),
+                ),
+              ),
+              obscureText: _obscureText,
+              maxLines: 1,
+            ),
+
+            const SizedBox(height: 16),
+
+            // Security note
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context)
+                    .colorScheme
+                    .primary
+                    .withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.security,
+                    size: 16,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Your API key is stored securely on your device and never shared.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
+            // Buttons
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: _isLoading ? null : _saveAPIKey,
+                    child: _isLoading
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Save'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _saveAPIKey() async {
+    final apiKey = _controller.text.trim();
+    if (apiKey.isEmpty) {
+      _showSnackBar('Please enter a valid API key', Colors.red);
+      return;
+    }
+
+    setState(() => _isLoading = true);
 
     try {
-      final result = await UpdateService.checkForUpdates();
-
-      if (mounted) {
-        setState(() {
-          _isCheckingForUpdates = false;
-          _lastUpdateCheck = 'Just now';
-        });
-
-        if (result.success) {
-          await UpdateDialog.show(context, result, isManualCheck: true);
-        } else {
-          await UpdateErrorDialog.show(
-              context, result.error ?? 'Unknown error');
-        }
+      if (widget.provider == 'gemini') {
+        await StorageService.setGeminiApiKey(apiKey);
+      } else {
+        await StorageService.setGroqApiKey(apiKey);
       }
+
+      await AIReminderService.reinitializeWithStoredKeys();
+
+      widget.onSaved();
+      _showSnackBar(
+          '${widget.provider.toUpperCase()} API key saved!', Colors.green);
+      HapticFeedback.mediumImpact();
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isCheckingForUpdates = false;
-        });
-        await UpdateErrorDialog.show(
-            context, 'Failed to check for updates: $e');
-      }
+      _showSnackBar('Failed to save API key: $e', Colors.red);
+    } finally {
+      setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _toggleAutoCheck(bool value) async {
-    HapticFeedback.lightImpact();
+  void _showSnackBar(String message, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: color,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
+  }
 
-    setState(() {
-      _autoCheckUpdates = value;
-    });
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+}
 
-    await UpdateService.setAutoCheckEnabled(value);
+// Appearance Settings Page
+class _AppearanceSettingsPage extends StatefulWidget {
+  final ThemeType selectedTheme;
+  final Function(ThemeType) onThemeChanged;
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            value
-                ? 'Auto-check enabled. App will check for updates daily.'
-                : 'Auto-check disabled.',
+  const _AppearanceSettingsPage({
+    required this.selectedTheme,
+    required this.onThemeChanged,
+  });
+
+  @override
+  State<_AppearanceSettingsPage> createState() =>
+      _AppearanceSettingsPageState();
+}
+
+class _AppearanceSettingsPageState extends State<_AppearanceSettingsPage> {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Appearance'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        children: [
+          Text(
+            'Theme',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w500,
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.7),
+                ),
           ),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-      );
-    }
+          const SizedBox(height: 8),
+
+          // Light Theme
+          _buildThemeTile(
+            icon: Icons.light_mode_outlined,
+            title: 'Light',
+            subtitle: 'Light theme for bright environments',
+            themeType: ThemeType.light,
+          ),
+
+          const SizedBox(height: 4),
+
+          // Dark Theme
+          _buildThemeTile(
+            icon: Icons.dark_mode_outlined,
+            title: 'Dark',
+            subtitle: 'Dark theme for low-light environments',
+            themeType: ThemeType.dark,
+          ),
+
+          const SizedBox(height: 4),
+
+          // System Theme
+          _buildThemeTile(
+            icon: Icons.brightness_auto_outlined,
+            title: 'System',
+            subtitle: 'Follow system theme settings',
+            themeType: ThemeType.system,
+          ),
+        ],
+      ),
+    );
   }
 
-  Future<void> _openGitHubReleases() async {
+  Widget _buildThemeTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required ThemeType themeType,
+  }) {
+    final isSelected = widget.selectedTheme == themeType;
+
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      leading: Icon(
+        icon,
+        size: 24,
+        color: isSelected
+            ? Theme.of(context).colorScheme.primary
+            : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+      ),
+      title: Text(title),
+      subtitle: Text(subtitle),
+      trailing: Radio<ThemeType>(
+        value: themeType,
+        groupValue: widget.selectedTheme,
+        onChanged: (ThemeType? value) {
+          if (value != null) {
+            widget.onThemeChanged(value);
+          }
+        },
+      ),
+      onTap: () => widget.onThemeChanged(themeType),
+    );
+  }
+}
+
+// Data Settings Page
+class _DataSettingsPage extends StatelessWidget {
+  const _DataSettingsPage();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Data'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        children: [
+          ListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            leading: const Icon(Icons.upload_outlined, size: 24),
+            title: const Text('Export Data'),
+            subtitle: const Text('Export your reminders to a file'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () => _showComingSoon(context, 'Export data'),
+          ),
+          const SizedBox(height: 4),
+          ListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            leading: const Icon(Icons.download_outlined, size: 24),
+            title: const Text('Import Data'),
+            subtitle: const Text('Import reminders from a file'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () => _showComingSoon(context, 'Import data'),
+          ),
+          const SizedBox(height: 4),
+          ListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            leading: Icon(
+              Icons.delete_outline,
+              size: 24,
+              color: Theme.of(context).colorScheme.error,
+            ),
+            title: Text(
+              'Clear All Data',
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+            subtitle: const Text('Delete all your reminders permanently'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () => _showClearDataDialog(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showComingSoon(BuildContext context, String feature) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$feature is coming soon!'),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
+  }
+
+  void _showClearDataDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear All Data'),
+        content: const Text(
+          'This will permanently delete all your reminders. This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _showComingSoon(context, 'Clear all data');
+            },
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Update Settings Page
+class _UpdateSettingsPage extends StatelessWidget {
+  final String currentVersion;
+  final bool autoCheckUpdates;
+  final String lastUpdateCheck;
+  final bool isCheckingForUpdates;
+  final Function(bool) onAutoCheckChanged;
+  final VoidCallback onCheckForUpdates;
+
+  const _UpdateSettingsPage({
+    required this.currentVersion,
+    required this.autoCheckUpdates,
+    required this.lastUpdateCheck,
+    required this.isCheckingForUpdates,
+    required this.onAutoCheckChanged,
+    required this.onCheckForUpdates,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('App Updates'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        children: [
+          // Check for Updates
+          ListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            leading: Icon(
+              isCheckingForUpdates
+                  ? Icons.sync
+                  : Icons.system_update_alt_outlined,
+              size: 24,
+            ),
+            title: const Text('Check for Updates'),
+            subtitle: Text('Current version: $currentVersion'),
+            trailing: isCheckingForUpdates
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: isCheckingForUpdates ? null : onCheckForUpdates,
+          ),
+
+          const SizedBox(height: 4),
+
+          // Auto-check Toggle
+          SwitchListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            secondary: const Icon(Icons.autorenew, size: 24),
+            title: const Text('Auto-check for Updates'),
+            subtitle:
+                const Text('Check for updates automatically on app start'),
+            value: autoCheckUpdates,
+            onChanged: onAutoCheckChanged,
+          ),
+
+          const SizedBox(height: 4),
+
+          // Last Check Time
+          ListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            leading: const Icon(Icons.history, size: 24),
+            title: const Text('Last Update Check'),
+            subtitle: Text(lastUpdateCheck),
+            trailing: const Icon(Icons.info_outline, size: 16),
+            enabled: false,
+          ),
+
+          const SizedBox(height: 4),
+
+          // GitHub Releases
+          ListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            leading: const Icon(Icons.open_in_new, size: 24),
+            title: const Text('View All Releases'),
+            subtitle: const Text('Browse all versions on GitHub'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () => _openGitHubReleases(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openGitHubReleases(BuildContext context) async {
     HapticFeedback.lightImpact();
 
     try {
       final url = UpdateService.getReleasesUrl();
       final uri = Uri.parse(url);
 
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else {
-        // Fallback: show dialog with URL
-        if (mounted) {
-          showDialog(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Text('GitHub Releases'),
-              content: SelectableText(url),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Close'),
-                ),
-              ],
-            ),
-          );
-        }
-      }
+      // Use launchUrl directly without canLaunchUrl check
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (e) {
-      if (mounted) {
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to open releases page: $e'),
@@ -1268,77 +1395,64 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     }
   }
+}
 
-  // Helper methods for showing messages
-  void _showSuccessSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.green,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+// About Settings Page
+class _AboutSettingsPage extends StatelessWidget {
+  final String currentVersion;
+
+  const _AboutSettingsPage({
+    required this.currentVersion,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('About'),
       ),
-    );
-  }
-
-  void _showErrorSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
-  }
-
-  // Existing methods (kept intact)
-  void _showComingSoonSnackBar(String feature) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$feature is coming soon!'),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
-  }
-
-  void _showClearDataDialog() {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Clear All Data'),
-          content: const Text(
-            'This will permanently delete all your reminders. This action cannot be undone.',
+      body: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        children: [
+          ListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            leading: const Icon(Icons.info_outline, size: 24),
+            title: const Text('App Information'),
+            subtitle: const Text('Version, build info, and credits'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () => _showAboutDialog(context),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                // TODO: Implement clear all data
-                _showComingSoonSnackBar('Clear all data');
-              },
-              style: TextButton.styleFrom(
-                foregroundColor: Theme.of(context).colorScheme.error,
-              ),
-              child: const Text('Delete'),
-            ),
-          ],
-        );
-      },
+          const SizedBox(height: 4),
+          ListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            leading: const Icon(Icons.help_outline, size: 24),
+            title: const Text('Help & Support'),
+            subtitle: const Text('Get help using VoiceRemind'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () => _showComingSoon(context, 'Help & Support'),
+          ),
+          const SizedBox(height: 4),
+          ListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            leading: const Icon(Icons.privacy_tip_outlined, size: 24),
+            title: const Text('Privacy Policy'),
+            subtitle: const Text('How we handle your data'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () => _showComingSoon(context, 'Privacy Policy'),
+          ),
+        ],
+      ),
     );
   }
 
-  void _showAboutDialog() {
+  void _showAboutDialog(BuildContext context) {
     showAboutDialog(
       context: context,
       applicationName: 'VoiceRemind',
-      applicationVersion: _currentVersion,
+      applicationVersion: currentVersion,
       applicationIcon: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
@@ -1351,12 +1465,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
           size: 32,
         ),
       ),
-      children: [
-        const Text(
+      children: const [
+        Text(
           'A beautiful voice-first reminder application built with Flutter. '
           'VoiceRemind helps you create and manage reminders through natural speech.',
         ),
       ],
+    );
+  }
+
+  void _showComingSoon(BuildContext context, String feature) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$feature is coming soon!'),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
     );
   }
 }
