@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:intl/intl.dart';
-import 'package:voice_remind/models/space.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import '../models/reminder.dart';
@@ -10,6 +9,7 @@ import '../services/storage_service.dart';
 import '../services/notification_service.dart';
 import 'add_reminder_screen.dart';
 import '../services/spaces_service.dart';
+import '../widgets/space_tag_widget.dart';
 
 enum FilterType { total, pending, completed, overdue, today, thisWeek, recent }
 
@@ -1064,34 +1064,17 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
                                         letterSpacing: -0.2,
                                       ),
                                 ),
-
-                                // Space Name (Option 2 implementation)
+                                // Space Tag (Visual Chip)
                                 if (reminder.spaceId != null) ...[
-                                  const SizedBox(height: 4),
-                                  FutureBuilder<Space?>(
-                                    future: SpacesService.getSpaceById(
-                                        reminder.spaceId!),
-                                    builder: (context, snapshot) {
-                                      if (snapshot.hasData &&
-                                          snapshot.data != null) {
-                                        return Text(
-                                          snapshot.data!.name,
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .bodySmall
-                                              ?.copyWith(
-                                                color: Theme.of(context)
-                                                    .colorScheme
-                                                    .onSurface
-                                                    .withValues(alpha: 0.6),
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w400,
-                                                letterSpacing: 0.2,
-                                              ),
-                                        );
-                                      }
-                                      return const SizedBox.shrink();
-                                    },
+                                  const SizedBox(height: 6),
+                                  Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: SpaceTagWidget(
+                                      spaceId: reminder.spaceId!,
+                                      fontSize: 11,
+                                      horizontalPadding: 8,
+                                      verticalPadding: 4,
+                                    ),
                                   ),
                                 ],
                               ],

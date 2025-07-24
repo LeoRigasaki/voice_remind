@@ -1,10 +1,12 @@
-// lib/screens/settings_screen.dart
+// [lib/screens]/settings_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/theme_service.dart';
 import '../services/update_service.dart';
+import '../services/ai_reminder_service.dart';
+import '../services/storage_service.dart';
 import '../widgets/update_dialog.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -29,6 +31,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _lastUpdateCheck = 'Never';
   String _currentVersion = '1.0.0';
 
+  // AI Configuration variables
+  String _selectedAIProvider = 'none';
+  bool _hasGeminiKey = false;
+  bool _hasGroqKey = false;
+  String _geminiKeyStatus = 'Not configured';
+  String _groqKeyStatus = 'Not configured';
+
   @override
   void initState() {
     super.initState();
@@ -44,6 +53,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     // Load update settings
     _loadUpdateSettings();
+
+    // Load AI settings
+    _loadAISettings();
   }
 
   Future<void> _loadUpdateSettings() async {
@@ -64,6 +76,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     } catch (e) {
       debugPrint('Failed to load update settings: $e');
+    }
+  }
+
+  Future<void> _loadAISettings() async {
+    try {
+      final geminiKey = await StorageService.getGeminiApiKey();
+      final groqKey = await StorageService.getGroqApiKey();
+      final selectedProvider = await StorageService.getSelectedAIProvider();
+
+      if (mounted) {
+        setState(() {
+          _hasGeminiKey = geminiKey?.isNotEmpty == true;
+          _hasGroqKey = groqKey?.isNotEmpty == true;
+          _selectedAIProvider = selectedProvider ?? 'none';
+
+          _geminiKeyStatus = _hasGeminiKey
+              ? 'Configured (${geminiKey!.substring(0, 8)}...)'
+              : 'Not configured';
+          _groqKeyStatus = _hasGroqKey
+              ? 'Configured (${groqKey!.substring(0, 8)}...)'
+              : 'Not configured';
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to load AI settings: $e');
     }
   }
 
@@ -88,6 +125,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // AI Settings Section
+          _buildSectionHeader('AI Configuration'),
+          const SizedBox(height: 8),
+          _buildAISettings(),
+
+          const SizedBox(height: 32),
+
           // Appearance Section
           _buildSectionHeader('Appearance'),
           const SizedBox(height: 8),
@@ -139,6 +183,207 @@ class _SettingsScreenState extends State<SettingsScreen> {
             fontWeight: FontWeight.w600,
             letterSpacing: -0.3,
           ),
+    );
+  }
+
+  Widget _buildAISettings() {
+    return Column(
+      children: [
+        // AI Provider Selection
+        Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color:
+                  Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
+              width: 1,
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: _selectedAIProvider,
+                isExpanded: true,
+                icon: const Icon(Icons.expand_more),
+                hint: const Text('Select AI Provider'),
+                onChanged: (String? newProvider) {
+                  if (newProvider != null) {
+                    _updateAIProvider(newProvider);
+                  }
+                },
+                items: [
+                  DropdownMenuItem<String>(
+                    value: 'none',
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.cancel_outlined,
+                          size: 20,
+                          color: Theme.of(context).colorScheme.outline,
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          'No AI Provider',
+                          style: Theme.of(context).textTheme.bodyLarge,
+                        ),
+                      ],
+                    ),
+                  ),
+                  DropdownMenuItem<String>(
+                    value: 'gemini',
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.auto_awesome,
+                          size: 20,
+                          color: _hasGeminiKey
+                              ? Colors.green
+                              : Theme.of(context).colorScheme.outline,
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          'Google Gemini',
+                          style: Theme.of(context).textTheme.bodyLarge,
+                        ),
+                        if (_hasGeminiKey) ...[
+                          const Spacer(),
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              color: Colors.green,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  DropdownMenuItem<String>(
+                    value: 'groq',
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.flash_on,
+                          size: 20,
+                          color: _hasGroqKey
+                              ? Colors.blue
+                              : Theme.of(context).colorScheme.outline,
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          'Groq',
+                          style: Theme.of(context).textTheme.bodyLarge,
+                        ),
+                        if (_hasGroqKey) ...[
+                          const Spacer(),
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              color: Colors.blue,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ].map((item) {
+                  return DropdownMenuItem<String>(
+                    value: item.value,
+                    child: item.child,
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 8),
+
+        // Gemini API Key Configuration
+        _buildSettingsTile(
+          icon: Icons.auto_awesome,
+          title: 'Gemini API Key',
+          subtitle: _geminiKeyStatus,
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_hasGeminiKey)
+                IconButton(
+                  onPressed: () => _removeApiKey('gemini'),
+                  icon: const Icon(Icons.delete_outline, size: 20),
+                  style: IconButton.styleFrom(
+                    foregroundColor: Theme.of(context).colorScheme.error,
+                  ),
+                ),
+              IconButton(
+                onPressed: () => _showAPIKeyDialog('gemini'),
+                icon: Icon(
+                  _hasGeminiKey ? Icons.edit : Icons.add,
+                  size: 20,
+                ),
+              ),
+            ],
+          ),
+          onTap: () => _showAPIKeyDialog('gemini'),
+        ),
+
+        const SizedBox(height: 8),
+
+        // Groq API Key Configuration
+        _buildSettingsTile(
+          icon: Icons.flash_on,
+          title: 'Groq API Key',
+          subtitle: _groqKeyStatus,
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_hasGroqKey)
+                IconButton(
+                  onPressed: () => _removeApiKey('groq'),
+                  icon: const Icon(Icons.delete_outline, size: 20),
+                  style: IconButton.styleFrom(
+                    foregroundColor: Theme.of(context).colorScheme.error,
+                  ),
+                ),
+              IconButton(
+                onPressed: () => _showAPIKeyDialog('groq'),
+                icon: Icon(
+                  _hasGroqKey ? Icons.edit : Icons.add,
+                  size: 20,
+                ),
+              ),
+            ],
+          ),
+          onTap: () => _showAPIKeyDialog('groq'),
+        ),
+
+        const SizedBox(height: 8),
+
+        // Get API Keys Help
+        _buildSettingsTile(
+          icon: Icons.help_outline,
+          title: 'How to get API Keys',
+          subtitle: 'Free guide to obtain Gemini & Groq API keys',
+          trailing: const Icon(Icons.open_in_new, size: 16),
+          onTap: _showAPIKeyHelpDialog,
+        ),
+
+        const SizedBox(height: 8),
+
+        // Test AI Connection
+        if (_selectedAIProvider != 'none')
+          _buildSettingsTile(
+            icon: Icons.network_check,
+            title: 'Test AI Connection',
+            subtitle: 'Verify your API key is working',
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: _testAIConnection,
+          ),
+      ],
     );
   }
 
@@ -502,6 +747,426 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  // AI Configuration Methods
+  Future<void> _updateAIProvider(String provider) async {
+    setState(() {
+      _selectedAIProvider = provider;
+    });
+
+    await StorageService.setSelectedAIProvider(provider);
+
+    if (provider != 'none') {
+      // Check if the selected provider has an API key
+      bool hasKey = false;
+      if (provider == 'gemini' && _hasGeminiKey) {
+        hasKey = true;
+      } else if (provider == 'groq' && _hasGroqKey) {
+        hasKey = true;
+      }
+
+      if (hasKey) {
+        // Reinitialize AI service with selected provider
+        try {
+          await AIReminderService.reinitializeWithStoredKeys();
+          _showSuccessSnackBar(
+              'AI provider updated to ${provider.toUpperCase()}');
+        } catch (e) {
+          _showErrorSnackBar('Failed to initialize $provider: $e');
+          setState(() {
+            _selectedAIProvider = 'none';
+          });
+        }
+      } else {
+        // Prompt user to add API key
+        _showAPIKeyDialog(provider);
+      }
+    } else {
+      _showSuccessSnackBar('AI features disabled');
+    }
+
+    HapticFeedback.lightImpact();
+  }
+
+  Future<void> _showAPIKeyDialog(String provider) async {
+    final controller = TextEditingController();
+    final isEdit = provider == 'gemini' ? _hasGeminiKey : _hasGroqKey;
+    bool obscureText = !isEdit; // Show text when editing, hide when adding new
+
+    if (isEdit) {
+      // Load existing key for editing
+      final existingKey = provider == 'gemini'
+          ? await StorageService.getGeminiApiKey()
+          : await StorageService.getGroqApiKey();
+      controller.text = existingKey ?? '';
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: Text(
+                '${isEdit ? 'Edit' : 'Add'} ${provider.toUpperCase()} API Key'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${provider == 'gemini' ? 'Enter your Google Gemini' : 'Enter your Groq'} API key:',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: controller,
+                  decoration: InputDecoration(
+                    hintText:
+                        'Paste your ${provider.toUpperCase()} API key here',
+                    border: const OutlineInputBorder(),
+                    prefixIcon: const Icon(Icons.key),
+                    suffixIcon: !isEdit
+                        ? IconButton(
+                            icon: Icon(
+                              obscureText
+                                  ? Icons.visibility
+                                  : Icons.visibility_off,
+                              size: 20,
+                            ),
+                            onPressed: () {
+                              setDialogState(() {
+                                obscureText = !obscureText;
+                              });
+                            },
+                          )
+                        : null,
+                  ),
+                  obscureText: obscureText,
+                  maxLines: 1, // API keys are single line
+                  keyboardType: TextInputType.visiblePassword,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  '💡 Your API key is stored securely on your device and never shared.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  final apiKey = controller.text.trim();
+                  if (apiKey.isEmpty) {
+                    _showErrorSnackBar('Please enter a valid API key');
+                    return;
+                  }
+
+                  Navigator.pop(context);
+                  await _saveAPIKey(provider, apiKey);
+                },
+                child: Text(isEdit ? 'Update' : 'Save'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _saveAPIKey(String provider, String apiKey) async {
+    try {
+      if (provider == 'gemini') {
+        await StorageService.setGeminiApiKey(apiKey);
+      } else {
+        await StorageService.setGroqApiKey(apiKey);
+      }
+
+      // Update the selected provider if not already set
+      if (_selectedAIProvider == 'none') {
+        await StorageService.setSelectedAIProvider(provider);
+        setState(() {
+          _selectedAIProvider = provider;
+        });
+      }
+
+      // Reinitialize AI service
+      await AIReminderService.reinitializeWithStoredKeys();
+
+      await _loadAISettings(); // Refresh the UI
+
+      _showSuccessSnackBar(
+          '${provider.toUpperCase()} API key saved and configured!');
+      HapticFeedback.mediumImpact();
+    } catch (e) {
+      _showErrorSnackBar('Failed to save API key: $e');
+    }
+  }
+
+  Future<void> _removeApiKey(String provider) async {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Remove ${provider.toUpperCase()} API Key'),
+        content: Text(
+          'Are you sure you want to remove your ${provider.toUpperCase()} API key? You\'ll need to add it again to use AI features.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+
+              if (provider == 'gemini') {
+                await StorageService.setGeminiApiKey(null);
+              } else {
+                await StorageService.setGroqApiKey(null);
+              }
+
+              // If this was the selected provider, switch to none
+              if (_selectedAIProvider == provider) {
+                await StorageService.setSelectedAIProvider('none');
+                setState(() {
+                  _selectedAIProvider = 'none';
+                });
+              }
+
+              await _loadAISettings();
+              _showSuccessSnackBar('${provider.toUpperCase()} API key removed');
+              HapticFeedback.lightImpact();
+            },
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _testAIConnection() async {
+    if (_selectedAIProvider == 'none') {
+      _showErrorSnackBar('Please select an AI provider first');
+      return;
+    }
+
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('Testing AI connection...'),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      final response = await AIReminderService.parseRemindersFromText(
+          'Test reminder for tomorrow at 9am');
+
+      Navigator.pop(context); // Close loading dialog
+
+      if (response.reminders.isNotEmpty) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('✅ Connection Successful'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                    '${_selectedAIProvider.toUpperCase()} is working correctly!'),
+                const SizedBox(height: 16),
+                Text('Generated test reminder:'),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .outline
+                          .withValues(alpha: 0.2),
+                    ),
+                  ),
+                  child: Text(
+                    '• ${response.reminders.first.title}',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Great!'),
+              ),
+            ],
+          ),
+        );
+        HapticFeedback.mediumImpact();
+      } else {
+        _showErrorSnackBar('Connection successful but no reminders generated');
+      }
+    } catch (e) {
+      Navigator.pop(context); // Close loading dialog
+      _showErrorSnackBar('Connection failed: ${e.toString()}');
+    }
+  }
+
+  void _showAPIKeyHelpDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('How to Get Free API Keys'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildAPIKeyStep(
+                title: '🟡 Google Gemini (Recommended)',
+                steps: [
+                  '1. Go to ai.google.dev',
+                  '2. Click "Get API key"',
+                  '3. Sign in with Google account',
+                  '4. Create new project or select existing',
+                  '5. Generate API key',
+                  '6. Copy the key and paste it here',
+                ],
+                benefits: 'Free tier: 15 requests/minute',
+              ),
+              const SizedBox(height: 20),
+              _buildAPIKeyStep(
+                title: '🔵 Groq (Fastest)',
+                steps: [
+                  '1. Visit console.groq.com',
+                  '2. Sign up for free account',
+                  '3. Go to API Keys section',
+                  '4. Create new API key',
+                  '5. Copy the key and paste it here',
+                ],
+                benefits: 'Free tier: 14,400 requests/day',
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: Colors.blue.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '🔒 Privacy & Security',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '• API keys are stored locally on your device\n'
+                      '• Keys are never shared or uploaded\n'
+                      '• You have full control over your data',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              final uri = Uri.parse('https://aistudio.google.com/apikey');
+              if (await canLaunchUrl(uri)) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              }
+            },
+            child: const Text('Open Gemini'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              final uri = Uri.parse('https://console.groq.com/keys');
+              if (await canLaunchUrl(uri)) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              }
+            },
+            child: const Text('Open Groq'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAPIKeyStep({
+    required String title,
+    required List<String> steps,
+    required String benefits,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 8),
+        for (final step in steps)
+          Padding(
+            padding: const EdgeInsets.only(left: 16, bottom: 4),
+            child: Text(
+              step,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.green.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: Colors.green.withValues(alpha: 0.3),
+            ),
+          ),
+          child: Text(
+            benefits,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Colors.green.shade700,
+                  fontWeight: FontWeight.w500,
+                ),
+          ),
+        ),
+      ],
+    );
+  }
+
   // Update-related methods
   Future<void> _checkForUpdates() async {
     if (_isCheckingForUpdates) return;
@@ -602,6 +1267,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
       }
     }
+  }
+
+  // Helper methods for showing messages
+  void _showSuccessSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.green,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
+  }
+
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
   }
 
   // Existing methods (kept intact)

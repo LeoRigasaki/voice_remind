@@ -5,7 +5,7 @@ import '../services/theme_service.dart';
 import 'home_screen.dart';
 import 'settings_screen.dart';
 import 'spaces_screen.dart';
-import 'add_reminder_screen.dart';
+import '../widgets/ai_add_reminder_modal.dart';
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
@@ -229,34 +229,15 @@ class _MainNavigationState extends State<MainNavigation> {
   }
 
   void _showAddReminderModal() {
-    Navigator.of(context)
-        .push(
-      PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) =>
-            const AddReminderScreen(),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          // Nothing Phone-inspired slide up animation
-          return SlideTransition(
-            position: animation.drive(
-              Tween(begin: const Offset(0.0, 1.0), end: Offset.zero)
-                  .chain(CurveTween(curve: Curves.easeInOut)),
-            ),
-            child: FadeTransition(
-              opacity: animation.drive(
-                Tween(begin: 0.0, end: 1.0)
-                    .chain(CurveTween(curve: Curves.easeOut)),
-              ),
-              child: child,
-            ),
-          );
-        },
-        transitionDuration: const Duration(milliseconds: 400),
-        opaque: false,
-        barrierDismissible: true,
-        barrierColor: Colors.black.withValues(alpha: 0.5),
-      ),
-    )
-        .then((_) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.5),
+      builder: (BuildContext context) {
+        return const AIAddReminderModal();
+      },
+    ).then((_) {
       // Refresh the home screen when returning from add reminder
       if (_currentTab == NavTab.home) {
         setState(() {});

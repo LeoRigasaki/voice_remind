@@ -1,3 +1,4 @@
+// [lib]/main.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'services/notification_service.dart';
@@ -7,6 +8,8 @@ import 'services/theme_service.dart';
 import 'services/update_service.dart';
 import 'widgets/update_dialog.dart';
 import 'screens/main_navigation.dart';
+import 'services/ai_reminder_service.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 // Global notification plugin instance
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
@@ -15,19 +18,110 @@ final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Load environment variables with better error handling
+  try {
+    await dotenv.load(fileName: ".env");
+    debugPrint('✅ Environment variables loaded');
+  } catch (e) {
+    debugPrint(
+        '⚠️ No .env file found, will rely on user-provided keys if needed');
+  }
+
+  // Initialize storage first (required for AI service to load user keys)
+  await StorageService.initialize();
+  debugPrint('✅ Storage service initialized');
+
+  // Initialize AI service with proper user key loading
+  await _initializeAIService();
+
   // Initialize notifications
   await NotificationService.initialize();
-
-  // Initialize storage
-  await StorageService.initialize();
+  debugPrint('✅ Notification service initialized');
 
   // Initialize spaces service
   await SpacesService.initialize();
+  debugPrint('✅ Spaces service initialized');
 
   // Initialize theme service
   await ThemeService.initialize();
+  debugPrint('✅ Theme service initialized');
 
   runApp(const VoiceRemindApp());
+}
+
+Future<void> _initializeAIService() async {
+  try {
+    debugPrint('🔄 Initializing AI service...');
+
+    // Try to initialize with user-stored keys first
+    final selectedProvider = await StorageService.getSelectedAIProvider();
+
+    if (selectedProvider != null && selectedProvider != 'none') {
+      debugPrint('📱 Found user provider: $selectedProvider');
+
+      String? userApiKey;
+      if (selectedProvider == 'gemini') {
+        userApiKey = await StorageService.getGeminiApiKey();
+      } else if (selectedProvider == 'groq') {
+        userApiKey = await StorageService.getGroqApiKey();
+      }
+
+      if (userApiKey != null && userApiKey.isNotEmpty) {
+        debugPrint('🔑 Found user API key for $selectedProvider');
+        await AIReminderService.initialize(
+            customApiKey: userApiKey, provider: selectedProvider);
+        debugPrint('✅ AI Service initialized with user $selectedProvider key');
+        return;
+      } else {
+        debugPrint('⚠️ User selected $selectedProvider but no API key found');
+      }
+    }
+
+    // Fallback to environment variables if no user keys
+    debugPrint('🔄 Falling back to environment variables...');
+
+    // Try Gemini from environment
+    String? envApiKey = dotenv.env['GEMINI_API_KEY'];
+    if (envApiKey != null && envApiKey.isNotEmpty) {
+      debugPrint('🔑 Found Gemini key in environment');
+      await AIReminderService.initialize(
+          customApiKey: envApiKey, provider: 'gemini');
+      debugPrint('✅ AI Service initialized with environment Gemini key');
+      return;
+    }
+
+    // Try Groq from environment
+    envApiKey = dotenv.env['GROQ_API_KEY'];
+    if (envApiKey != null && envApiKey.isNotEmpty) {
+      debugPrint('🔑 Found Groq key in environment');
+      await AIReminderService.initialize(
+          customApiKey: envApiKey, provider: 'groq');
+      debugPrint('✅ AI Service initialized with environment Groq key');
+      return;
+    }
+
+    // No keys found anywhere
+    debugPrint('⚠️ No AI API keys found - AI features will be disabled');
+    debugPrint(
+        '💡 Users can configure API keys in Settings > AI Configuration');
+  } catch (e) {
+    debugPrint('❌ AI Service initialization failed: $e');
+    debugPrint(
+        '💡 Users can configure API keys in Settings > AI Configuration');
+    // Don't throw - let the app continue without AI initially
+  }
+}
+
+// Helper function for reinitializing AI when users change settings
+Future<void> reinitializeAIWithCustomKey(String apiKey, String provider) async {
+  try {
+    await AIReminderService.initialize(
+        customApiKey: apiKey, provider: provider);
+    debugPrint('✅ AI Service reinitialized with custom $provider key');
+  } catch (e) {
+    debugPrint('❌ Failed to initialize with custom key: $e');
+    rethrow;
+  }
 }
 
 class VoiceRemindApp extends StatefulWidget {
@@ -115,8 +209,27 @@ class _VoiceRemindAppState extends State<VoiceRemindApp>
       // Refresh data when app comes back to foreground
       StorageService.refreshData();
 
+      // Reinitialize AI service in case settings changed
+      _reinitializeAIOnResume();
+
       // Check for updates when app comes to foreground
       _performAutoUpdateCheck();
+    }
+  }
+
+  Future<void> _reinitializeAIOnResume() async {
+    try {
+      // Check if AI configuration might have changed and reinitialize
+      final currentProvider = await StorageService.getSelectedAIProvider();
+      if (currentProvider != null && currentProvider != 'none') {
+        // Only reinitialize if we're not already using the right provider
+        if (AIReminderService.currentProvider != currentProvider) {
+          debugPrint('🔄 Reinitializing AI service on app resume...');
+          await _initializeAIService();
+        }
+      }
+    } catch (e) {
+      debugPrint('Failed to reinitialize AI on resume: $e');
     }
   }
 

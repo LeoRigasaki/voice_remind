@@ -1,3 +1,4 @@
+// [lib/services]/storage_service.dart
 import 'dart:async';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -6,6 +7,11 @@ import '../models/reminder.dart';
 class StorageService {
   static SharedPreferences? _prefs;
   static const String _remindersKey = 'reminders';
+
+  // AI Configuration Keys
+  static const String _geminiApiKeyKey = 'gemini_api_key';
+  static const String _groqApiKeyKey = 'groq_api_key';
+  static const String _selectedAIProviderKey = 'selected_ai_provider';
 
   // Stream controller for real-time updates
   static final StreamController<List<Reminder>> _remindersController =
@@ -166,7 +172,8 @@ class StorageService {
     _remindersController.add(reminders);
   }
 
-  // Clear all data - for testing or reset purposes// Get reminders by space ID
+  // Clear all data - for testing or reset purposes
+  // Get reminders by space ID
   static Future<List<Reminder>> getRemindersBySpace(String? spaceId) async {
     final List<Reminder> allReminders = await getReminders();
     return allReminders
@@ -174,13 +181,13 @@ class StorageService {
         .toList();
   }
 
-// Get reminders without space assignment
+  // Get reminders without space assignment
   static Future<List<Reminder>> getRemindersWithoutSpace() async {
     final List<Reminder> allReminders = await getReminders();
     return allReminders.where((reminder) => reminder.spaceId == null).toList();
   }
 
-// Update reminder space assignment
+  // Update reminder space assignment
   static Future<void> updateReminderSpace(
       String reminderId, String? spaceId) async {
     final Reminder? reminder = await getReminderById(reminderId);
@@ -190,13 +197,13 @@ class StorageService {
     }
   }
 
-// Get count of reminders in a space
+  // Get count of reminders in a space
   static Future<int> getSpaceReminderCount(String spaceId) async {
     final List<Reminder> spaceReminders = await getRemindersBySpace(spaceId);
     return spaceReminders.length;
   }
 
-// Remove all reminders from a space (when space is deleted)
+  // Remove all reminders from a space (when space is deleted)
   static Future<void> removeRemindersFromSpace(String spaceId) async {
     final List<Reminder> allReminders = await getReminders();
     final List<Reminder> updatedReminders = allReminders.map((reminder) {
@@ -207,5 +214,171 @@ class StorageService {
     }).toList();
 
     await saveReminders(updatedReminders);
+  }
+
+  // =============================================================================
+  // AI Configuration Methods
+  // =============================================================================
+
+  /// Save Gemini API Key
+  static Future<void> setGeminiApiKey(String? apiKey) async {
+    if (apiKey == null || apiKey.isEmpty) {
+      await _prefs?.remove(_geminiApiKeyKey);
+    } else {
+      await _prefs?.setString(_geminiApiKeyKey, apiKey);
+    }
+  }
+
+  /// Get Gemini API Key
+  static Future<String?> getGeminiApiKey() async {
+    return _prefs?.getString(_geminiApiKeyKey);
+  }
+
+  /// Save Groq API Key
+  static Future<void> setGroqApiKey(String? apiKey) async {
+    if (apiKey == null || apiKey.isEmpty) {
+      await _prefs?.remove(_groqApiKeyKey);
+    } else {
+      await _prefs?.setString(_groqApiKeyKey, apiKey);
+    }
+  }
+
+  /// Get Groq API Key
+  static Future<String?> getGroqApiKey() async {
+    return _prefs?.getString(_groqApiKeyKey);
+  }
+
+  /// Save Selected AI Provider
+  static Future<void> setSelectedAIProvider(String? provider) async {
+    if (provider == null || provider == 'none') {
+      await _prefs?.remove(_selectedAIProviderKey);
+    } else {
+      await _prefs?.setString(_selectedAIProviderKey, provider);
+    }
+  }
+
+  /// Get Selected AI Provider
+  static Future<String?> getSelectedAIProvider() async {
+    return _prefs?.getString(_selectedAIProviderKey);
+  }
+
+  /// Check if any AI provider is configured
+  static Future<bool> hasAnyAIProvider() async {
+    final geminiKey = await getGeminiApiKey();
+    final groqKey = await getGroqApiKey();
+    return (geminiKey?.isNotEmpty == true) || (groqKey?.isNotEmpty == true);
+  }
+
+  /// Get AI configuration status
+  static Future<Map<String, dynamic>> getAIConfigurationStatus() async {
+    final geminiKey = await getGeminiApiKey();
+    final groqKey = await getGroqApiKey();
+    final selectedProvider = await getSelectedAIProvider();
+
+    return {
+      'hasGemini': geminiKey?.isNotEmpty == true,
+      'hasGroq': groqKey?.isNotEmpty == true,
+      'selectedProvider': selectedProvider ?? 'none',
+      'hasAnyProvider':
+          (geminiKey?.isNotEmpty == true) || (groqKey?.isNotEmpty == true),
+      'geminiStatus': geminiKey?.isNotEmpty == true
+          ? 'Configured (${geminiKey!.substring(0, 8)}...)'
+          : 'Not configured',
+      'groqStatus': groqKey?.isNotEmpty == true
+          ? 'Configured (${groqKey!.substring(0, 8)}...)'
+          : 'Not configured',
+    };
+  }
+
+  /// Clear all AI configuration
+  static Future<void> clearAIConfiguration() async {
+    await _prefs?.remove(_geminiApiKeyKey);
+    await _prefs?.remove(_groqApiKeyKey);
+    await _prefs?.remove(_selectedAIProviderKey);
+  }
+
+  /// Validate API key format (basic validation)
+  static bool isValidApiKeyFormat(String apiKey, String provider) {
+    if (apiKey.isEmpty) return false;
+
+    switch (provider.toLowerCase()) {
+      case 'gemini':
+        // Gemini API keys typically start with "AI" and are 39 characters long
+        return apiKey.startsWith('AI') && apiKey.length >= 30;
+      case 'groq':
+        // Groq API keys typically start with "gsk_" and are longer
+        return apiKey.startsWith('gsk_') && apiKey.length >= 30;
+      default:
+        return apiKey.length >= 20; // Generic minimum length
+    }
+  }
+
+  /// Test if an API key is accessible (doesn't test if it works, just if it's stored)
+  static Future<bool> isAPIKeyConfigured(String provider) async {
+    switch (provider.toLowerCase()) {
+      case 'gemini':
+        final key = await getGeminiApiKey();
+        return key?.isNotEmpty == true;
+      case 'groq':
+        final key = await getGroqApiKey();
+        return key?.isNotEmpty == true;
+      default:
+        return false;
+    }
+  }
+
+  /// Get current provider API key
+  static Future<String?> getCurrentProviderApiKey() async {
+    final selectedProvider = await getSelectedAIProvider();
+    if (selectedProvider == null || selectedProvider == 'none') {
+      return null;
+    }
+
+    switch (selectedProvider) {
+      case 'gemini':
+        return await getGeminiApiKey();
+      case 'groq':
+        return await getGroqApiKey();
+      default:
+        return null;
+    }
+  }
+
+  /// Switch AI provider (if API key is available)
+  static Future<bool> switchAIProvider(String newProvider) async {
+    if (newProvider == 'none') {
+      await setSelectedAIProvider('none');
+      return true;
+    }
+
+    final hasKey = await isAPIKeyConfigured(newProvider);
+    if (hasKey) {
+      await setSelectedAIProvider(newProvider);
+      return true;
+    }
+
+    return false; // No API key available for this provider
+  }
+
+  /// Export AI configuration (for backup/restore)
+  static Future<Map<String, String?>> exportAIConfiguration() async {
+    return {
+      'geminiApiKey': await getGeminiApiKey(),
+      'groqApiKey': await getGroqApiKey(),
+      'selectedProvider': await getSelectedAIProvider(),
+    };
+  }
+
+  /// Import AI configuration (for backup/restore)
+  static Future<void> importAIConfiguration(Map<String, String?> config) async {
+    if (config['geminiApiKey'] != null) {
+      await setGeminiApiKey(config['geminiApiKey']);
+    }
+    if (config['groqApiKey'] != null) {
+      await setGroqApiKey(config['groqApiKey']);
+    }
+    if (config['selectedProvider'] != null) {
+      await setSelectedAIProvider(config['selectedProvider']);
+    }
   }
 }

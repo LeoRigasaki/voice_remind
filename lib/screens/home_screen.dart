@@ -16,6 +16,7 @@ import '../widgets/search_widget.dart';
 import '../widgets/filter_bottom_sheet.dart';
 import '../models/filter_state.dart';
 import '../models/sort_option.dart';
+import '../widgets/space_tag_widget.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -487,6 +488,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         if (reminder != null) {
           final updatedReminder = reminder.copyWith(spaceId: spaceId);
           await StorageService.updateReminder(updatedReminder);
+          await StorageService.refreshData();
         }
       }
 
@@ -517,6 +519,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
 
     if (result == true && mounted) {
+      await _refreshReminders();
       // Reminder updated successfully - silent success
     }
   }
@@ -1846,33 +1849,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                             ),
                                       ),
 
-                                // Space Name (Option 2 implementation)
+                                // Space Tag (Visual Chip)
                                 if (reminder.spaceId != null) ...[
-                                  const SizedBox(height: 4),
-                                  FutureBuilder<Space?>(
-                                    future: SpacesService.getSpaceById(
-                                        reminder.spaceId!),
-                                    builder: (context, snapshot) {
-                                      if (snapshot.hasData &&
-                                          snapshot.data != null) {
-                                        return Text(
-                                          snapshot.data!.name,
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .bodySmall
-                                              ?.copyWith(
-                                                color: Theme.of(context)
-                                                    .colorScheme
-                                                    .onSurface
-                                                    .withValues(alpha: 0.6),
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w400,
-                                                letterSpacing: 0.2,
-                                              ),
-                                        );
-                                      }
-                                      return const SizedBox.shrink();
-                                    },
+                                  const SizedBox(height: 6),
+                                  Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: SpaceTagWidget(
+                                      spaceId: reminder.spaceId!,
+                                      fontSize: 11,
+                                      horizontalPadding: 8,
+                                      verticalPadding: 4,
+                                    ),
                                   ),
                                 ],
                               ],
