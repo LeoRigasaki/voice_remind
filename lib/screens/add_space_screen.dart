@@ -13,7 +13,8 @@ class AddSpaceScreen extends StatefulWidget {
   State<AddSpaceScreen> createState() => _AddSpaceScreenState();
 }
 
-class _AddSpaceScreenState extends State<AddSpaceScreen> {
+class _AddSpaceScreenState extends State<AddSpaceScreen>
+    with TickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
 
@@ -22,14 +23,38 @@ class _AddSpaceScreenState extends State<AddSpaceScreen> {
   bool _isLoading = false;
   bool _isEditing = false;
 
+  // Animation controllers for micro-animations
+  late AnimationController _colorSelectionController;
+  late AnimationController _iconSelectionController;
+  late AnimationController _previewController;
+
   @override
   void initState() {
     super.initState();
+
+    // Initialize animation controllers
+    _colorSelectionController = AnimationController(
+      duration: const Duration(milliseconds: 200),
+      vsync: this,
+    );
+    _iconSelectionController = AnimationController(
+      duration: const Duration(milliseconds: 200),
+      vsync: this,
+    );
+    _previewController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
 
     if (widget.space != null) {
       _isEditing = true;
       _populateFieldsForEditing();
     }
+
+    // Start preview animation
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _previewController.forward();
+    });
   }
 
   void _populateFieldsForEditing() {
@@ -42,6 +67,9 @@ class _AddSpaceScreenState extends State<AddSpaceScreen> {
   @override
   void dispose() {
     _nameController.dispose();
+    _colorSelectionController.dispose();
+    _iconSelectionController.dispose();
+    _previewController.dispose();
     super.dispose();
   }
 
@@ -330,23 +358,28 @@ class _AddSpaceScreenState extends State<AddSpaceScreen> {
   Widget _buildMaterialYouColor(Color color) {
     return GestureDetector(
       onTap: () => _applyCustomColor(color),
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: color,
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.2),
-            width: 2,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: color.withValues(alpha: 0.3),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
+      child: AnimatedScale(
+        scale: 1.0,
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOutBack,
+        child: Container(
+          width: 36, // Slightly smaller
+          height: 36,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.2),
+              width: 2,
             ),
-          ],
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: 0.3),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -406,6 +439,9 @@ class _AddSpaceScreenState extends State<AddSpaceScreen> {
     setState(() {
       _selectedColor = color;
     });
+    _colorSelectionController.forward().then((_) {
+      _colorSelectionController.reverse();
+    });
     Navigator.of(context).pop(); // Close color picker
   }
 
@@ -464,6 +500,11 @@ class _AddSpaceScreenState extends State<AddSpaceScreen> {
       },
       textInputAction: TextInputAction.done,
       onFieldSubmitted: (_) => _saveSpace(),
+      onChanged: (value) {
+        // Trigger preview animation on text change
+        _previewController.reset();
+        _previewController.forward();
+      },
     );
   }
 
@@ -482,106 +523,159 @@ class _AddSpaceScreenState extends State<AddSpaceScreen> {
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 5,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
+            crossAxisCount: 6, // Increased from 5 to make circles smaller
+            crossAxisSpacing: 10, // Reduced spacing
+            mainAxisSpacing: 10,
           ),
           itemCount: SpaceColors.presetColors.length + 1, // +1 for custom color
           itemBuilder: (context, index) {
             if (index == SpaceColors.presetColors.length) {
-              // Custom color picker circle (same as bulk operations)
-              return GestureDetector(
-                onTap: _showCustomColorPicker,
-                child: Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: const SweepGradient(
-                      colors: [
-                        Colors.red,
-                        Colors.orange,
-                        Colors.yellow,
-                        Colors.green,
-                        Colors.blue,
-                        Colors.indigo,
-                        Colors.purple,
-                        Colors.red,
-                      ],
-                    ),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      width: 2,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.1),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
+              // Custom color picker circle with animation
+              return TweenAnimationBuilder<double>(
+                duration: Duration(milliseconds: 200 + (index * 50)),
+                tween: Tween(begin: 0.0, end: 1.0),
+                curve: Curves.easeOutBack,
+                builder: (context, scale, child) {
+                  return Transform.scale(
+                    scale: scale,
+                    child: GestureDetector(
+                      onTap: () {
+                        _showCustomColorPicker();
+                        // Add haptic feedback
+                        _colorSelectionController.forward().then((_) {
+                          _colorSelectionController.reverse();
+                        });
+                      },
+                      child: AnimatedScale(
+                        scale: 1.0,
+                        duration: const Duration(milliseconds: 150),
+                        curve: Curves.elasticOut,
+                        child: Container(
+                          width: 36, // Smaller size
+                          height: 36,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: const SweepGradient(
+                              colors: [
+                                Colors.red,
+                                Colors.orange,
+                                Colors.yellow,
+                                Colors.green,
+                                Colors.blue,
+                                Colors.indigo,
+                                Colors.purple,
+                                Colors.red,
+                              ],
+                            ),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              width: 2,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.1),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Icon(
+                            Icons.palette,
+                            color: Colors.white,
+                            size: 18, // Smaller icon
+                            shadows: [
+                              Shadow(
+                                color: Colors.black.withValues(alpha: 0.5),
+                                offset: const Offset(1, 1),
+                                blurRadius: 2,
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                    ],
-                  ),
-                  child: Icon(
-                    Icons.palette,
-                    color: Colors.white,
-                    size: 24,
-                    shadows: [
-                      Shadow(
-                        color: Colors.black.withValues(alpha: 0.5),
-                        offset: const Offset(1, 1),
-                        blurRadius: 2,
-                      ),
-                    ],
-                  ),
-                ),
+                    ),
+                  );
+                },
               );
             }
 
             final color = SpaceColors.presetColors[index];
             final isSelected = color == _selectedColor;
-            return GestureDetector(
-              onTap: () {
-                setState(() {
-                  _selectedColor = color;
-                });
-              },
-              child: Container(
-                decoration: BoxDecoration(
-                  color: color,
-                  shape: BoxShape.circle,
-                  border: isSelected
-                      ? Border.all(
-                          color: Theme.of(context).colorScheme.onSurface,
-                          width: 3,
-                        )
-                      : Border.all(
-                          color: Colors.white.withValues(alpha: 0.2),
-                          width: 2,
+
+            return TweenAnimationBuilder<double>(
+              duration: Duration(milliseconds: 200 + (index * 50)),
+              tween: Tween(begin: 0.0, end: 1.0),
+              curve: Curves.easeOutBack,
+              builder: (context, scale, child) {
+                return Transform.scale(
+                  scale: scale,
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _selectedColor = color;
+                      });
+                      // Trigger selection animation
+                      _colorSelectionController.forward().then((_) {
+                        _colorSelectionController.reverse();
+                      });
+                      // Trigger preview update
+                      _previewController.reset();
+                      _previewController.forward();
+                    },
+                    child: AnimatedScale(
+                      scale: isSelected ? 1.1 : 1.0,
+                      duration: const Duration(milliseconds: 200),
+                      curve: Curves.elasticOut,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeOutCubic,
+                        width: 36, // Smaller size
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: color,
+                          shape: BoxShape.circle,
+                          border: isSelected
+                              ? Border.all(
+                                  color:
+                                      Theme.of(context).colorScheme.onSurface,
+                                  width: 3,
+                                )
+                              : Border.all(
+                                  color: Colors.white.withValues(alpha: 0.2),
+                                  width: 2,
+                                ),
+                          boxShadow: isSelected
+                              ? [
+                                  BoxShadow(
+                                    color: color.withValues(alpha: 0.5),
+                                    blurRadius: 12,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ]
+                              : [
+                                  BoxShadow(
+                                    color: color.withValues(alpha: 0.3),
+                                    blurRadius: 6,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
                         ),
-                  boxShadow: isSelected
-                      ? [
-                          BoxShadow(
-                            color: color.withValues(alpha: 0.4),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
+                        child: AnimatedOpacity(
+                          opacity: isSelected ? 1.0 : 0.0,
+                          duration: const Duration(milliseconds: 200),
+                          child: Icon(
+                            Icons.check,
+                            color: color.computeLuminance() > 0.5
+                                ? Colors.black
+                                : Colors.white,
+                            size: 16, // Smaller icon
                           ),
-                        ]
-                      : [
-                          BoxShadow(
-                            color: color.withValues(alpha: 0.3),
-                            blurRadius: 6,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                ),
-                child: isSelected
-                    ? Icon(
-                        Icons.check,
-                        color: color.computeLuminance() > 0.5
-                            ? Colors.black
-                            : Colors.white,
-                        size: 20,
-                      )
-                    : null,
-              ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
             );
           },
         ),
@@ -604,11 +698,10 @@ class _AddSpaceScreenState extends State<AddSpaceScreen> {
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 4,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio:
-                0.85, // Make items slightly taller to prevent overflow
+            crossAxisCount: 5, // Increased from 4 to make items smaller
+            crossAxisSpacing: 8, // Reduced spacing
+            mainAxisSpacing: 8,
+            childAspectRatio: 0.9, // Slightly adjusted
           ),
           itemCount: SpaceIcons.presetIcons.length,
           itemBuilder: (context, index) {
@@ -616,69 +709,112 @@ class _AddSpaceScreenState extends State<AddSpaceScreen> {
             final label = SpaceIcons.iconLabels[index];
             final isSelected = icon == _selectedIcon;
 
-            return GestureDetector(
-              onTap: () {
-                setState(() {
-                  _selectedIcon = icon;
-                });
-              },
-              child: Container(
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? _selectedColor.withValues(alpha: 0.1)
-                      : Theme.of(context).colorScheme.surface,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: isSelected
-                        ? _selectedColor
-                        : Theme.of(context)
-                            .colorScheme
-                            .outline
-                            .withValues(alpha: 0.3),
-                    width: isSelected ? 2 : 1,
-                  ),
-                ),
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        icon,
-                        color: isSelected
-                            ? _selectedColor
-                            : Theme.of(context).colorScheme.onSurface,
-                        size: 22, // Slightly smaller icon
-                      ),
-                      const SizedBox(height: 2), // Reduced spacing
-                      Flexible(
-                        child: Text(
-                          label,
-                          style:
-                              Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    fontSize: 9, // Slightly smaller text
-                                    color: isSelected
-                                        ? _selectedColor
-                                        : Theme.of(context)
-                                            .colorScheme
-                                            .onSurface
-                                            .withValues(alpha: 0.7),
-                                    fontWeight: isSelected
-                                        ? FontWeight.w600
-                                        : FontWeight.w400,
-                                    height: 1.1, // Tighter line height
+            return TweenAnimationBuilder<double>(
+              duration: Duration(milliseconds: 300 + (index * 30)),
+              tween: Tween(begin: 0.0, end: 1.0),
+              curve: Curves.easeOutBack,
+              builder: (context, scale, child) {
+                return Transform.scale(
+                  scale: scale,
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _selectedIcon = icon;
+                      });
+                      // Trigger icon selection animation
+                      _iconSelectionController.forward().then((_) {
+                        _iconSelectionController.reverse();
+                      });
+                      // Trigger preview update
+                      _previewController.reset();
+                      _previewController.forward();
+                    },
+                    child: AnimatedScale(
+                      scale: isSelected ? 1.05 : 1.0,
+                      duration: const Duration(milliseconds: 200),
+                      curve: Curves.easeOutBack,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 250),
+                        curve: Curves.easeOutCubic,
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? _selectedColor.withValues(alpha: 0.15)
+                              : Theme.of(context).colorScheme.surface,
+                          borderRadius: BorderRadius.circular(
+                              10), // Slightly smaller radius
+                          border: Border.all(
+                            color: isSelected
+                                ? _selectedColor
+                                : Theme.of(context)
+                                    .colorScheme
+                                    .outline
+                                    .withValues(alpha: 0.2),
+                            width: isSelected ? 2 : 1,
+                          ),
+                          boxShadow: isSelected
+                              ? [
+                                  BoxShadow(
+                                    color:
+                                        _selectedColor.withValues(alpha: 0.2),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
                                   ),
-                          textAlign: TextAlign.center,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                                ]
+                              : [],
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 6, horizontal: 3), // Reduced padding
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                child: Icon(
+                                  icon,
+                                  color: isSelected
+                                      ? _selectedColor
+                                      : Theme.of(context).colorScheme.onSurface,
+                                  size: 18, // Smaller icon
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Flexible(
+                                child: AnimatedDefaultTextStyle(
+                                  duration: const Duration(milliseconds: 200),
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall!
+                                      .copyWith(
+                                        fontSize: 8, // Smaller text
+                                        color: isSelected
+                                            ? _selectedColor
+                                            : Theme.of(context)
+                                                .colorScheme
+                                                .onSurface
+                                                .withValues(alpha: 0.7),
+                                        fontWeight: isSelected
+                                            ? FontWeight.w600
+                                            : FontWeight.w400,
+                                        height: 1.1,
+                                      ),
+                                  child: Text(
+                                    label,
+                                    textAlign: TextAlign.center,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
+                );
+              },
             );
           },
         ),
@@ -700,98 +836,145 @@ class _AddSpaceScreenState extends State<AddSpaceScreen> {
               ),
         ),
         const SizedBox(height: 12),
-        Container(
-          width: double.infinity,
-          height: 80,
-          decoration: BoxDecoration(
-            color: _selectedColor,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: _selectedColor.withValues(alpha: 0.3),
-                blurRadius: 8,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Row(
-              children: [
-                // Icon container
-                Container(
-                  width: 40,
-                  height: 40,
+        AnimatedBuilder(
+          animation: _previewController,
+          builder: (context, child) {
+            final scaleAnimation = Tween<double>(
+              begin: 0.9,
+              end: 1.0,
+            ).animate(CurvedAnimation(
+              parent: _previewController,
+              curve: Curves.easeOutBack,
+            ));
+
+            final fadeAnimation = Tween<double>(
+              begin: 0.0,
+              end: 1.0,
+            ).animate(CurvedAnimation(
+              parent: _previewController,
+              curve: Curves.easeOut,
+            ));
+
+            return FadeTransition(
+              opacity: fadeAnimation,
+              child: ScaleTransition(
+                scale: scaleAnimation,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutCubic,
+                  width: double.infinity,
+                  height: 80,
                   decoration: BoxDecoration(
-                    color: textColor.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(
-                    _selectedIcon,
-                    size: 20,
-                    color: textColor,
-                  ),
-                ),
-
-                const SizedBox(width: 16),
-
-                // Text content - FIXED OVERFLOW
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min, // Prevent overflow
-                    children: [
-                      Flexible(
-                        child: Text(
-                          _nameController.text.isEmpty
-                              ? 'Space Name'
-                              : _nameController.text,
-                          style: TextStyle(
-                            fontSize: 15, // Slightly smaller
-                            fontWeight: FontWeight.w700,
-                            color: textColor,
-                            letterSpacing: -0.3,
-                            height: 1.2, // Controlled line height
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
-                        ),
-                      ),
-                      const SizedBox(height: 2), // Reduced spacing
-                      Flexible(
-                        child: Text(
-                          '0 reminders',
-                          style: TextStyle(
-                            fontSize: 12, // Slightly smaller
-                            color: textColor.withValues(alpha: 0.8),
-                            fontWeight: FontWeight.w500,
-                            height: 1.2, // Controlled line height
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                    color: _selectedColor,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: _selectedColor.withValues(alpha: 0.3),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
                       ),
                     ],
                   ),
-                ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Row(
+                      children: [
+                        // Animated icon container
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeOutCubic,
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: textColor.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 200),
+                            transitionBuilder:
+                                (Widget child, Animation<double> animation) {
+                              return ScaleTransition(
+                                scale: animation,
+                                child: child,
+                              );
+                            },
+                            child: Icon(
+                              _selectedIcon,
+                              key: ValueKey(_selectedIcon),
+                              size: 20,
+                              color: textColor,
+                            ),
+                          ),
+                        ),
 
-                // Arrow indicator
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: textColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Icon(
-                    Icons.arrow_forward_ios_rounded,
-                    size: 14,
-                    color: textColor.withValues(alpha: 0.8),
+                        const SizedBox(width: 16),
+
+                        // Text content with animation
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Flexible(
+                                child: AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 300),
+                                  child: Text(
+                                    _nameController.text.isEmpty
+                                        ? 'Space Name'
+                                        : _nameController.text,
+                                    key: ValueKey(_nameController.text),
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
+                                      color: textColor,
+                                      letterSpacing: -0.3,
+                                      height: 1.2,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Flexible(
+                                child: Text(
+                                  '0 reminders',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: textColor.withValues(alpha: 0.8),
+                                    fontWeight: FontWeight.w500,
+                                    height: 1.2,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        // Animated arrow indicator
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: textColor.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Icon(
+                            Icons.arrow_forward_ios_rounded,
+                            size: 14,
+                            color: textColor.withValues(alpha: 0.8),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         ),
       ],
     );

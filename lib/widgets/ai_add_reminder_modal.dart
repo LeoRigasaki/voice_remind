@@ -960,226 +960,291 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
   }
 
   Widget _buildAITextTab() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Padding(
       padding: const EdgeInsets.all(20),
       child: Column(
         children: [
-          // Current Time Display
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            margin: const EdgeInsets.only(bottom: 20),
-            decoration: BoxDecoration(
-              color: isDark
-                  ? const Color(0xFF1C1C1E).withValues(alpha: 0.5)
-                  : const Color(0xFFF7F7F7).withValues(alpha: 0.8),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: Theme.of(context)
-                    .colorScheme
-                    .outline
-                    .withValues(alpha: 0.1),
-                width: 0.5,
-              ),
-            ),
-            child: Row(
+          if (!_showPreview) ...[
+            // HEADER WITH COMPACT AI STATUS TAG
+            Row(
               children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: _aiServiceReady ? Colors.green : Colors.orange,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'AI STATUS',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 1.2,
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurface
-                              .withValues(alpha: 0.6),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _aiServiceReady
-                            ? '${_currentAIProvider.toUpperCase()} Ready'
-                            : 'Not Configured',
+                        'Describe your reminders',
                         style:
-                            Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w500,
-                                  letterSpacing: -0.2,
-                                  color: _aiServiceReady
-                                      ? Colors.green
-                                      : Colors.orange,
+                            Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: -0.5,
                                 ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Tell me what you need to remember, and I\'ll create smart reminders for you.',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurface
+                                  .withValues(alpha: 0.7),
+                              height: 1.4,
+                            ),
                       ),
                     ],
                   ),
                 ),
-                if (!_aiServiceReady)
-                  TextButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const SettingsScreen(),
-                        ),
-                      ).then((_) => _loadAIServiceStatus());
-                    },
-                    child: const Text('Setup'),
-                  ),
-              ],
-            ),
-          ),
-
-          if (!_showPreview) ...[
-            // AI Input section
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Describe your reminders',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _aiServiceReady
-                        ? 'Tell me what you need to remember, and I\'ll create smart reminders for you.'
-                        : 'Configure an AI provider in Settings to use this feature.',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurface
-                              .withValues(alpha: 0.7),
-                        ),
-                  ),
-                  const SizedBox(height: 24),
-                  Expanded(
-                    child: Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: TextField(
-                          controller: _aiInputController,
-                          decoration: InputDecoration(
-                            hintText: _aiServiceReady
-                                ? 'Example: "Call dentist tomorrow at 10am, buy groceries for Saturday dinner party, and review the budget report by Friday"'
-                                : 'Configure AI provider in Settings first...',
-                            border: InputBorder.none,
-                          ),
-                          maxLines: null,
-                          expands: true,
-                          textAlignVertical: TextAlignVertical.top,
-                          enabled: _aiServiceReady,
-                        ),
-                      ),
+                const SizedBox(width: 16),
+                // COMPACT AI STATUS TAG
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: _aiServiceReady
+                        ? Colors.green.withValues(alpha: 0.1)
+                        : Colors.orange.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: _aiServiceReady
+                          ? Colors.green.withValues(alpha: 0.3)
+                          : Colors.orange.withValues(alpha: 0.3),
+                      width: 1,
                     ),
                   ),
-                  if (_aiError != null) ...[
-                    const SizedBox(height: 16),
-                    Card(
-                      color: Colors.red.withValues(alpha: 0.1),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.error_outline,
-                                color: Colors.red, size: 20),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                _aiError!,
-                                style: const TextStyle(color: Colors.red),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: _aiServiceReady ? Colors.green : Colors.orange,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _aiServiceReady
+                            ? _currentAIProvider.toUpperCase()
+                            : 'SETUP',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: _aiServiceReady ? Colors.green : Colors.orange,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      if (!_aiServiceReady) ...[
+                        const SizedBox(width: 4),
+                        GestureDetector(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const SettingsScreen(),
                               ),
+                            ).then((_) {
+                              if (mounted) {
+                                _loadAIServiceStatus();
+                              }
+                            });
+                          },
+                          child: const Icon(
+                            Icons.arrow_forward_ios,
+                            size: 12,
+                            color: Colors.orange,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 32),
+
+            // BEAUTIFUL MATERIAL DESIGN TEXT INPUT
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return Column(
+                    children: [
+                      // TEXT INPUT CONTAINER
+                      Expanded(
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(4),
+                          child: TextField(
+                            controller: _aiInputController,
+                            enabled: _aiServiceReady,
+                            maxLines: null,
+                            expands: true,
+                            textAlignVertical: TextAlignVertical.top,
+                            style:
+                                Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                      height: 1.5,
+                                      fontSize: 16,
+                                    ),
+                            decoration: InputDecoration(
+                              hintText: _aiServiceReady
+                                  ? 'Make the reminder for the building construction on 3AM'
+                                  : 'Configure AI provider in Settings first...',
+                              hintStyle: TextStyle(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurface
+                                    .withValues(alpha: 0.4),
+                                fontSize: 16,
+                                height: 1.5,
+                              ),
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              errorBorder: InputBorder.none,
+                              disabledBorder: InputBorder.none,
+                              contentPadding: const EdgeInsets.all(16),
+                              filled: false,
                             ),
-                          ],
+                          ),
+                        ),
+                      ),
+
+                      // ELEGANT UNDERLINE
+                      Container(
+                        height: 1,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Theme.of(context)
+                                  .colorScheme
+                                  .primary
+                                  .withValues(alpha: 0.0),
+                              Theme.of(context)
+                                  .colorScheme
+                                  .primary
+                                  .withValues(alpha: 0.6),
+                              Theme.of(context)
+                                  .colorScheme
+                                  .primary
+                                  .withValues(alpha: 0.0),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 16),
+                    ],
+                  );
+                },
+              ),
+            ),
+
+            // ERROR MESSAGE - CONDITIONAL & COMPACT
+            if (_aiError != null) ...[
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 16),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.red.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: Colors.red.withValues(alpha: 0.3),
+                    width: 1,
+                  ),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(
+                      Icons.error_outline,
+                      color: Colors.red,
+                      size: 16,
+                    ),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Error generating reminders. Please try again.',
+                        style: TextStyle(
+                          color: Colors.red,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ),
                   ],
-                ],
+                ),
               ),
-            ),
+            ],
 
-            // Generate button
-            Padding(
-              padding: const EdgeInsets.only(top: 20),
-              child: SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  onPressed:
-                      _canGenerateReminders() ? _generateReminders : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _canGenerateReminders()
-                        ? Theme.of(context).colorScheme.primary
-                        : Theme.of(context)
-                            .colorScheme
-                            .outline
-                            .withValues(alpha: 0.3),
-                    foregroundColor: _canGenerateReminders()
-                        ? Theme.of(context).colorScheme.onPrimary
-                        : Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withValues(alpha: 0.5),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  child: _isGenerating
-                      ? const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
+            // GENERATE BUTTON - ENHANCED DESIGN
+            Container(
+              width: double.infinity,
+              height: 56,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                gradient: _canGenerateReminders()
+                    ? LinearGradient(
+                        colors: [
+                          Theme.of(context).colorScheme.primary,
+                          Theme.of(context)
+                              .colorScheme
+                              .primary
+                              .withValues(alpha: 0.8),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      )
+                    : null,
+                color: !_canGenerateReminders()
+                    ? Theme.of(context)
+                        .colorScheme
+                        .outline
+                        .withValues(alpha: 0.2)
+                    : null,
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: _canGenerateReminders() ? _generateReminders : null,
+                  borderRadius: BorderRadius.circular(16),
+                  child: Center(
+                    child: _isGenerating
+                        ? Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Theme.of(context).colorScheme.onPrimary,
+                                  ),
+                                ),
                               ),
-                            ),
-                            SizedBox(width: 12),
-                            Text('GENERATING...'),
-                          ],
-                        )
-                      : Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              _aiServiceReady
-                                  ? Icons.auto_awesome
-                                  : Icons.settings,
-                              size: 20,
-                              color: _canGenerateReminders()
-                                  ? Theme.of(context).colorScheme.onPrimary
-                                  : Theme.of(context)
-                                      .colorScheme
-                                      .onSurface
-                                      .withValues(alpha: 0.5),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              _aiServiceReady
-                                  ? 'GENERATE REMINDERS'
-                                  : 'SETUP AI FIRST',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 0.5,
+                              const SizedBox(width: 12),
+                              Text(
+                                'GENERATING...',
+                                style: TextStyle(
+                                  color:
+                                      Theme.of(context).colorScheme.onPrimary,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ],
+                          )
+                        : Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                _aiServiceReady
+                                    ? Icons.auto_awesome
+                                    : Icons.settings_outlined,
+                                size: 20,
                                 color: _canGenerateReminders()
                                     ? Theme.of(context).colorScheme.onPrimary
                                     : Theme.of(context)
@@ -1187,14 +1252,30 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                                         .onSurface
                                         .withValues(alpha: 0.5),
                               ),
-                            ),
-                          ],
-                        ),
+                              const SizedBox(width: 8),
+                              Text(
+                                _aiServiceReady
+                                    ? 'GENERATE REMINDERS'
+                                    : 'SETUP AI FIRST',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.5,
+                                  color: _canGenerateReminders()
+                                      ? Theme.of(context).colorScheme.onPrimary
+                                      : Theme.of(context)
+                                          .colorScheme
+                                          .onSurface
+                                          .withValues(alpha: 0.5),
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
                 ),
               ),
             ),
           ] else
-            // Preview section (keeping original implementation)
+            // PREVIEW SECTION (keeping original implementation)
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
