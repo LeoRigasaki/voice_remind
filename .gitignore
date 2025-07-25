@@ -47,3 +47,5 @@ app.*.map.json
 
 # Secrets and Environment Variables
 .env
+
+*.apk

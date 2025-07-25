@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 
 class UpdateService {
   static const String _githubApiUrl =
@@ -128,21 +129,15 @@ class UpdateService {
     Function(double progress) onProgress,
   ) async {
     try {
-      // Request storage permission
-      final storagePermission = await Permission.storage.request();
-      if (storagePermission != PermissionStatus.granted) {
-        return DownloadResult(
-          success: false,
-          error: 'Storage permission is required to download the update',
-        );
-      }
+      // Request appropriate permissions based on Android version
+      await _requestDownloadPermissions();
 
-      // Get downloads directory
-      final directory = await getExternalStorageDirectory();
+      // Get appropriate download directory
+      final directory = await _getDownloadDirectory();
       if (directory == null) {
         return DownloadResult(
           success: false,
-          error: 'Unable to access storage directory',
+          error: 'Unable to access download directory',
         );
       }
 
@@ -211,6 +206,55 @@ class UpdateService {
         success: false,
         error: 'Download failed: ${e.toString()}',
       );
+    }
+  }
+
+  // **NEW: Get appropriate download directory based on Android version**
+  static Future<Directory?> _getDownloadDirectory() async {
+    try {
+      if (Platform.isAndroid) {
+        // For Android 11+, use app-specific external storage (no permission needed)
+        final directory = await getExternalStorageDirectory();
+        if (directory != null) {
+          // Create Downloads folder in app-specific directory
+          final downloadDir = Directory('${directory.path}/Downloads');
+          if (!await downloadDir.exists()) {
+            await downloadDir.create(recursive: true);
+          }
+          return downloadDir;
+        }
+      }
+
+      // Fallback to app documents directory
+      return await getApplicationDocumentsDirectory();
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error getting download directory: $e');
+      }
+      return null;
+    }
+  }
+
+// **NEW: Request appropriate permissions based on Android version**
+  static Future<void> _requestDownloadPermissions() async {
+    if (Platform.isAndroid) {
+      final androidInfo = await DeviceInfoPlugin().androidInfo;
+      final sdkInt = androidInfo.version.sdkInt;
+
+      if (sdkInt >= 30) {
+        // Android 11+ - Request MANAGE_EXTERNAL_STORAGE
+        final permission = await Permission.manageExternalStorage.request();
+        if (permission != PermissionStatus.granted) {
+          // If not granted, still proceed with app-specific storage
+          if (kDebugMode) {
+            print(
+                'MANAGE_EXTERNAL_STORAGE not granted, using app-specific storage');
+          }
+        }
+      } else {
+        // Android 10 and below - Request traditional storage permission
+        await Permission.storage.request();
+      }
     }
   }
 
