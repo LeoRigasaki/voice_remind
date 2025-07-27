@@ -127,7 +127,7 @@ class _AddSpaceScreenState extends State<AddSpaceScreen>
   Widget _buildCustomColorPicker() {
     double hue = 0.0;
     double saturation = 1.0;
-    double value = 1.0;
+    double brightness = 1.0;
     Color selectedColor = Colors.red;
 
     return StatefulBuilder(
@@ -245,12 +245,12 @@ class _AddSpaceScreenState extends State<AddSpaceScreen>
                       hue,
                       0.0,
                       360.0,
-                      (value) {
+                      (newValue) {
                         setModalState(() {
-                          hue = value;
-                          selectedColor =
-                              HSVColor.fromAHSV(1.0, hue, saturation, value)
-                                  .toColor();
+                          hue = newValue;
+                          selectedColor = HSVColor.fromAHSV(
+                                  1.0, hue, saturation, brightness)
+                              .toColor();
                         });
                       },
                       gradient: const LinearGradient(
@@ -274,18 +274,20 @@ class _AddSpaceScreenState extends State<AddSpaceScreen>
                       saturation,
                       0.0,
                       1.0,
-                      (value) {
+                      (newValue) {
                         setModalState(() {
-                          saturation = value;
-                          selectedColor =
-                              HSVColor.fromAHSV(1.0, hue, saturation, value)
-                                  .toColor();
+                          saturation = newValue;
+                          selectedColor = HSVColor.fromAHSV(
+                                  1.0, hue, saturation, brightness)
+                              .toColor();
                         });
                       },
                       gradient: LinearGradient(
                         colors: [
-                          HSVColor.fromAHSV(1.0, hue, 0.0, value).toColor(),
-                          HSVColor.fromAHSV(1.0, hue, 1.0, value).toColor(),
+                          HSVColor.fromAHSV(1.0, hue, 0.0, brightness)
+                              .toColor(),
+                          HSVColor.fromAHSV(1.0, hue, 1.0, brightness)
+                              .toColor(),
                         ],
                       ),
                     ),
@@ -294,15 +296,15 @@ class _AddSpaceScreenState extends State<AddSpaceScreen>
                     // Value/Brightness Slider
                     _buildColorSlider(
                       'Brightness',
-                      value,
+                      brightness,
                       0.0,
                       1.0,
-                      (value) {
+                      (newValue) {
                         setModalState(() {
-                          value = value;
-                          selectedColor =
-                              HSVColor.fromAHSV(1.0, hue, saturation, value)
-                                  .toColor();
+                          brightness = newValue;
+                          selectedColor = HSVColor.fromAHSV(
+                                  1.0, hue, saturation, brightness)
+                              .toColor();
                         });
                       },
                       gradient: LinearGradient(
@@ -416,18 +418,44 @@ class _AddSpaceScreenState extends State<AddSpaceScreen>
           child: SliderTheme(
             data: SliderTheme.of(context).copyWith(
               trackHeight: 30,
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 15),
-              overlayShape: const RoundSliderOverlayShape(overlayRadius: 20),
+              thumbShape: const RoundSliderThumbShape(
+                  enabledThumbRadius: 10), // Smaller thumb
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 15),
               thumbColor: Colors.white,
               overlayColor: Colors.white.withValues(alpha: 0.2),
               activeTrackColor: Colors.transparent,
               inactiveTrackColor: Colors.transparent,
+              // Add these properties for better alignment
+              valueIndicatorShape: const PaddleSliderValueIndicatorShape(),
+              valueIndicatorColor: Colors.transparent,
             ),
-            child: Slider(
-              value: value,
-              min: min,
-              max: max,
-              onChanged: onChanged,
+            child: Stack(
+              children: [
+                // Gradient container with proper margins
+                Container(
+                  height: 30,
+                  margin: const EdgeInsets.symmetric(
+                      horizontal: 10), // Margin for thumb space
+                  decoration: BoxDecoration(
+                    gradient: gradient,
+                    borderRadius: BorderRadius.circular(15),
+                    border: Border.all(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .outline
+                          .withValues(alpha: 0.2),
+                      width: 1,
+                    ),
+                  ),
+                ),
+                // Slider on top
+                Slider(
+                  value: value,
+                  min: min,
+                  max: max,
+                  onChanged: onChanged,
+                ),
+              ],
             ),
           ),
         ),

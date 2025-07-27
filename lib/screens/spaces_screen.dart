@@ -8,6 +8,7 @@ import '../models/space.dart';
 import '../services/spaces_service.dart';
 import 'add_space_screen.dart';
 import '../models/reminder.dart';
+import '../widgets/search_widget.dart';
 
 class SpacesScreen extends StatefulWidget {
   const SpacesScreen({super.key});
@@ -33,6 +34,12 @@ class _SpacesScreenState extends State<SpacesScreen>
   // Delete expansion state
   bool _isDeleteExpanded = false;
   bool _deleteWithReminders = true;
+
+  bool _isSearchMode = false;
+  String _searchQuery = '';
+
+// View toggle
+  bool _isGridView = false;
 
   @override
   void initState() {
@@ -80,6 +87,45 @@ class _SpacesScreenState extends State<SpacesScreen>
         });
       }
     });
+  }
+
+  void _openSearch() {
+    HapticFeedback.lightImpact();
+    setState(() {
+      _isSearchMode = true;
+    });
+  }
+
+  void _closeSearch() {
+    setState(() {
+      _isSearchMode = false;
+      _searchQuery = '';
+    });
+  }
+
+  void _onSearchChanged(String query) {
+    setState(() {
+      _searchQuery = query.trim();
+    });
+  }
+
+  void _toggleViewMode() {
+    HapticFeedback.lightImpact();
+    setState(() {
+      _isGridView = !_isGridView;
+      // Force rebuild by touching the state
+    });
+  }
+
+  List<Space> _getFilteredSpaces() {
+    if (_searchQuery.isEmpty) {
+      return List.from(_spaces);
+    }
+
+    final filtered = _spaces.where((space) {
+      return space.name.toLowerCase().contains(_searchQuery.toLowerCase());
+    }).toList();
+    return filtered;
   }
 
   void _startWiggle(String spaceId) {
@@ -187,7 +233,7 @@ class _SpacesScreenState extends State<SpacesScreen>
   Widget _buildCustomColorPicker() {
     double hue = 0.0;
     double saturation = 1.0;
-    double value = 1.0;
+    double brightness = 1.0;
     Color selectedColor = Colors.red;
 
     return StatefulBuilder(
@@ -308,9 +354,9 @@ class _SpacesScreenState extends State<SpacesScreen>
                       (value) {
                         setModalState(() {
                           hue = value;
-                          selectedColor =
-                              HSVColor.fromAHSV(1.0, hue, saturation, value)
-                                  .toColor();
+                          selectedColor = HSVColor.fromAHSV(
+                                  1.0, hue, saturation, brightness)
+                              .toColor();
                         });
                       },
                       gradient: const LinearGradient(
@@ -337,15 +383,17 @@ class _SpacesScreenState extends State<SpacesScreen>
                       (value) {
                         setModalState(() {
                           saturation = value;
-                          selectedColor =
-                              HSVColor.fromAHSV(1.0, hue, saturation, value)
-                                  .toColor();
+                          selectedColor = HSVColor.fromAHSV(
+                                  1.0, hue, saturation, brightness)
+                              .toColor();
                         });
                       },
                       gradient: LinearGradient(
                         colors: [
-                          HSVColor.fromAHSV(1.0, hue, 0.0, value).toColor(),
-                          HSVColor.fromAHSV(1.0, hue, 1.0, value).toColor(),
+                          HSVColor.fromAHSV(1.0, hue, 0.0, brightness)
+                              .toColor(),
+                          HSVColor.fromAHSV(1.0, hue, 1.0, brightness)
+                              .toColor(),
                         ],
                       ),
                     ),
@@ -354,15 +402,15 @@ class _SpacesScreenState extends State<SpacesScreen>
                     // Value/Brightness Slider
                     _buildColorSlider(
                       'Brightness',
-                      value,
+                      brightness,
                       0.0,
                       1.0,
                       (value) {
                         setModalState(() {
-                          value = value;
-                          selectedColor =
-                              HSVColor.fromAHSV(1.0, hue, saturation, value)
-                                  .toColor();
+                          brightness = value;
+                          selectedColor = HSVColor.fromAHSV(
+                                  1.0, hue, saturation, brightness)
+                              .toColor();
                         });
                       },
                       gradient: LinearGradient(
@@ -471,18 +519,44 @@ class _SpacesScreenState extends State<SpacesScreen>
           child: SliderTheme(
             data: SliderTheme.of(context).copyWith(
               trackHeight: 30,
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 15),
-              overlayShape: const RoundSliderOverlayShape(overlayRadius: 20),
+              thumbShape: const RoundSliderThumbShape(
+                  enabledThumbRadius: 10), // Smaller thumb
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 15),
               thumbColor: Colors.white,
               overlayColor: Colors.white.withValues(alpha: 0.2),
               activeTrackColor: Colors.transparent,
               inactiveTrackColor: Colors.transparent,
+              // Add these properties for better alignment
+              valueIndicatorShape: const PaddleSliderValueIndicatorShape(),
+              valueIndicatorColor: Colors.transparent,
             ),
-            child: Slider(
-              value: value,
-              min: min,
-              max: max,
-              onChanged: onChanged,
+            child: Stack(
+              children: [
+                // Gradient container with proper margins
+                Container(
+                  height: 30,
+                  margin: const EdgeInsets.symmetric(
+                      horizontal: 10), // Margin for thumb space
+                  decoration: BoxDecoration(
+                    gradient: gradient,
+                    borderRadius: BorderRadius.circular(15),
+                    border: Border.all(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .outline
+                          .withValues(alpha: 0.2),
+                      width: 1,
+                    ),
+                  ),
+                ),
+                // Slider on top
+                Slider(
+                  value: value,
+                  min: min,
+                  max: max,
+                  onChanged: onChanged,
+                ),
+              ],
             ),
           ),
         ),
@@ -551,9 +625,158 @@ class _SpacesScreenState extends State<SpacesScreen>
     );
   }
 
+  Widget _buildGridSpaceCard(Space space, {String? searchQuery}) {
+    final textColor =
+        space.color.computeLuminance() > 0.5 ? Colors.black87 : Colors.white;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isSelected = _selectedSpaces.contains(space.id);
+    final isWiggling = _wigglingSpaces.contains(space.id);
+
+    return AnimatedBuilder(
+      animation: _wiggleController,
+      builder: (context, child) {
+        // Simple wiggle transform - ONLY for spaces that should wiggle
+        double rotation = 0.0;
+        double translateX = 0.0;
+
+        if (isWiggling && _wiggleController.isAnimating) {
+          rotation = ((_wiggleController.value - 0.5) * 0.02); // Small rotation
+          translateX = ((_wiggleController.value - 0.5) *
+              2); // Small horizontal movement
+        }
+
+        return Transform(
+          alignment: Alignment.center,
+          transform: Matrix4.identity()
+            ..rotateZ(rotation)
+            ..translate(translateX),
+          child: GestureDetector(
+            onLongPress: () {
+              if (!_isSelectionMode) {
+                HapticFeedback.mediumImpact();
+                _enterSelectionMode(space.id);
+                _startWiggle(space.id);
+              }
+            },
+            onTap: _isSelectionMode
+                ? () => _toggleSelection(space.id)
+                : () => _navigateToSpaceReminders(space),
+            child: Container(
+              decoration: BoxDecoration(
+                color: space.color,
+                borderRadius: BorderRadius.circular(16),
+                border: isSelected
+                    ? Border.all(
+                        color: isDark ? Colors.white : Colors.black,
+                        width: 2,
+                      )
+                    : null,
+                boxShadow: [
+                  BoxShadow(
+                    color: space.color.withValues(alpha: 0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Selection checkbox and icon
+                    Row(
+                      children: [
+                        if (_isSelectionMode) ...[
+                          Container(
+                            width: 20,
+                            height: 20,
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? (isDark ? Colors.white : Colors.black)
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(
+                                color: isDark ? Colors.white : Colors.black,
+                                width: 1.5,
+                              ),
+                            ),
+                            child: isSelected
+                                ? Icon(
+                                    Icons.check,
+                                    color: isDark ? Colors.black : Colors.white,
+                                    size: 14,
+                                  )
+                                : null,
+                          ),
+                          const Spacer(),
+                        ],
+                        Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: textColor.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(
+                            space.icon,
+                            size: 18,
+                            color: textColor,
+                          ),
+                        ),
+                        if (!_isSelectionMode) const Spacer(),
+                      ],
+                    ),
+
+                    const Spacer(),
+
+                    // Space name
+                    Text(
+                      space.name,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: textColor,
+                        letterSpacing: -0.3,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 2,
+                    ),
+
+                    const SizedBox(height: 4),
+
+                    // Reminder count
+                    FutureBuilder<int>(
+                      future: StorageService.getSpaceReminderCount(space.id),
+                      builder: (context, snapshot) {
+                        final count = snapshot.data ?? 0;
+                        return Text(
+                          '$count reminder${count == 1 ? '' : 's'}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: textColor.withValues(alpha: 0.8),
+                            fontWeight: FontWeight.w500,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildMergeRemindersModal() {
     String? selectedTargetSpaceId;
+    String? newSpaceName;
     bool deleteSourceSpaces = true;
+    bool isCreatingNewSpace = false;
 
     return StatefulBuilder(
       builder: (context, setModalState) {
@@ -562,9 +785,12 @@ class _SpacesScreenState extends State<SpacesScreen>
 
         return Container(
           margin: const EdgeInsets.all(16),
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.8,
+          ),
           decoration: BoxDecoration(
             color: Theme.of(context).colorScheme.surface,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color:
                   Theme.of(context).colorScheme.outline.withValues(alpha: 0.1),
@@ -574,163 +800,427 @@ class _SpacesScreenState extends State<SpacesScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Header
-              Padding(
+              // Header with close button
+              Container(
                 padding: const EdgeInsets.all(20),
                 child: Row(
                   children: [
-                    const Icon(
-                      Icons.merge_outlined,
-                      color: Colors.purple,
-                      size: 24,
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.purple.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.merge_outlined,
+                        color: Colors.purple,
+                        size: 20,
+                      ),
                     ),
                     const SizedBox(width: 12),
-                    Text(
-                      'MERGE REMINDERS',
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 1.5,
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurface
-                                .withValues(alpha: 0.6),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Merge Spaces',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleLarge
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: -0.3,
+                                ),
                           ),
+                          Text(
+                            'Combine ${selectedSpacesList.length} spaces',
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurface
+                                          .withValues(alpha: 0.6),
+                                    ),
+                          ),
+                        ],
+                      ),
                     ),
-                    const Spacer(),
                     IconButton(
                       icon: const Icon(Icons.close),
                       onPressed: () => Navigator.pop(context),
                       style: IconButton.styleFrom(
                         backgroundColor: Colors.transparent,
-                        padding: EdgeInsets.zero,
                       ),
                     ),
                   ],
                 ),
               ),
 
-              // Instructions
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.purple.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: Colors.purple.withValues(alpha: 0.2),
-                      width: 1,
-                    ),
-                  ),
-                  child: Row(
+              // Content
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
                     children: [
-                      const Icon(
-                        Icons.info_outline,
-                        color: Colors.purple,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Select which space to merge all reminders into',
-                          style:
-                              Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: Colors.purple,
-                                    fontWeight: FontWeight.w500,
+                      // Preview section
+                      Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 20),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.blue.withValues(alpha: 0.2),
+                            width: 1,
+                          ),
+                        ),
+                        child: Column(
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.info_outline,
+                                  color: Colors.blue.shade600,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'What will happen',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleSmall
+                                      ?.copyWith(
+                                        color: Colors.blue.shade700,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.surface,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  // Source spaces preview
+                                  Expanded(
+                                    child: Column(
+                                      children: [
+                                        Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: selectedSpacesList
+                                              .take(3)
+                                              .map(
+                                                (space) => Container(
+                                                  width: 24,
+                                                  height: 24,
+                                                  margin: const EdgeInsets
+                                                      .symmetric(horizontal: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: space.color,
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            6),
+                                                  ),
+                                                  child: Icon(
+                                                    space.icon,
+                                                    size: 12,
+                                                    color: space.color
+                                                                .computeLuminance() >
+                                                            0.5
+                                                        ? Colors.black87
+                                                        : Colors.white,
+                                                  ),
+                                                ),
+                                              )
+                                              .toList(),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          '${selectedSpacesList.length} spaces',
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall,
+                                        ),
+                                      ],
+                                    ),
                                   ),
+
+                                  // Arrow
+                                  Container(
+                                    margin: const EdgeInsets.symmetric(
+                                        horizontal: 8),
+                                    child: const Icon(
+                                      Icons.arrow_forward_rounded,
+                                      color: Colors.purple,
+                                      size: 20,
+                                    ),
+                                  ),
+
+                                  // Target preview
+                                  Expanded(
+                                    child: Column(
+                                      children: [
+                                        Container(
+                                          width: 32,
+                                          height: 32,
+                                          decoration: BoxDecoration(
+                                            color: isCreatingNewSpace
+                                                ? Colors.green
+                                                : (selectedTargetSpaceId != null
+                                                    ? selectedSpacesList
+                                                        .firstWhere((s) =>
+                                                            s.id ==
+                                                            selectedTargetSpaceId)
+                                                        .color
+                                                    : Colors.grey),
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                          ),
+                                          child: Icon(
+                                            isCreatingNewSpace
+                                                ? Icons.add
+                                                : (selectedTargetSpaceId != null
+                                                    ? selectedSpacesList
+                                                        .firstWhere((s) =>
+                                                            s.id ==
+                                                            selectedTargetSpaceId)
+                                                        .icon
+                                                    : Icons.help_outline),
+                                            size: 16,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          isCreatingNewSpace
+                                              ? 'New space'
+                                              : (selectedTargetSpaceId != null
+                                                  ? 'Target space'
+                                                  : 'Select target'),
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall,
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ],
-                  ),
-                ),
-              ),
 
-              const SizedBox(height: 20),
+                      const SizedBox(height: 24),
 
-              // Space selection
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Target Space',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                    ),
-                    const SizedBox(height: 12),
-                    ...selectedSpacesList.map((space) {
-                      return FutureBuilder<int>(
-                        future: StorageService.getSpaceReminderCount(space.id),
-                        builder: (context, snapshot) {
-                          final count = snapshot.data ?? 0;
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
+                      // Target selection
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Choose target space',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleMedium
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                            ),
+                            const SizedBox(height: 12),
+
+                            // Create new space option
+                            GestureDetector(
+                              onTap: () {
+                                setModalState(() {
+                                  isCreatingNewSpace = true;
+                                  selectedTargetSpaceId = null;
+                                });
+                                _showQuickSpaceCreationForMerge(setModalState,
+                                    (spaceId, spaceName) {
+                                  setModalState(() {
+                                    selectedTargetSpaceId = spaceId;
+                                    newSpaceName = spaceName;
+                                  });
+                                });
+                              },
+                              child: Container(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: isCreatingNewSpace
+                                      ? Colors.green.withValues(alpha: 0.1)
+                                      : Theme.of(context)
+                                          .colorScheme
+                                          .surfaceContainerHighest
+                                          .withValues(alpha: 0.5),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: isCreatingNewSpace
+                                        ? Colors.green
+                                        : Theme.of(context)
+                                            .colorScheme
+                                            .outline
+                                            .withValues(alpha: 0.2),
+                                    width: isCreatingNewSpace ? 2 : 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 40,
+                                      height: 40,
+                                      decoration: BoxDecoration(
+                                        color:
+                                            Colors.green.withValues(alpha: 0.1),
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: const Icon(
+                                        Icons.add_rounded,
+                                        color: Colors.green,
+                                        size: 20,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            isCreatingNewSpace &&
+                                                    newSpaceName != null
+                                                ? newSpaceName!
+                                                : 'Create New Space',
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .titleSmall
+                                                ?.copyWith(
+                                                  fontWeight: FontWeight.w600,
+                                                  color: isCreatingNewSpace
+                                                      ? Colors.green.shade700
+                                                      : null,
+                                                ),
+                                          ),
+                                          Text(
+                                            'Merge all reminders into a new space',
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodySmall
+                                                ?.copyWith(
+                                                  color: Theme.of(context)
+                                                      .colorScheme
+                                                      .onSurface
+                                                      .withValues(alpha: 0.6),
+                                                ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    if (isCreatingNewSpace)
+                                      const Icon(
+                                        Icons.check_circle,
+                                        color: Colors.green,
+                                        size: 20,
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
+
+                            // Divider
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: Row(
+                                children: [
+                                  const Expanded(child: Divider()),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 16),
+                                    child: Text(
+                                      'OR',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .onSurface
+                                                .withValues(alpha: 0.5),
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                    ),
+                                  ),
+                                  const Expanded(child: Divider()),
+                                ],
+                              ),
+                            ),
+
+                            // Existing spaces
+                            Text(
+                              'Select existing space',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurface
+                                        .withValues(alpha: 0.7),
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                            ),
+                            const SizedBox(height: 8),
+
+                            ...selectedSpacesList.map((space) {
+                              final isSelected =
+                                  selectedTargetSpaceId == space.id &&
+                                      !isCreatingNewSpace;
+                              return GestureDetector(
                                 onTap: () {
                                   setModalState(() {
                                     selectedTargetSpaceId = space.id;
+                                    isCreatingNewSpace = false;
+                                    newSpaceName = null;
                                   });
                                 },
-                                borderRadius: BorderRadius.circular(12),
                                 child: Container(
+                                  margin: const EdgeInsets.only(bottom: 8),
                                   padding: const EdgeInsets.all(16),
                                   decoration: BoxDecoration(
-                                    color: selectedTargetSpaceId == space.id
+                                    color: isSelected
                                         ? space.color.withValues(alpha: 0.1)
                                         : Colors.transparent,
                                     borderRadius: BorderRadius.circular(12),
                                     border: Border.all(
-                                      color: selectedTargetSpaceId == space.id
+                                      color: isSelected
                                           ? space.color
                                           : Theme.of(context)
                                               .colorScheme
                                               .outline
                                               .withValues(alpha: 0.2),
-                                      width: selectedTargetSpaceId == space.id
-                                          ? 2
-                                          : 1,
+                                      width: isSelected ? 2 : 1,
                                     ),
                                   ),
                                   child: Row(
                                     children: [
-                                      // Radio button
                                       Container(
-                                        width: 20,
-                                        height: 20,
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          border: Border.all(
-                                            color: selectedTargetSpaceId ==
-                                                    space.id
-                                                ? space.color
-                                                : Theme.of(context)
-                                                    .colorScheme
-                                                    .outline,
-                                            width: selectedTargetSpaceId ==
-                                                    space.id
-                                                ? 6
-                                                : 2,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 16),
-
-                                      // Space info
-                                      Container(
-                                        width: 32,
-                                        height: 32,
+                                        width: 40,
+                                        height: 40,
                                         decoration: BoxDecoration(
                                           color: space.color,
                                           borderRadius:
-                                              BorderRadius.circular(8),
+                                              BorderRadius.circular(10),
                                         ),
                                         child: Icon(
                                           space.icon,
-                                          size: 18,
+                                          size: 20,
                                           color:
                                               space.color.computeLuminance() >
                                                       0.5
@@ -739,7 +1229,6 @@ class _SpacesScreenState extends State<SpacesScreen>
                                         ),
                                       ),
                                       const SizedBox(width: 12),
-
                                       Expanded(
                                         child: Column(
                                           crossAxisAlignment:
@@ -754,158 +1243,193 @@ class _SpacesScreenState extends State<SpacesScreen>
                                                     fontWeight: FontWeight.w600,
                                                   ),
                                             ),
-                                            Text(
-                                              '$count reminder${count == 1 ? '' : 's'}',
-                                              style: Theme.of(context)
-                                                  .textTheme
-                                                  .bodySmall
-                                                  ?.copyWith(
-                                                    color: Theme.of(context)
-                                                        .colorScheme
-                                                        .onSurface
-                                                        .withValues(alpha: 0.6),
-                                                  ),
+                                            FutureBuilder<int>(
+                                              future: StorageService
+                                                  .getSpaceReminderCount(
+                                                      space.id),
+                                              builder: (context, snapshot) {
+                                                final count =
+                                                    snapshot.data ?? 0;
+                                                return Text(
+                                                  '$count reminder${count == 1 ? '' : 's'}',
+                                                  style: Theme.of(context)
+                                                      .textTheme
+                                                      .bodySmall
+                                                      ?.copyWith(
+                                                        color: Theme.of(context)
+                                                            .colorScheme
+                                                            .onSurface
+                                                            .withValues(
+                                                                alpha: 0.6),
+                                                      ),
+                                                );
+                                              },
                                             ),
                                           ],
                                         ),
                                       ),
+                                      if (isSelected)
+                                        Icon(
+                                          Icons.check_circle,
+                                          color: space.color,
+                                          size: 20,
+                                        ),
                                     ],
                                   ),
                                 ),
+                              );
+                            }),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 20),
+
+                      // Options
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: GestureDetector(
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            setModalState(() {
+                              deleteSourceSpaces = !deleteSourceSpaces;
+                            });
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .surfaceContainerHighest
+                                  .withValues(alpha: 0.3),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .outline
+                                    .withValues(alpha: 0.2),
+                                width: 1,
                               ),
                             ),
-                          );
-                        },
-                      );
-                    }),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 20,
+                                  height: 20,
+                                  decoration: BoxDecoration(
+                                    color: deleteSourceSpaces
+                                        ? Colors.red
+                                        : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(
+                                      color: Colors.red,
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                  child: deleteSourceSpaces
+                                      ? const Icon(
+                                          Icons.check,
+                                          color: Colors.white,
+                                          size: 14,
+                                        )
+                                      : null,
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Delete source spaces',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleSmall
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                      ),
+                                      Text(
+                                        'Remove the original spaces after merging',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall
+                                            ?.copyWith(
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .onSurface
+                                                  .withValues(alpha: 0.6),
+                                            ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // Bottom actions
+              Container(
+                padding: const EdgeInsets.all(20),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: OutlinedButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                        child: const Text('Cancel'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: ElevatedButton(
+                        onPressed: (selectedTargetSpaceId != null ||
+                                isCreatingNewSpace)
+                            ? () => _executeMergeReminders(
+                                  selectedTargetSpaceId!,
+                                  deleteSourceSpaces,
+                                  isCreatingNewSpace: isCreatingNewSpace,
+                                  newSpaceName: newSpaceName,
+                                )
+                            : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.purple,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.merge_outlined, size: 18),
+                            SizedBox(width: 8),
+                            Text(
+                              'Merge Spaces',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
-
-              const SizedBox(height: 20),
-
-              // Delete source spaces option
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: GestureDetector(
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    setModalState(() {
-                      deleteSourceSpaces = !deleteSourceSpaces;
-                    });
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surface,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .outline
-                            .withValues(alpha: 0.2),
-                        width: 1,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 20,
-                          height: 20,
-                          decoration: BoxDecoration(
-                            color: deleteSourceSpaces
-                                ? (Theme.of(context).brightness ==
-                                        Brightness.dark
-                                    ? Colors.white
-                                    : Colors.black)
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(
-                              color: Theme.of(context).brightness ==
-                                      Brightness.dark
-                                  ? Colors.white
-                                  : Colors.black,
-                              width: 1.5,
-                            ),
-                          ),
-                          child: deleteSourceSpaces
-                              ? Icon(
-                                  Icons.check,
-                                  color: Theme.of(context).brightness ==
-                                          Brightness.dark
-                                      ? Colors.black
-                                      : Colors.white,
-                                  size: 14,
-                                )
-                              : null,
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Delete source spaces',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleSmall
-                                    ?.copyWith(
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                              ),
-                              Text(
-                                'Remove empty spaces after merging reminders',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
-                                    ?.copyWith(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onSurface
-                                          .withValues(alpha: 0.6),
-                                    ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // Apply button
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: ElevatedButton(
-                    onPressed: selectedTargetSpaceId != null
-                        ? () => _executeMergeReminders(
-                            selectedTargetSpaceId!, deleteSourceSpaces)
-                        : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.purple,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: const Text(
-                      'Merge Reminders',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 20),
             ],
           ),
         );
@@ -913,17 +1437,122 @@ class _SpacesScreenState extends State<SpacesScreen>
     );
   }
 
+// Add this new method for quick space creation during merge
+  void _showQuickSpaceCreationForMerge(
+      StateSetter setModalState, Function(String, String) onSpaceCreated) {
+    final controller = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Create New Space'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: controller,
+              decoration: const InputDecoration(
+                hintText: 'Space name (e.g., "Combined Tasks")',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.folder_outlined),
+              ),
+              autofocus: true,
+              textCapitalization: TextCapitalization.words,
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.green.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: Colors.green.withValues(alpha: 0.3),
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline,
+                      color: Colors.green.shade600, size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'All reminders will be moved to this new space',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.green.shade700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (controller.text.trim().isNotEmpty) {
+                // Create the space
+                final spaces = await SpacesService.getSpaces();
+                const availableColors = SpaceColors.presetColors;
+                const availableIcons = SpaceIcons.presetIcons;
+
+                final colorIndex = spaces.length % availableColors.length;
+                final iconIndex = spaces.length % availableIcons.length;
+
+                final newSpace = Space(
+                  id: DateTime.now().millisecondsSinceEpoch.toString(),
+                  name: controller.text.trim(),
+                  color: availableColors[colorIndex],
+                  icon: availableIcons[iconIndex],
+                  createdAt: DateTime.now(),
+                );
+
+                await SpacesService.addSpace(newSpace);
+
+                if (context.mounted) {
+                  Navigator.of(context).pop();
+                  onSpaceCreated(newSpace.id, newSpace.name);
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+  }
+
+// Update the existing _executeMergeReminders method to handle new space creation
   Future<void> _executeMergeReminders(
-      String targetSpaceId, bool deleteSourceSpaces) async {
+    String targetSpaceId,
+    bool deleteSourceSpaces, {
+    bool isCreatingNewSpace = false,
+    String? newSpaceName,
+  }) async {
     try {
+      String finalTargetSpaceId = targetSpaceId;
+
+      // If creating new space, targetSpaceId is already the new space ID from creation
+      // No need to create it again since we created it in _showQuickSpaceCreationForMerge
+
       final sourceSpaceIds =
-          _selectedSpaces.where((id) => id != targetSpaceId).toList();
+          _selectedSpaces.where((id) => id != finalTargetSpaceId).toList();
 
       // Move all reminders from source spaces to target space
       final allReminders = await StorageService.getReminders();
       final updatedReminders = allReminders.map((reminder) {
         if (sourceSpaceIds.contains(reminder.spaceId)) {
-          return reminder.copyWith(spaceId: targetSpaceId);
+          return reminder.copyWith(spaceId: finalTargetSpaceId);
         }
         return reminder;
       }).toList();
@@ -939,12 +1568,102 @@ class _SpacesScreenState extends State<SpacesScreen>
       if (mounted) {
         Navigator.of(context).pop(); // Close merge modal
         _exitSelectionMode();
+
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              isCreatingNewSpace
+                  ? 'Created "$newSpaceName" and merged ${sourceSpaceIds.length} spaces'
+                  : 'Merged ${sourceSpaceIds.length} spaces successfully',
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        );
       }
     } catch (e) {
       debugPrint('Error merging reminders: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error merging spaces: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        );
+      }
     }
   }
 
+  Widget _buildNoSearchResults() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.search_off,
+              size: 64, color: Theme.of(context).colorScheme.outline),
+          const SizedBox(height: 16),
+          Text('No spaces found',
+              style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          Text('Try searching with different keywords',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.6))),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchSuggestions() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.search,
+              size: 64, color: Theme.of(context).colorScheme.outline),
+          const SizedBox(height: 16),
+          Text('Search spaces', style: Theme.of(context).textTheme.titleMedium),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchResults(List<Space> spaces) {
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      itemCount: spaces.length,
+      separatorBuilder: (context, index) => const SizedBox(height: 16),
+      itemBuilder: (context, index) {
+        if (index >= spaces.length) return const SizedBox.shrink();
+        return _buildNotionBlock(spaces[index], searchQuery: _searchQuery);
+      },
+    );
+  }
+
+  Widget _buildGridView(List<Space> spaces) {
+    return GridView.builder(
+      padding: const EdgeInsets.all(20),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
+        childAspectRatio: 1.2,
+      ),
+      itemCount: spaces.length,
+      itemBuilder: (context, index) {
+        if (index >= spaces.length) return const SizedBox.shrink();
+        return _buildGridSpaceCard(spaces[index]);
+      },
+    );
+  }
   // === UI BUILDERS ===
 
   @override
@@ -962,6 +1681,19 @@ class _SpacesScreenState extends State<SpacesScreen>
         actions: _isSelectionMode
             ? _buildBulkActions()
             : [
+                // Search Icon
+                IconButton(
+                  icon: const Icon(Icons.search),
+                  onPressed: _openSearch,
+                  tooltip: 'Search Spaces',
+                ),
+                // List/Grid Toggle
+                IconButton(
+                  icon: Icon(_isGridView ? Icons.view_list : Icons.grid_view),
+                  onPressed: _toggleViewMode,
+                  tooltip: _isGridView ? 'List View' : 'Grid View',
+                ),
+                // Add Space
                 IconButton(
                   onPressed: () => _navigateToAddSpace(),
                   icon: const Icon(Icons.add),
@@ -969,11 +1701,63 @@ class _SpacesScreenState extends State<SpacesScreen>
                 ),
               ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _spaces.isEmpty
-              ? _buildEmptyState()
-              : _buildNotionBlocks(),
+      body: Stack(
+        children: [
+          // Main content
+          _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _getFilteredSpaces().isEmpty && _searchQuery.isNotEmpty
+                  ? _buildNoSearchResults()
+                  : _getFilteredSpaces().isEmpty
+                      ? _buildEmptyState()
+                      : _isGridView
+                          ? _buildGridView(_getFilteredSpaces())
+                          : _buildNotionBlocks(_getFilteredSpaces()),
+
+          // Search overlay
+          if (_isSearchMode)
+            Container(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              child: SafeArea(
+                child: Column(
+                  children: [
+                    SearchWidget(
+                      onSearchChanged: _onSearchChanged,
+                      onClose: _closeSearch,
+                      hintText: 'Search spaces...',
+                    ),
+                    Expanded(
+                      child: _searchQuery.isEmpty
+                          ? _buildSearchSuggestions()
+                          : _getFilteredSpaces().isEmpty
+                              ? _buildNoSearchResults()
+                              : _isGridView // ✅ Add grid view check here too
+                                  ? _buildSearchGridView(_getFilteredSpaces())
+                                  : _buildSearchResults(_getFilteredSpaces()),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchGridView(List<Space> spaces) {
+    return GridView.builder(
+      padding: const EdgeInsets.all(20),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
+        childAspectRatio: 1.2,
+      ),
+      itemCount: spaces.length,
+      itemBuilder: (context, index) {
+        if (index >= spaces.length) return const SizedBox.shrink();
+        return _buildGridSpaceCard(spaces[index], searchQuery: _searchQuery);
+      },
     );
   }
 
@@ -1577,7 +2361,7 @@ class _SpacesScreenState extends State<SpacesScreen>
     );
   }
 
-  Widget _buildNotionBlocks() {
+  Widget _buildNotionBlocks(List<Space> spaces) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1588,15 +2372,7 @@ class _SpacesScreenState extends State<SpacesScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Workspace',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.5,
-                    ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                '${_spaces.length} ${_spaces.length == 1 ? 'block' : 'blocks'}${_isSelectionMode ? '' : ' • Tap to manage reminders'}',
+                '${_spaces.length} ${spaces.length == 1 ? 'block' : 'blocks'}${_isSelectionMode ? '' : ' • Tap to manage reminders'}',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: Theme.of(context).colorScheme.outline,
                     ),
@@ -1609,10 +2385,10 @@ class _SpacesScreenState extends State<SpacesScreen>
         Expanded(
           child: ListView.separated(
             padding: const EdgeInsets.symmetric(horizontal: 20),
-            itemCount: _spaces.length,
+            itemCount: spaces.length,
             separatorBuilder: (context, index) => const SizedBox(height: 16),
             itemBuilder: (context, index) {
-              return _buildNotionBlock(_spaces[index]);
+              return _buildNotionBlock(spaces[index]);
             },
           ),
         ),
@@ -1620,7 +2396,7 @@ class _SpacesScreenState extends State<SpacesScreen>
     );
   }
 
-  Widget _buildNotionBlock(Space space) {
+  Widget _buildNotionBlock(Space space, {String? searchQuery}) {
     final textColor =
         space.color.computeLuminance() > 0.5 ? Colors.black87 : Colors.white;
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -1864,19 +2640,35 @@ class _SpacesScreenState extends State<SpacesScreen>
                                         mainAxisAlignment:
                                             MainAxisAlignment.center,
                                         children: [
-                                          // Space name with proper spacing
-                                          Text(
-                                            space.name,
-                                            style: TextStyle(
-                                              fontSize: titleFontSize,
-                                              fontWeight: FontWeight.w700,
-                                              color: textColor,
-                                              letterSpacing: -0.3,
-                                              height: 1.2, // Proper line height
-                                            ),
-                                            overflow: TextOverflow.ellipsis,
-                                            maxLines: 1,
-                                          ),
+                                          // Space name with highlighting support
+                                          searchQuery != null &&
+                                                  searchQuery.isNotEmpty
+                                              ? HighlightedText(
+                                                  text: space.name,
+                                                  searchTerm: searchQuery,
+                                                  defaultStyle: TextStyle(
+                                                    fontSize: titleFontSize,
+                                                    fontWeight: FontWeight.w700,
+                                                    color: textColor,
+                                                    letterSpacing: -0.3,
+                                                    height:
+                                                        1.2, // Proper line height
+                                                  ),
+                                                )
+                                              : Text(
+                                                  space.name,
+                                                  style: TextStyle(
+                                                    fontSize: titleFontSize,
+                                                    fontWeight: FontWeight.w700,
+                                                    color: textColor,
+                                                    letterSpacing: -0.3,
+                                                    height:
+                                                        1.2, // Proper line height
+                                                  ),
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  maxLines: 1,
+                                                ),
 
                                           // Add proper spacing between title and subtitle
                                           SizedBox(
