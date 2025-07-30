@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'dart:async';
 import '../models/reminder.dart';
 import '../services/storage_service.dart';
 import '../services/notification_service.dart';
 import '../widgets/space_tag_widget.dart';
+import '../widgets/time_slots_chip_widget.dart';
 
 class ReminderDetailsBottomSheet extends StatefulWidget {
   final Reminder reminder;
@@ -36,6 +38,12 @@ class _ReminderDetailsBottomSheetState extends State<ReminderDetailsBottomSheet>
   late AnimationController _slideController;
   late AnimationController _fadeController;
 
+  // Real-time updates
+  Timer? _realTimeTimer;
+
+  // Multi-time state
+  String? _selectedTimeSlotId;
+
   @override
   void initState() {
     super.initState();
@@ -52,8 +60,35 @@ class _ReminderDetailsBottomSheetState extends State<ReminderDetailsBottomSheet>
       vsync: this,
     );
 
+    // Initialize selected time slot for current reminder
+    _initializeSelectedTimeSlot();
+
+    // Start real-time timer for live updates
+    _startRealTimeTimer();
+
     _slideController.forward();
     _fadeController.forward();
+  }
+
+  void _initializeSelectedTimeSlot() {
+    final currentReminder = widget.allReminders[_currentIndex];
+    if (currentReminder.hasMultipleTimes) {
+      final nextSlot =
+          currentReminder.nextPendingSlot ?? currentReminder.timeSlots.first;
+      _selectedTimeSlotId = nextSlot.id;
+    } else {
+      _selectedTimeSlotId = null;
+    }
+  }
+
+  void _startRealTimeTimer() {
+    _realTimeTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) {
+        setState(() {
+          // Force rebuild for real-time countdown updates
+        });
+      }
+    });
   }
 
   @override
@@ -61,6 +96,7 @@ class _ReminderDetailsBottomSheetState extends State<ReminderDetailsBottomSheet>
     _pageController.dispose();
     _slideController.dispose();
     _fadeController.dispose();
+    _realTimeTimer?.cancel();
     super.dispose();
   }
 
@@ -69,6 +105,7 @@ class _ReminderDetailsBottomSheetState extends State<ReminderDetailsBottomSheet>
       HapticFeedback.lightImpact();
       setState(() {
         _currentIndex--;
+        _initializeSelectedTimeSlot();
       });
       _pageController.animateToPage(
         _currentIndex,
@@ -83,6 +120,7 @@ class _ReminderDetailsBottomSheetState extends State<ReminderDetailsBottomSheet>
       HapticFeedback.lightImpact();
       setState(() {
         _currentIndex++;
+        _initializeSelectedTimeSlot();
       });
       _pageController.animateToPage(
         _currentIndex,
@@ -90,6 +128,12 @@ class _ReminderDetailsBottomSheetState extends State<ReminderDetailsBottomSheet>
         curve: Curves.easeInOut,
       );
     }
+  }
+
+  void _onTimeSlotSelected(String timeSlotId) {
+    setState(() {
+      _selectedTimeSlotId = timeSlotId;
+    });
   }
 
   @override
@@ -121,6 +165,7 @@ class _ReminderDetailsBottomSheetState extends State<ReminderDetailsBottomSheet>
                   HapticFeedback.selectionClick();
                   setState(() {
                     _currentIndex = index;
+                    _initializeSelectedTimeSlot();
                   });
                 },
                 itemCount: widget.allReminders.length,
@@ -277,14 +322,17 @@ class _ReminderDetailsBottomSheetState extends State<ReminderDetailsBottomSheet>
 
   Widget _buildReminderDetails(Reminder reminder) {
     final now = DateTime.now();
-    final isOverdue =
-        !reminder.isCompleted && reminder.scheduledTime.isBefore(now);
+    final isOverdue = reminder.hasMultipleTimes
+        ? reminder.overallStatus == ReminderStatus.overdue
+        : !reminder.isCompleted && reminder.scheduledTime.isBefore(now);
 
-    final statusColor = reminder.isCompleted
-        ? const Color(0xFF28A745)
-        : isOverdue
-            ? const Color(0xFFDC3545)
-            : Theme.of(context).colorScheme.primary;
+    final statusColor = reminder.hasMultipleTimes
+        ? _getMultiTimeStatusColor(reminder)
+        : (reminder.isCompleted
+            ? const Color(0xFF28A745)
+            : isOverdue
+                ? const Color(0xFFDC3545)
+                : Theme.of(context).colorScheme.primary);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -292,41 +340,7 @@ class _ReminderDetailsBottomSheetState extends State<ReminderDetailsBottomSheet>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Status Badge
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: statusColor.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: statusColor.withValues(alpha: 0.3),
-                width: 0.5,
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  reminder.isCompleted
-                      ? Icons.check_circle_outline
-                      : isOverdue
-                          ? Icons.error_outline
-                          : Icons.schedule_outlined,
-                  size: 16,
-                  color: statusColor,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  reminder.statusText.toUpperCase(),
-                  style: TextStyle(
-                    color: statusColor,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.8,
-                  ),
-                ),
-              ],
-            ),
-          ),
+          _buildStatusBadge(reminder, statusColor),
 
           const SizedBox(height: 20),
 
@@ -335,8 +349,13 @@ class _ReminderDetailsBottomSheetState extends State<ReminderDetailsBottomSheet>
             reminder.title,
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.w600,
-                  decoration:
-                      reminder.isCompleted ? TextDecoration.lineThrough : null,
+                  decoration: reminder.hasMultipleTimes
+                      ? (reminder.overallStatus == ReminderStatus.completed
+                          ? TextDecoration.lineThrough
+                          : null)
+                      : (reminder.isCompleted
+                          ? TextDecoration.lineThrough
+                          : null),
                 ),
           ),
 
@@ -353,7 +372,7 @@ class _ReminderDetailsBottomSheetState extends State<ReminderDetailsBottomSheet>
             const SizedBox(height: 16),
           ],
 
-          // Description
+          // Description (for single-time or overall description)
           if (reminder.description?.isNotEmpty == true) ...[
             _buildDetailSection(
               'Description',
@@ -363,35 +382,14 @@ class _ReminderDetailsBottomSheetState extends State<ReminderDetailsBottomSheet>
             const SizedBox(height: 20),
           ],
 
-          // Date & Time
-          _buildDetailSection(
-            'Scheduled Time',
-            Icons.schedule_outlined,
-            DateFormat('EEEE, MMMM d, y • h:mm a')
-                .format(reminder.scheduledTime),
-          ),
-
-          const SizedBox(height: 20),
-
-          // Time Remaining/Overdue
-          _buildDetailSection(
-            reminder.isCompleted
-                ? 'Completed'
-                : isOverdue
-                    ? 'Overdue'
-                    : 'Time Remaining',
-            reminder.isCompleted
-                ? Icons.check_circle_outline
-                : isOverdue
-                    ? Icons.error_outline
-                    : Icons.timer_outlined,
-            reminder.isCompleted
-                ? 'Task completed'
-                : _formatTimeRemaining(reminder.scheduledTime),
-            color: statusColor,
-          ),
-
-          const SizedBox(height: 20),
+          // Multi-Time Section or Single Time Section
+          if (reminder.hasMultipleTimes) ...[
+            _buildMultiTimeSection(reminder),
+            const SizedBox(height: 20),
+          ] else ...[
+            _buildSingleTimeSection(reminder),
+            const SizedBox(height: 20),
+          ],
 
           // Repeat Info
           if (reminder.repeatType != RepeatType.none) ...[
@@ -418,6 +416,445 @@ class _ReminderDetailsBottomSheetState extends State<ReminderDetailsBottomSheet>
           const SizedBox(height: 32),
         ],
       ),
+    );
+  }
+
+  Widget _buildStatusBadge(Reminder reminder, Color statusColor) {
+    final statusText = reminder.hasMultipleTimes
+        ? _getMultiTimeStatusText(reminder)
+        : reminder.statusText;
+
+    final statusIcon = reminder.hasMultipleTimes
+        ? _getMultiTimeStatusIcon(reminder)
+        : (reminder.isCompleted
+            ? Icons.check_circle_outline
+            : (reminder.isOverdue
+                ? Icons.error_outline
+                : Icons.schedule_outlined));
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: statusColor.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: statusColor.withValues(alpha: 0.3),
+          width: 0.5,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            statusIcon,
+            size: 16,
+            color: statusColor,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            statusText.toUpperCase(),
+            style: TextStyle(
+              color: statusColor,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.8,
+            ),
+          ),
+          if (reminder.hasMultipleTimes) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: statusColor.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '${(reminder.progressPercentage * 100).round()}%',
+                style: TextStyle(
+                  color: statusColor,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMultiTimeSection(Reminder reminder) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Interactive Chip Section
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color:
+                  Theme.of(context).colorScheme.outline.withValues(alpha: 0.1),
+              width: 0.5,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.access_time_filled,
+                    size: 18,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.7),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Multiple Times',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withValues(alpha: 0.7),
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: 0.5,
+                        ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '${reminder.timeSlots.length} slots',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withValues(alpha: 0.5),
+                          fontSize: 12,
+                        ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // Interactive chips
+              TimeSlotsChipWidget(
+                timeSlots: reminder.timeSlots,
+                selectedTimeSlotId: _selectedTimeSlotId,
+                onTimeSlotSelected: _onTimeSlotSelected,
+                padding: EdgeInsets.zero,
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // Individual Time Slots List
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color:
+                  Theme.of(context).colorScheme.outline.withValues(alpha: 0.1),
+              width: 0.5,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.list_alt,
+                    size: 18,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.7),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Time Slots',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withValues(alpha: 0.7),
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: 0.5,
+                        ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // Time slots list
+              for (int i = 0; i < reminder.timeSlots.length; i++)
+                _buildTimeSlotRow(
+                    reminder.timeSlots[i], i < reminder.timeSlots.length - 1),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // Progress Summary
+        _buildProgressSummary(reminder),
+      ],
+    );
+  }
+
+  Widget _buildTimeSlotRow(TimeSlot timeSlot, bool showDivider) {
+    final isSelected = timeSlot.id == _selectedTimeSlotId;
+    final slotColor = _getTimeSlotColor(timeSlot);
+
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.1)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            border: isSelected
+                ? Border.all(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .primary
+                        .withValues(alpha: 0.3),
+                    width: 1,
+                  )
+                : null,
+          ),
+          child: Row(
+            children: [
+              // Status indicator
+              Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: slotColor,
+                  shape: BoxShape.circle,
+                ),
+                child: timeSlot.isCompleted
+                    ? const Icon(
+                        Icons.check,
+                        size: 8,
+                        color: Colors.white,
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 12),
+
+              // Time and description
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      timeSlot.formattedTime,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: isSelected
+                                ? Theme.of(context).colorScheme.primary
+                                : null,
+                          ),
+                    ),
+                    if (timeSlot.description?.isNotEmpty == true) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        timeSlot.description!,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurface
+                                  .withValues(alpha: 0.6),
+                            ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+
+              // Status and action
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    _getTimeSlotStatusText(timeSlot),
+                    style: TextStyle(
+                      color: slotColor,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  GestureDetector(
+                    onTap: () => _toggleTimeSlotStatus(timeSlot),
+                    child: Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: slotColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: slotColor.withValues(alpha: 0.3),
+                          width: 1,
+                        ),
+                      ),
+                      child: Icon(
+                        timeSlot.isCompleted ? Icons.refresh : Icons.check,
+                        size: 12,
+                        color: slotColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        if (showDivider) ...[
+          const SizedBox(height: 8),
+          Divider(
+            height: 1,
+            color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.1),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildProgressSummary(Reminder reminder) {
+    final completedCount =
+        reminder.timeSlots.where((slot) => slot.isCompleted).length;
+    final totalCount = reminder.timeSlots.length;
+    final progressPercentage = reminder.progressPercentage;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.1),
+          width: 0.5,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.analytics_outlined,
+                size: 18,
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.7),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Progress Summary',
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withValues(alpha: 0.7),
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: 0.5,
+                    ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Progress bar
+          LinearProgressIndicator(
+            value: progressPercentage,
+            backgroundColor:
+                Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
+            valueColor: AlwaysStoppedAnimation<Color>(
+              _getMultiTimeStatusColor(reminder),
+            ),
+          ),
+
+          const SizedBox(height: 8),
+
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '$completedCount of $totalCount completed',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withValues(alpha: 0.6),
+                    ),
+              ),
+              Text(
+                '${(progressPercentage * 100).round()}%',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: _getMultiTimeStatusColor(reminder),
+                    ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSingleTimeSection(Reminder reminder) {
+    final now = DateTime.now();
+    final isOverdue =
+        !reminder.isCompleted && reminder.scheduledTime.isBefore(now);
+    final statusColor = reminder.isCompleted
+        ? const Color(0xFF28A745)
+        : isOverdue
+            ? const Color(0xFFDC3545)
+            : Theme.of(context).colorScheme.primary;
+
+    return Column(
+      children: [
+        // Date & Time
+        _buildDetailSection(
+          'Scheduled Time',
+          Icons.schedule_outlined,
+          DateFormat('EEEE, MMMM d, y • h:mm a').format(reminder.scheduledTime),
+        ),
+
+        const SizedBox(height: 20),
+
+        // Time Remaining/Overdue
+        _buildDetailSection(
+          reminder.isCompleted
+              ? 'Completed'
+              : isOverdue
+                  ? 'Overdue'
+                  : 'Time Remaining',
+          reminder.isCompleted
+              ? Icons.check_circle_outline
+              : isOverdue
+                  ? Icons.error_outline
+                  : Icons.timer_outlined,
+          reminder.isCompleted
+              ? 'Task completed'
+              : _formatTimeRemaining(reminder.scheduledTime),
+          color: statusColor,
+        ),
+      ],
     );
   }
 
@@ -487,14 +924,22 @@ class _ReminderDetailsBottomSheetState extends State<ReminderDetailsBottomSheet>
               child: Container(
                 height: 48,
                 decoration: BoxDecoration(
-                  color: reminder.isCompleted
-                      ? const Color(0xFF007AFF).withValues(alpha: 0.1)
-                      : const Color(0xFF28A745).withValues(alpha: 0.1),
+                  color: reminder.hasMultipleTimes
+                      ? (reminder.overallStatus == ReminderStatus.completed
+                          ? const Color(0xFF007AFF).withValues(alpha: 0.1)
+                          : const Color(0xFF28A745).withValues(alpha: 0.1))
+                      : (reminder.isCompleted
+                          ? const Color(0xFF007AFF).withValues(alpha: 0.1)
+                          : const Color(0xFF28A745).withValues(alpha: 0.1)),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: reminder.isCompleted
-                        ? const Color(0xFF007AFF).withValues(alpha: 0.3)
-                        : const Color(0xFF28A745).withValues(alpha: 0.3),
+                    color: reminder.hasMultipleTimes
+                        ? (reminder.overallStatus == ReminderStatus.completed
+                            ? const Color(0xFF007AFF).withValues(alpha: 0.3)
+                            : const Color(0xFF28A745).withValues(alpha: 0.3))
+                        : (reminder.isCompleted
+                            ? const Color(0xFF007AFF).withValues(alpha: 0.3)
+                            : const Color(0xFF28A745).withValues(alpha: 0.3)),
                     width: 0.5,
                   ),
                 ),
@@ -503,7 +948,7 @@ class _ReminderDetailsBottomSheetState extends State<ReminderDetailsBottomSheet>
                   child: InkWell(
                     borderRadius: BorderRadius.circular(12),
                     onTap: () async {
-                      await _toggleStatus(reminder);
+                      await _toggleReminderStatus(reminder);
                       if (mounted) {
                         Navigator.pop(context);
                       }
@@ -512,19 +957,41 @@ class _ReminderDetailsBottomSheetState extends State<ReminderDetailsBottomSheet>
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(
-                          reminder.isCompleted ? Icons.refresh : Icons.check,
-                          color: reminder.isCompleted
-                              ? const Color(0xFF007AFF)
-                              : const Color(0xFF28A745),
+                          reminder.hasMultipleTimes
+                              ? (reminder.overallStatus ==
+                                      ReminderStatus.completed
+                                  ? Icons.refresh
+                                  : Icons.check_circle_outline)
+                              : (reminder.isCompleted
+                                  ? Icons.refresh
+                                  : Icons.check),
+                          color: reminder.hasMultipleTimes
+                              ? (reminder.overallStatus ==
+                                      ReminderStatus.completed
+                                  ? const Color(0xFF007AFF)
+                                  : const Color(0xFF28A745))
+                              : (reminder.isCompleted
+                                  ? const Color(0xFF007AFF)
+                                  : const Color(0xFF28A745)),
                           size: 20,
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          reminder.isCompleted ? 'REOPEN' : 'COMPLETE',
+                          reminder.hasMultipleTimes
+                              ? (reminder.overallStatus ==
+                                      ReminderStatus.completed
+                                  ? 'REOPEN ALL'
+                                  : 'COMPLETE ALL')
+                              : (reminder.isCompleted ? 'REOPEN' : 'COMPLETE'),
                           style: TextStyle(
-                            color: reminder.isCompleted
-                                ? const Color(0xFF007AFF)
-                                : const Color(0xFF28A745),
+                            color: reminder.hasMultipleTimes
+                                ? (reminder.overallStatus ==
+                                        ReminderStatus.completed
+                                    ? const Color(0xFF007AFF)
+                                    : const Color(0xFF28A745))
+                                : (reminder.isCompleted
+                                    ? const Color(0xFF007AFF)
+                                    : const Color(0xFF28A745)),
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                             letterSpacing: 0.8,
@@ -638,22 +1105,155 @@ class _ReminderDetailsBottomSheetState extends State<ReminderDetailsBottomSheet>
     );
   }
 
-  Future<void> _toggleStatus(Reminder reminder) async {
+  // Multi-time helper methods
+  Color _getMultiTimeStatusColor(Reminder reminder) {
+    switch (reminder.overallStatus) {
+      case ReminderStatus.completed:
+        return const Color(0xFF28A745);
+      case ReminderStatus.overdue:
+        return const Color(0xFFDC3545);
+      case ReminderStatus.pending:
+        return Theme.of(context).colorScheme.primary;
+    }
+  }
+
+  String _getMultiTimeStatusText(Reminder reminder) {
+    switch (reminder.overallStatus) {
+      case ReminderStatus.completed:
+        return 'All Complete';
+      case ReminderStatus.overdue:
+        return 'Some Overdue';
+      case ReminderStatus.pending:
+        return 'In Progress';
+    }
+  }
+
+  IconData _getMultiTimeStatusIcon(Reminder reminder) {
+    switch (reminder.overallStatus) {
+      case ReminderStatus.completed:
+        return Icons.check_circle_outline;
+      case ReminderStatus.overdue:
+        return Icons.error_outline;
+      case ReminderStatus.pending:
+        return Icons.schedule_outlined;
+    }
+  }
+
+  Color _getTimeSlotColor(TimeSlot timeSlot) {
+    if (timeSlot.isCompleted) {
+      return const Color(0xFF28A745);
+    } else if (timeSlot.isOverdue) {
+      return const Color(0xFFDC3545);
+    } else {
+      return Theme.of(context).colorScheme.primary;
+    }
+  }
+
+  String _getTimeSlotStatusText(TimeSlot timeSlot) {
+    if (timeSlot.isCompleted) {
+      return 'DONE';
+    } else if (timeSlot.isOverdue) {
+      return 'OVERDUE';
+    } else {
+      return 'PENDING';
+    }
+  }
+
+  Future<void> _toggleTimeSlotStatus(TimeSlot timeSlot) async {
     HapticFeedback.lightImpact();
 
     try {
-      final newStatus = reminder.isCompleted
+      final reminder = widget.allReminders[_currentIndex];
+      final newStatus = timeSlot.isCompleted
           ? ReminderStatus.pending
           : ReminderStatus.completed;
 
-      await StorageService.updateReminderStatus(reminder.id, newStatus);
+      await StorageService.updateTimeSlotStatus(
+        reminder.id,
+        timeSlot.id,
+        newStatus,
+      );
 
       if (newStatus == ReminderStatus.completed) {
-        await NotificationService.cancelReminder(reminder.id);
-      } else if (reminder.scheduledTime.isAfter(DateTime.now())) {
-        await NotificationService.scheduleReminder(
-          reminder.copyWith(status: newStatus),
+        await NotificationService.cancelTimeSlotNotification(
+          reminder.id,
+          timeSlot.id,
         );
+      } else {
+        // Reschedule notification for this slot
+        final updatedReminder =
+            await StorageService.getReminderById(reminder.id);
+        if (updatedReminder != null) {
+          await NotificationService.scheduleTimeSlotNotifications(
+            updatedReminder,
+            [timeSlot.copyWith(status: newStatus)],
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error updating time slot: $e');
+    }
+  }
+
+  Future<void> _toggleReminderStatus(Reminder reminder) async {
+    HapticFeedback.lightImpact();
+
+    try {
+      if (reminder.hasMultipleTimes) {
+        // For multi-time reminders, toggle all pending slots
+        final targetStatus = reminder.overallStatus == ReminderStatus.completed
+            ? ReminderStatus.pending
+            : ReminderStatus.completed;
+
+        for (final timeSlot in reminder.timeSlots) {
+          if (targetStatus == ReminderStatus.completed) {
+            // Complete all pending slots
+            if (timeSlot.status == ReminderStatus.pending) {
+              await StorageService.updateTimeSlotStatus(
+                reminder.id,
+                timeSlot.id,
+                ReminderStatus.completed,
+              );
+              await NotificationService.cancelTimeSlotNotification(
+                reminder.id,
+                timeSlot.id,
+              );
+            }
+          } else {
+            // Reopen all completed slots
+            if (timeSlot.status == ReminderStatus.completed) {
+              await StorageService.updateTimeSlotStatus(
+                reminder.id,
+                timeSlot.id,
+                ReminderStatus.pending,
+              );
+            }
+          }
+        }
+
+        // Reschedule notifications if reopening
+        if (targetStatus == ReminderStatus.pending) {
+          final updatedReminder =
+              await StorageService.getReminderById(reminder.id);
+          if (updatedReminder != null) {
+            await NotificationService.scheduleReminder(updatedReminder);
+          }
+        }
+      } else {
+        // Single-time reminder logic
+        final newStatus = reminder.isCompleted
+            ? ReminderStatus.pending
+            : ReminderStatus.completed;
+
+        await StorageService.updateReminderStatus(reminder.id, newStatus);
+
+        if (newStatus == ReminderStatus.completed) {
+          await NotificationService.cancelReminder(reminder.id);
+        } else if (reminder.scheduledTime.isAfter(DateTime.now())) {
+          await NotificationService.scheduleReminder(
+            reminder.copyWith(status: newStatus),
+          );
+        }
       }
     } catch (e) {
       debugPrint('Error updating reminder: $e');

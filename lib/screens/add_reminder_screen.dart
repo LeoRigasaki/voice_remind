@@ -6,6 +6,7 @@ import '../services/storage_service.dart';
 import '../services/notification_service.dart';
 import '../models/space.dart';
 import '../services/spaces_service.dart';
+import '../widgets/multi_time_section.dart';
 
 class AddReminderScreen extends StatefulWidget {
   final Reminder? reminder;
@@ -29,6 +30,10 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
   bool _isEditing = false;
   Space? _selectedSpace;
   List<Space> _availableSpaces = [];
+
+  // Multi-time state
+  bool _isMultiTime = false;
+  List<TimeSlot> _timeSlots = [];
 
   // Real-time clock
   DateTime _currentTime = DateTime.now();
@@ -80,6 +85,11 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
     _selectedTime = TimeOfDay.fromDateTime(reminder.scheduledTime);
     _selectedRepeat = reminder.repeatType;
     _isNotificationEnabled = reminder.isNotificationEnabled;
+
+    // Multi-time setup
+    _isMultiTime = reminder.hasMultipleTimes;
+    _timeSlots = List.from(reminder.timeSlots);
+
     if (reminder.spaceId != null) {
       _selectedSpace = await SpacesService.getSpaceById(reminder.spaceId!);
       if (mounted) setState(() {});
@@ -136,44 +146,19 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
     }
   }
 
-  Future<void> _selectTime() async {
-    final time = await showTimePicker(
-      context: context,
-      initialTime: _selectedTime,
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            timePickerTheme: TimePickerThemeData(
-              backgroundColor: Theme.of(context).colorScheme.surface,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .outline
-                      .withValues(alpha: 0.2),
-                  width: 0.5,
-                ),
-              ),
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
+  void _onMultiTimeToggle(bool isMultiTime) {
+    setState(() {
+      _isMultiTime = isMultiTime;
+      if (!isMultiTime) {
+        _timeSlots.clear();
+      }
+    });
+  }
 
-    if (time != null) {
-      setState(() {
-        _selectedTime = time;
-        _selectedDate = DateTime(
-          _selectedDate.year,
-          _selectedDate.month,
-          _selectedDate.day,
-          time.hour,
-          time.minute,
-        );
-      });
-    }
+  void _onTimeSlotsChanged(List<TimeSlot> timeSlots) {
+    setState(() {
+      _timeSlots = timeSlots;
+    });
   }
 
   Future<void> _saveReminder() async {
@@ -192,12 +177,14 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
           repeatType: _selectedRepeat,
           isNotificationEnabled: _isNotificationEnabled,
           spaceId: _selectedSpace?.id,
+          timeSlots: _timeSlots,
+          isMultiTime: _isMultiTime,
         );
 
         await StorageService.updateReminder(updatedReminder);
         await NotificationService.cancelReminder(updatedReminder.id);
 
-        if (_isNotificationEnabled && _selectedDate.isAfter(DateTime.now())) {
+        if (_isNotificationEnabled) {
           await NotificationService.scheduleReminder(updatedReminder);
         }
       } else {
@@ -210,11 +197,13 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
           repeatType: _selectedRepeat,
           isNotificationEnabled: _isNotificationEnabled,
           spaceId: _selectedSpace?.id,
+          timeSlots: _timeSlots,
+          isMultiTime: _isMultiTime,
         );
 
         await StorageService.addReminder(reminder);
 
-        if (_isNotificationEnabled && _selectedDate.isAfter(DateTime.now())) {
+        if (_isNotificationEnabled) {
           await NotificationService.scheduleReminder(reminder);
         }
       }
@@ -232,15 +221,6 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
             : 'Error creating reminder: $e');
       }
     }
-  }
-
-  bool _isCurrentTime() {
-    final now = _currentTime;
-    return _selectedDate.year == now.year &&
-        _selectedDate.month == now.month &&
-        _selectedDate.day == now.day &&
-        _selectedDate.hour == now.hour &&
-        _selectedDate.minute == now.minute;
   }
 
   Widget _buildSpaceSelector() {
@@ -666,7 +646,7 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
 
             const SizedBox(height: 32),
 
-            // Schedule Section
+            // Schedule Section - Updated with Multi-Time Support
             _buildSection(
               'SCHEDULE',
               [
@@ -677,7 +657,18 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
                   onTap: _selectDate,
                 ),
                 _buildDivider(),
-                _buildTimeOptionTile(),
+
+                // Multi-Time Section or Single Time
+                MultiTimeSection(
+                  timeSlots: _timeSlots,
+                  onTimeSlotsChanged: _onTimeSlotsChanged,
+                  isMultiTime: _isMultiTime,
+                  onMultiTimeToggle: _onMultiTimeToggle,
+                  initialSingleTime: _selectedTime,
+                  singleTimeLabel: 'Time',
+                  showToggleButton: true,
+                  padding: EdgeInsets.zero,
+                ),
                 _buildDivider(),
                 _buildOptionTile(
                   icon: Icons.repeat,
@@ -695,7 +686,7 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
             ),
             const SizedBox(height: 32),
 
-// Space Section
+            // Space Section
             _buildSection(
               'SPACE',
               [
@@ -770,118 +761,6 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
 
             const SizedBox(height: 20),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTimeOptionTile() {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: _selectTime,
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: _isCurrentTime()
-                      ? Colors.green.withValues(alpha: 0.1)
-                      : Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: _isCurrentTime()
-                        ? Colors.green.withValues(alpha: 0.3)
-                        : Theme.of(context)
-                            .colorScheme
-                            .outline
-                            .withValues(alpha: 0.1),
-                    width: 0.5,
-                  ),
-                ),
-                child: Icon(
-                  Icons.access_time_outlined,
-                  size: 20,
-                  color: _isCurrentTime()
-                      ? Colors.green
-                      : Theme.of(context).colorScheme.onSurface,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          'Time',
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
-                              ?.copyWith(
-                                fontWeight: FontWeight.w500,
-                                color: _isCurrentTime() ? Colors.green : null,
-                              ),
-                        ),
-                        if (_isCurrentTime()) ...[
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.green.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(
-                                color: Colors.green.withValues(alpha: 0.3),
-                                width: 0.5,
-                              ),
-                            ),
-                            child: const Text(
-                              'NOW',
-                              style: TextStyle(
-                                color: Colors.green,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 0.8,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _selectedTime.format(context),
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: _isCurrentTime()
-                                ? Colors.green
-                                : Theme.of(context)
-                                    .colorScheme
-                                    .onSurface
-                                    .withValues(alpha: 0.7),
-                          ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(
-                Icons.chevron_right,
-                size: 20,
-                color: Theme.of(context)
-                    .colorScheme
-                    .onSurface
-                    .withValues(alpha: 0.4),
-              ),
-            ],
-          ),
         ),
       ),
     );

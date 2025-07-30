@@ -23,9 +23,50 @@ class StorageService {
 
   static Future<void> initialize() async {
     _prefs = await SharedPreferences.getInstance();
+    // Perform migration if needed
+    await _performMigration();
     // Emit initial data
     final initialReminders = await getReminders();
     _remindersController.add(initialReminders);
+  }
+
+  /// Migrate existing single-time reminders to support multi-time format
+  static Future<void> _performMigration() async {
+    final String? remindersJson = _prefs?.getString(_remindersKey);
+    if (remindersJson == null || remindersJson.isEmpty) {
+      return; // No data to migrate
+    }
+
+    try {
+      final List<dynamic> remindersList = json.decode(remindersJson);
+      bool needsMigration = false;
+
+      final List<Map<String, dynamic>> migratedReminders =
+          remindersList.map((reminderMap) {
+        final Map<String, dynamic> reminderData =
+            Map<String, dynamic>.from(reminderMap);
+
+        // Check if this reminder needs migration (doesn't have timeSlots or isMultiTime)
+        if (!reminderData.containsKey('timeSlots') ||
+            !reminderData.containsKey('isMultiTime')) {
+          needsMigration = true;
+
+          // Add default empty timeSlots and set isMultiTime to false for existing single-time reminders
+          reminderData['timeSlots'] = <Map<String, dynamic>>[];
+          reminderData['isMultiTime'] = false;
+        }
+
+        return reminderData;
+      }).toList();
+
+      if (needsMigration) {
+        final String migratedJson = json.encode(migratedReminders);
+        await _prefs?.setString(_remindersKey, migratedJson);
+      }
+    } catch (e) {
+      // If migration fails, log but don't crash
+      print('Migration failed: $e');
+    }
   }
 
   // Dispose method to close stream controller
@@ -105,52 +146,193 @@ class StorageService {
     _remindersController.add([]); // Emit empty list
   }
 
-  // Get reminders by status
+  // =============================================================================
+  // Multi-Time Reminder Methods
+  // =============================================================================
+
+  /// Get reminders by time slot status (for multi-time reminders)
+  static Future<List<Reminder>> getRemindersBySlotStatus(
+      ReminderStatus status) async {
+    final List<Reminder> allReminders = await getReminders();
+    return allReminders
+        .where((reminder) =>
+            reminder.hasMultipleTimes &&
+            reminder.timeSlots.any((slot) => slot.status == status))
+        .toList();
+  }
+
+  /// Update specific time slot status
+  static Future<void> updateTimeSlotStatus(
+      String reminderId, String timeSlotId, ReminderStatus newStatus) async {
+    final Reminder? reminder = await getReminderById(reminderId);
+    if (reminder != null && reminder.hasMultipleTimes) {
+      final updatedTimeSlots = reminder.timeSlots.map((slot) {
+        if (slot.id == timeSlotId) {
+          return slot.copyWith(
+            status: newStatus,
+            completedAt:
+                newStatus == ReminderStatus.completed ? DateTime.now() : null,
+          );
+        }
+        return slot;
+      }).toList();
+
+      final updatedReminder = reminder.copyWith(timeSlots: updatedTimeSlots);
+      await updateReminder(updatedReminder);
+    }
+  }
+
+  /// Add time slot to existing reminder
+  static Future<void> addTimeSlot(String reminderId, TimeSlot timeSlot) async {
+    final Reminder? reminder = await getReminderById(reminderId);
+    if (reminder != null) {
+      final updatedTimeSlots = [...reminder.timeSlots, timeSlot];
+      final updatedReminder = reminder.copyWith(
+        timeSlots: updatedTimeSlots,
+        isMultiTime: true,
+      );
+      await updateReminder(updatedReminder);
+    }
+  }
+
+  /// Remove time slot from reminder
+  static Future<void> removeTimeSlot(
+      String reminderId, String timeSlotId) async {
+    final Reminder? reminder = await getReminderById(reminderId);
+    if (reminder != null && reminder.hasMultipleTimes) {
+      final updatedTimeSlots =
+          reminder.timeSlots.where((slot) => slot.id != timeSlotId).toList();
+
+      final updatedReminder = reminder.copyWith(
+        timeSlots: updatedTimeSlots,
+        isMultiTime: updatedTimeSlots.isNotEmpty,
+      );
+      await updateReminder(updatedReminder);
+    }
+  }
+
+  /// Update time slot details
+  static Future<void> updateTimeSlot(
+      String reminderId, String timeSlotId, TimeSlot updatedTimeSlot) async {
+    final Reminder? reminder = await getReminderById(reminderId);
+    if (reminder != null && reminder.hasMultipleTimes) {
+      final updatedTimeSlots = reminder.timeSlots.map((slot) {
+        if (slot.id == timeSlotId) {
+          return updatedTimeSlot;
+        }
+        return slot;
+      }).toList();
+
+      final updatedReminder = reminder.copyWith(timeSlots: updatedTimeSlots);
+      await updateReminder(updatedReminder);
+    }
+  }
+
+  /// Convert single-time reminder to multi-time
+  static Future<void> convertToMultiTime(
+      String reminderId, List<TimeSlot> timeSlots) async {
+    final Reminder? reminder = await getReminderById(reminderId);
+    if (reminder != null && !reminder.hasMultipleTimes) {
+      final updatedReminder = reminder.copyWith(
+        timeSlots: timeSlots,
+        isMultiTime: true,
+      );
+      await updateReminder(updatedReminder);
+    }
+  }
+
+  /// Convert multi-time reminder to single-time
+  static Future<void> convertToSingleTime(String reminderId) async {
+    final Reminder? reminder = await getReminderById(reminderId);
+    if (reminder != null && reminder.hasMultipleTimes) {
+      final updatedReminder = reminder.copyWith(
+        timeSlots: <TimeSlot>[],
+        isMultiTime: false,
+      );
+      await updateReminder(updatedReminder);
+    }
+  }
+
+  // =============================================================================
+  // Existing Methods (Updated for Multi-Time Support)
+  // =============================================================================
+
+  // Get reminders by status (handles both single and multi-time)
   static Future<List<Reminder>> getRemindersByStatus(
       ReminderStatus status) async {
     final List<Reminder> allReminders = await getReminders();
-    return allReminders.where((reminder) => reminder.status == status).toList();
+    return allReminders.where((reminder) {
+      if (reminder.hasMultipleTimes) {
+        return reminder.overallStatus == status;
+      } else {
+        return reminder.status == status;
+      }
+    }).toList();
   }
 
-  // Get upcoming reminders (next 24 hours)
+  // Get upcoming reminders (next 24 hours) - updated for multi-time
   static Future<List<Reminder>> getUpcomingReminders() async {
     final List<Reminder> allReminders = await getReminders();
     final DateTime now = DateTime.now();
     final DateTime tomorrow = now.add(const Duration(days: 1));
 
-    return allReminders
-        .where((reminder) =>
-            reminder.status == ReminderStatus.pending &&
+    return allReminders.where((reminder) {
+      if (reminder.hasMultipleTimes) {
+        return reminder.overallStatus == ReminderStatus.pending &&
+            reminder.nextPendingSlot != null;
+      } else {
+        return reminder.status == ReminderStatus.pending &&
             reminder.scheduledTime.isAfter(now) &&
-            reminder.scheduledTime.isBefore(tomorrow))
-        .toList()
+            reminder.scheduledTime.isBefore(tomorrow);
+      }
+    }).toList()
       ..sort((a, b) => a.scheduledTime.compareTo(b.scheduledTime));
   }
 
-  // Get overdue reminders
+  // Get overdue reminders - updated for multi-time
   static Future<List<Reminder>> getOverdueReminders() async {
     final List<Reminder> allReminders = await getReminders();
-    final DateTime now = DateTime.now();
 
-    return allReminders
-        .where((reminder) =>
-            reminder.status == ReminderStatus.pending &&
-            reminder.scheduledTime.isBefore(now))
-        .toList()
+    return allReminders.where((reminder) {
+      if (reminder.hasMultipleTimes) {
+        return reminder.overallStatus == ReminderStatus.overdue;
+      } else {
+        return reminder.status == ReminderStatus.pending &&
+            reminder.scheduledTime.isBefore(DateTime.now());
+      }
+    }).toList()
       ..sort((a, b) => b.scheduledTime.compareTo(a.scheduledTime));
   }
 
-  // Update reminder status
+  // Update reminder status (handles both single and multi-time)
   static Future<void> updateReminderStatus(
       String reminderId, ReminderStatus newStatus) async {
     final Reminder? reminder = await getReminderById(reminderId);
     if (reminder != null) {
-      final Reminder updatedReminder = reminder.copyWith(status: newStatus);
-      await updateReminder(updatedReminder);
+      if (reminder.hasMultipleTimes) {
+        // For multi-time reminders, update all pending slots
+        final updatedTimeSlots = reminder.timeSlots.map((slot) {
+          if (slot.status == ReminderStatus.pending) {
+            return slot.copyWith(
+              status: newStatus,
+              completedAt:
+                  newStatus == ReminderStatus.completed ? DateTime.now() : null,
+            );
+          }
+          return slot;
+        }).toList();
+
+        final updatedReminder = reminder.copyWith(timeSlots: updatedTimeSlots);
+        await updateReminder(updatedReminder);
+      } else {
+        // For single-time reminders, update normally
+        final Reminder updatedReminder = reminder.copyWith(status: newStatus);
+        await updateReminder(updatedReminder);
+      }
     }
   }
 
-  // Statistics helpers
+  // Statistics helpers - updated for multi-time
   static Future<int> getTotalRemindersCount() async {
     final List<Reminder> reminders = await getReminders();
     return reminders.length;
@@ -158,12 +340,24 @@ class StorageService {
 
   static Future<int> getCompletedRemindersCount() async {
     final List<Reminder> reminders = await getReminders();
-    return reminders.where((r) => r.status == ReminderStatus.completed).length;
+    return reminders.where((r) {
+      if (r.hasMultipleTimes) {
+        return r.overallStatus == ReminderStatus.completed;
+      } else {
+        return r.status == ReminderStatus.completed;
+      }
+    }).length;
   }
 
   static Future<int> getPendingRemindersCount() async {
     final List<Reminder> reminders = await getReminders();
-    return reminders.where((r) => r.status == ReminderStatus.pending).length;
+    return reminders.where((r) {
+      if (r.hasMultipleTimes) {
+        return r.overallStatus == ReminderStatus.pending;
+      } else {
+        return r.status == ReminderStatus.pending;
+      }
+    }).length;
   }
 
   // Force refresh - manually emit current data
@@ -172,7 +366,6 @@ class StorageService {
     _remindersController.add(reminders);
   }
 
-  // Clear all data - for testing or reset purposes
   // Get reminders by space ID
   static Future<List<Reminder>> getRemindersBySpace(String? spaceId) async {
     final List<Reminder> allReminders = await getReminders();
@@ -217,7 +410,7 @@ class StorageService {
   }
 
   // =============================================================================
-  // AI Configuration Methods
+  // AI Configuration Methods (Unchanged)
   // =============================================================================
 
   /// Save Gemini API Key

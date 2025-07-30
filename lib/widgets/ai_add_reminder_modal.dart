@@ -8,6 +8,7 @@ import '../services/storage_service.dart';
 import '../services/notification_service.dart';
 import '../services/ai_reminder_service.dart';
 import '../screens/settings_screen.dart';
+import '../widgets/multi_time_section.dart';
 
 enum ReminderCreationMode { manual, aiText, voice }
 
@@ -43,6 +44,10 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
   RepeatType _selectedRepeat = RepeatType.none;
   bool _isNotificationEnabled = true;
   bool _isLoading = false;
+
+  // Multi-time state
+  bool _isMultiTime = false;
+  List<TimeSlot> _timeSlots = [];
 
   // AI Text state
   final _aiInputController = TextEditingController();
@@ -149,6 +154,12 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
     _selectedTime = TimeOfDay.fromDateTime(reminder.scheduledTime);
     _selectedRepeat = reminder.repeatType;
     _isNotificationEnabled = reminder.isNotificationEnabled;
+
+    // Handle multi-time reminder editing
+    if (reminder.hasMultipleTimes) {
+      _isMultiTime = true;
+      _timeSlots = [...reminder.timeSlots];
+    }
   }
 
   void _animateTabSwitch() {
@@ -211,26 +222,91 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
     }
   }
 
+  void _onMultiTimeToggle(bool isMultiTime) {
+    setState(() {
+      _isMultiTime = isMultiTime;
+      if (!isMultiTime) {
+        _timeSlots.clear();
+      }
+    });
+  }
+
+  void _onTimeSlotsChanged(List<TimeSlot> timeSlots) {
+    setState(() {
+      _timeSlots = timeSlots;
+    });
+  }
+
   Future<void> _saveManualReminder() async {
     if (!_formKey.currentState!.validate()) return;
+
+    // Validate multi-time setup
+    if (_isMultiTime && _timeSlots.isEmpty) {
+      _showError(
+          'Please add at least one time slot or switch to single time mode');
+      return;
+    }
 
     setState(() => _isLoading = true);
 
     try {
-      final reminder = Reminder(
-        title: _titleController.text.trim(),
-        description: _descriptionController.text.trim().isEmpty
-            ? null
-            : _descriptionController.text.trim(),
-        scheduledTime: _selectedDate,
-        repeatType: _selectedRepeat,
-        isNotificationEnabled: _isNotificationEnabled,
-      );
+      final Reminder reminder;
+
+      if (_isMultiTime) {
+        // Create multi-time reminder
+        reminder = Reminder(
+          title: _titleController.text.trim(),
+          description: _descriptionController.text.trim().isEmpty
+              ? null
+              : _descriptionController.text.trim(),
+          scheduledTime: _selectedDate, // Keep for backward compatibility
+          repeatType: _selectedRepeat,
+          isNotificationEnabled: _isNotificationEnabled,
+          timeSlots: _timeSlots,
+          isMultiTime: true,
+        );
+      } else {
+        // Create single-time reminder
+        reminder = Reminder(
+          title: _titleController.text.trim(),
+          description: _descriptionController.text.trim().isEmpty
+              ? null
+              : _descriptionController.text.trim(),
+          scheduledTime: _selectedDate,
+          repeatType: _selectedRepeat,
+          isNotificationEnabled: _isNotificationEnabled,
+          timeSlots: [],
+          isMultiTime: false,
+        );
+      }
 
       await StorageService.addReminder(reminder);
 
-      if (_isNotificationEnabled && _selectedDate.isAfter(DateTime.now())) {
-        await NotificationService.scheduleReminder(reminder);
+      if (_isNotificationEnabled) {
+        if (_isMultiTime) {
+          // Schedule notifications for pending time slots
+          final now = DateTime.now();
+          for (final timeSlot in _timeSlots) {
+            if (timeSlot.status == ReminderStatus.pending) {
+              final notificationTime = DateTime(
+                now.year,
+                now.month,
+                now.day,
+                timeSlot.time.hour,
+                timeSlot.time.minute,
+              );
+
+              if (notificationTime.isAfter(now)) {
+                await NotificationService.scheduleReminder(reminder);
+              }
+            }
+          }
+        } else {
+          // Schedule single notification
+          if (_selectedDate.isAfter(DateTime.now())) {
+            await NotificationService.scheduleReminder(reminder);
+          }
+        }
       }
 
       if (mounted) {
@@ -244,7 +320,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
     }
   }
 
-  // AI Text methods
+  // AI Text methods (enhanced for multi-time support)
   Future<void> _generateReminders() async {
     if (_aiInputController.text.trim().isEmpty) return;
 
@@ -300,8 +376,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
         final reminder = _aiGeneratedReminders[index];
         await StorageService.addReminder(reminder);
 
-        if (reminder.isNotificationEnabled &&
-            reminder.scheduledTime.isAfter(DateTime.now())) {
+        if (reminder.isNotificationEnabled) {
           await NotificationService.scheduleReminder(reminder);
         }
       }
@@ -335,6 +410,8 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
         TextEditingController(text: reminder.description ?? '');
     DateTime selectedDate = reminder.scheduledTime;
     RepeatType selectedRepeat = reminder.repeatType;
+    bool isMultiTime = reminder.hasMultipleTimes;
+    List<TimeSlot> timeSlots = [...reminder.timeSlots];
 
     return StatefulBuilder(
       builder: (context, setModalState) {
@@ -357,7 +434,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                   child: Row(
                     children: [
                       Text(
-                        'Edit Reminder',
+                        'Edit AI Reminder',
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
                               fontWeight: FontWeight.w600,
                             ),
@@ -372,137 +449,145 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                 ),
 
                 // Edit form
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Column(
-                    children: [
-                      TextFormField(
-                        controller: titleController,
-                        decoration: const InputDecoration(
-                          labelText: 'Title',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: descriptionController,
-                        decoration: const InputDecoration(
-                          labelText: 'Description',
-                          border: OutlineInputBorder(),
-                        ),
-                        maxLines: 2,
-                      ),
-                      const SizedBox(height: 16),
-                      Card(
-                        child: ListTile(
-                          title: const Text('Date & Time'),
-                          subtitle: Text(
-                            DateFormat('MMM dd, yyyy • h:mm a')
-                                .format(selectedDate),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Column(
+                      children: [
+                        TextFormField(
+                          controller: titleController,
+                          decoration: const InputDecoration(
+                            labelText: 'Title',
+                            border: OutlineInputBorder(),
                           ),
-                          trailing: const Icon(Icons.edit),
-                          onTap: () async {
-                            final date = await showDatePicker(
-                              context: context,
-                              initialDate: selectedDate,
-                              firstDate: DateTime.now(),
-                              lastDate:
-                                  DateTime.now().add(const Duration(days: 365)),
-                            );
-                            if (date != null) {
-                              final time = await showTimePicker(
-                                context: context,
-                                initialTime:
-                                    TimeOfDay.fromDateTime(selectedDate),
-                              );
-                              if (time != null) {
-                                setModalState(() {
-                                  selectedDate = DateTime(
-                                    date.year,
-                                    date.month,
-                                    date.day,
-                                    time.hour,
-                                    time.minute,
-                                  );
-                                });
-                              }
-                            }
-                          },
                         ),
-                      ),
-                      Card(
-                        child: ListTile(
-                          title: const Text('Repeat'),
-                          subtitle: Text(_getRepeatDisplayName(selectedRepeat)),
-                          trailing: const Icon(Icons.edit),
-                          onTap: () {
-                            showModalBottomSheet(
-                              context: context,
-                              builder: (context) => Container(
-                                padding: const EdgeInsets.all(20),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Text('Repeat Options',
-                                        style: TextStyle(
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.bold)),
-                                    const SizedBox(height: 16),
-                                    for (RepeatType repeat in RepeatType.values)
-                                      ListTile(
-                                        title:
-                                            Text(_getRepeatDisplayName(repeat)),
-                                        leading: Radio<RepeatType>(
-                                          value: repeat,
-                                          groupValue: selectedRepeat,
-                                          onChanged: (value) {
+                        const SizedBox(height: 16),
+                        TextFormField(
+                          controller: descriptionController,
+                          decoration: const InputDecoration(
+                            labelText: 'Description',
+                            border: OutlineInputBorder(),
+                          ),
+                          maxLines: 2,
+                        ),
+                        const SizedBox(height: 20),
+
+                        // Multi-time section for AI reminders
+                        CompactMultiTimeSection(
+                          timeSlots: timeSlots,
+                          onTimeSlotsChanged: (newTimeSlots) {
+                            setModalState(() {
+                              timeSlots = newTimeSlots;
+                            });
+                          },
+                          isMultiTime: isMultiTime,
+                          onMultiTimeToggle: (value) {
+                            setModalState(() {
+                              isMultiTime = value;
+                              if (!value) {
+                                timeSlots.clear();
+                              }
+                            });
+                          },
+                          initialSingleTime:
+                              TimeOfDay.fromDateTime(selectedDate),
+                        ),
+
+                        const SizedBox(height: 20),
+
+                        if (!isMultiTime) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            'Scheduled: ${DateFormat('MMM dd, yyyy • h:mm a').format(selectedDate)}',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurface
+                                      .withValues(alpha: 0.7),
+                                ),
+                          ),
+                        ],
+                        Card(
+                          child: ListTile(
+                            title: const Text('Repeat'),
+                            subtitle:
+                                Text(_getRepeatDisplayName(selectedRepeat)),
+                            trailing: const Icon(Icons.edit),
+                            onTap: () {
+                              showModalBottomSheet(
+                                context: context,
+                                builder: (context) => Container(
+                                  padding: const EdgeInsets.all(20),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Text('Repeat Options',
+                                          style: TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold)),
+                                      const SizedBox(height: 16),
+                                      for (RepeatType repeat
+                                          in RepeatType.values)
+                                        ListTile(
+                                          title: Text(
+                                              _getRepeatDisplayName(repeat)),
+                                          leading: Radio<RepeatType>(
+                                            value: repeat,
+                                            groupValue: selectedRepeat,
+                                            onChanged: (value) {
+                                              setModalState(() {
+                                                selectedRepeat = value!;
+                                              });
+                                              Navigator.pop(context);
+                                            },
+                                          ),
+                                          onTap: () {
                                             setModalState(() {
-                                              selectedRepeat = value!;
+                                              selectedRepeat = repeat;
                                             });
                                             Navigator.pop(context);
                                           },
                                         ),
-                                        onTap: () {
-                                          setModalState(() {
-                                            selectedRepeat = repeat;
-                                          });
-                                          Navigator.pop(context);
-                                        },
-                                      ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
-                              ),
-                            );
-                          },
+                              );
+                            },
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 32),
-                      // Save button
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: () {
-                            final updatedReminder = reminder.copyWith(
-                              title: titleController.text.trim(),
-                              description:
-                                  descriptionController.text.trim().isEmpty
-                                      ? null
-                                      : descriptionController.text.trim(),
-                              scheduledTime: selectedDate,
-                              repeatType: selectedRepeat,
-                            );
+                        const SizedBox(height: 32),
+                        // Save button
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: () {
+                              final updatedReminder = reminder.copyWith(
+                                title: titleController.text.trim(),
+                                description:
+                                    descriptionController.text.trim().isEmpty
+                                        ? null
+                                        : descriptionController.text.trim(),
+                                scheduledTime: selectedDate,
+                                repeatType: selectedRepeat,
+                                timeSlots: timeSlots,
+                                isMultiTime: isMultiTime,
+                              );
 
-                            setState(() {
-                              _aiGeneratedReminders[index] = updatedReminder;
-                            });
+                              setState(() {
+                                _aiGeneratedReminders[index] = updatedReminder;
+                              });
 
-                            Navigator.pop(context);
-                          },
-                          child: const Text('Save Changes'),
+                              Navigator.pop(context);
+                            },
+                            child: const Text('Save Changes'),
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 20),
-                    ],
+                        const SizedBox(height: 20),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -756,7 +841,6 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
     );
   }
 
-  // ... (Manual tab implementation remains the same as before)
   Widget _buildManualTab() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -770,7 +854,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(16),
-              margin: const EdgeInsets.only(bottom: 32),
+              margin: const EdgeInsets.only(bottom: 24),
               decoration: BoxDecoration(
                 color: isDark
                     ? const Color(0xFF1C1C1E).withValues(alpha: 0.5)
@@ -862,34 +946,35 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                       maxLines: 3,
                     ),
 
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 24),
 
-                    // Date selector
-                    Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.calendar_today_outlined),
-                        title: const Text('Date'),
-                        subtitle: Text(DateFormat('EEEE, MMMM d, y')
-                            .format(_selectedDate)),
-                        trailing: const Icon(Icons.edit),
-                        onTap: _selectDate,
-                      ),
+                    // Multi-time section
+                    MultiTimeSection(
+                      timeSlots: _timeSlots,
+                      onTimeSlotsChanged: _onTimeSlotsChanged,
+                      isMultiTime: _isMultiTime,
+                      onMultiTimeToggle: _onMultiTimeToggle,
+                      initialSingleTime: _selectedTime,
+                      singleTimeLabel: 'Time',
+                      padding: EdgeInsets.zero,
                     ),
 
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 24),
 
-                    // Time selector
-                    Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.access_time_outlined),
-                        title: const Text('Time'),
-                        subtitle: Text(_selectedTime.format(context)),
-                        trailing: const Icon(Icons.edit),
-                        onTap: _selectTime,
+                    // Date selector (only for single-time)
+                    if (!_isMultiTime) ...[
+                      Card(
+                        child: ListTile(
+                          leading: const Icon(Icons.calendar_today_outlined),
+                          title: const Text('Date'),
+                          subtitle: Text(DateFormat('EEEE, MMMM d, y')
+                              .format(_selectedDate)),
+                          trailing: const Icon(Icons.edit),
+                          onTap: _selectDate,
+                        ),
                       ),
-                    ),
-
-                    const SizedBox(height: 16),
+                      const SizedBox(height: 16),
+                    ],
 
                     // Repeat selector
                     Card(
@@ -902,7 +987,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                       ),
                     ),
 
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 20),
 
                     // Notification toggle
                     Card(
@@ -943,9 +1028,11 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                           width: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text(
-                          'CREATE REMINDER',
-                          style: TextStyle(
+                      : Text(
+                          _isMultiTime
+                              ? 'CREATE MULTI-TIME REMINDER'
+                              : 'CREATE REMINDER',
+                          style: const TextStyle(
                             fontWeight: FontWeight.w600,
                             letterSpacing: 0.5,
                           ),
@@ -1088,7 +1175,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                                     ),
                             decoration: InputDecoration(
                               hintText: _aiServiceReady
-                                  ? 'Make the reminder for the building construction on 3AM'
+                                  ? 'Take medicine at 8AM, 2PM, and 8PM daily'
                                   : 'Configure AI provider in Settings first...',
                               hintStyle: TextStyle(
                                 color: Theme.of(context)
@@ -1275,7 +1362,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
               ),
             ),
           ] else
-            // PREVIEW SECTION (keeping original implementation)
+            // PREVIEW SECTION
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1361,15 +1448,28 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                                 if (reminder.description != null)
                                   Text(reminder.description!),
                                 const SizedBox(height: 4),
-                                Text(
-                                  DateFormat('MMM dd • h:mm a')
-                                      .format(reminder.scheduledTime),
-                                  style: TextStyle(
-                                    color:
-                                        Theme.of(context).colorScheme.primary,
-                                    fontWeight: FontWeight.w500,
+                                // Show multi-time or single time info
+                                if (reminder.hasMultipleTimes) ...[
+                                  Text(
+                                    '${reminder.timeSlots.length} times: ${reminder.timeSlots.map((slot) => slot.formattedTime).join(', ')}',
+                                    style: TextStyle(
+                                      color:
+                                          Theme.of(context).colorScheme.primary,
+                                      fontWeight: FontWeight.w500,
+                                      fontSize: 12,
+                                    ),
                                   ),
-                                ),
+                                ] else ...[
+                                  Text(
+                                    DateFormat('MMM dd • h:mm a')
+                                        .format(reminder.scheduledTime),
+                                    style: TextStyle(
+                                      color:
+                                          Theme.of(context).colorScheme.primary,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
                             trailing: IconButton(
