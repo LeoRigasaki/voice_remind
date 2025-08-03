@@ -4,6 +4,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'services/notification_service.dart';
 import 'services/storage_service.dart';
 import 'services/spaces_service.dart';
+import 'services/calendar_service.dart';
 import 'services/theme_service.dart';
 import 'services/update_service.dart';
 import 'widgets/update_dialog.dart';
@@ -41,6 +42,10 @@ void main() async {
   // Initialize spaces service
   await SpacesService.initialize();
   debugPrint('✅ Spaces service initialized');
+
+  // Initialize calendar service
+  await CalendarService.initialize();
+  debugPrint('✅ Calendar service initialized');
 
   // Initialize theme service
   await ThemeService.initialize();
