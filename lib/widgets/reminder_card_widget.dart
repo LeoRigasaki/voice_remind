@@ -160,7 +160,6 @@ class _ReminderCardWidgetState extends State<ReminderCardWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
     final isOverdue = _isDisplayOverdue;
     final isCompleted = _isDisplayCompleted;
 

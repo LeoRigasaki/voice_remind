@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'dart:async';
+import 'dart:math' as math;
+
 import '../models/reminder.dart';
 import '../services/storage_service.dart';
 import '../services/notification_service.dart';
@@ -11,6 +13,9 @@ import '../screens/settings_screen.dart';
 import '../widgets/multi_time_section.dart';
 
 enum ReminderCreationMode { manual, aiText, voice }
+
+// Voice conversation states inspired by leading assistants
+enum VoiceConversationState { idle, listening, thinking, speaking }
 
 class AIAddReminderModal extends StatefulWidget {
   final Reminder? reminder;
@@ -66,6 +71,24 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
   DateTime _currentTime = DateTime.now();
   Timer? _timeTimer;
 
+  // ===== Enhanced Voice UI state =====
+  VoiceConversationState _voiceState = VoiceConversationState.idle;
+
+  // Animation controllers for orb/waveform
+  late AnimationController _orbPulseController; // base pulsing
+  late AnimationController _ringController; // concentric rings
+  late AnimationController _waveformController; // bar jitter
+
+  // Derived animations
+  late Animation<double> _pulse; // 0..1
+  late Animation<double> _rings; // 0..1
+
+  // Enhanced audio level simulation with frequency bands
+  double _audioLevel = 0.0;
+  final List<double> _frequencyBands =
+      List.filled(21, 0.0); // For individual bar reactivity
+  Timer? _audioMockTimer;
+
   @override
   void initState() {
     super.initState();
@@ -80,6 +103,34 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
     _scaleController = AnimationController(
       duration: const Duration(milliseconds: 200),
       vsync: this,
+    );
+
+    // FIXED: Slower, more natural pulse for breathing effect
+    _orbPulseController = AnimationController(
+      duration: const Duration(milliseconds: 2400), // Slower breathing
+      vsync: this,
+    )..repeat(reverse: true);
+
+    // FIXED: Consistent rhythm for ripples - each ring spawns every 800ms
+    _ringController = AnimationController(
+      duration: const Duration(milliseconds: 2400), // 3 rings × 800ms each
+      vsync: this,
+    )..repeat();
+
+    // FIXED: Voice-reactive waveform animation
+    _waveformController = AnimationController(
+      duration:
+          const Duration(milliseconds: 150), // Faster for voice reactivity
+      vsync: this,
+    )..repeat();
+
+    _pulse = CurvedAnimation(
+      parent: _orbPulseController,
+      curve: Curves.easeInOut,
+    );
+    _rings = CurvedAnimation(
+      parent: _ringController,
+      curve: Curves.linear,
     );
 
     // Initialize tab controller
@@ -100,9 +151,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
 
     // Add listener to AI input controller to update button state
     _aiInputController.addListener(() {
-      setState(() {
-        // This will rebuild the widget when text changes
-      });
+      setState(() {});
     });
 
     // Start real-time timer for current time display
@@ -130,6 +179,9 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _slideController.forward();
     });
+
+    // Start enhanced mock audio with frequency bands
+    _beginEnhancedMockAudio();
   }
 
   Future<void> _loadAIServiceStatus() async {
@@ -177,6 +229,12 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
     _titleController.dispose();
     _descriptionController.dispose();
     _aiInputController.dispose();
+
+    _orbPulseController.dispose();
+    _ringController.dispose();
+    _waveformController.dispose();
+    _audioMockTimer?.cancel();
+
     super.dispose();
   }
 
@@ -197,26 +255,6 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
           date.day,
           _selectedTime.hour,
           _selectedTime.minute,
-        );
-      });
-    }
-  }
-
-  Future<void> _selectTime() async {
-    final time = await showTimePicker(
-      context: context,
-      initialTime: _selectedTime,
-    );
-
-    if (time != null) {
-      setState(() {
-        _selectedTime = time;
-        _selectedDate = DateTime(
-          _selectedDate.year,
-          _selectedDate.month,
-          _selectedDate.day,
-          time.hour,
-          time.minute,
         );
       });
     }
@@ -644,7 +682,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                       ),
 
                       // Extra spacing for keyboard
-                      SizedBox(height: keyboardHeight > 0 ? 80 : 20),
+                      const SizedBox(height: 20),
                     ],
                   ),
                 ),
@@ -890,9 +928,9 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
         labelPadding: EdgeInsets.zero, // Remove extra padding
 
         tabs: [
-          // MANUAL TAB - Fixed width container
+          // MANUAL TAB
           const SizedBox(
-            width: double.infinity, // Takes equal share of available space
+            width: double.infinity,
             child: Tab(
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -912,9 +950,9 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
             ),
           ),
 
-          // AI TAB - Fixed width container
+          // AI TAB
           SizedBox(
-            width: double.infinity, // Takes equal share of available space
+            width: double.infinity,
             child: Tab(
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -955,37 +993,21 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
             ),
           ),
 
-          // VOICE TAB - Fixed width container with vertical layout
+          // VOICE TAB
           const SizedBox(
-            width: double.infinity, // Takes equal share of available space
+            width: double.infinity,
             child: Tab(
-              child: Column(
+              child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.mic_outlined, size: 16),
-                      SizedBox(width: 4),
-                      Flexible(
-                        child: Text(
-                          'Voice',
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 1),
-                  Text(
-                    'SOON',
-                    style: TextStyle(
-                      fontSize: 7,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.orange,
-                      letterSpacing: 0.3,
+                  Icon(Icons.mic_outlined, size: 16),
+                  SizedBox(width: 4),
+                  Flexible(
+                    child: Text(
+                      'Voice',
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
                     ),
                   ),
                 ],
@@ -1003,7 +1025,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
       children: [
         _buildManualTab(),
         _buildAITextTab(),
-        _buildVoiceTab(),
+        _buildVoiceTab(), // ENHANCED
       ],
     );
   }
@@ -1708,52 +1730,300 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
     );
   }
 
+  // ==================== ENHANCED VOICE TAB ====================
+
   Widget _buildVoiceTab() {
-    return const Padding(
-      padding: EdgeInsets.all(20),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.mic_outlined,
-              size: 64,
-              color: Colors.grey,
-            ),
-            SizedBox(height: 24),
-            Text(
-              'VOICE REMINDERS',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w300,
-                letterSpacing: 2.0,
-                color: Colors.grey,
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+      child: Column(
+        children: [
+          // Status chip with app-aligned colors
+          Align(
+            alignment: Alignment.centerRight,
+            child: _VoiceStatusChip(state: _voiceState),
+          ),
+
+          const SizedBox(height: 12),
+
+          Expanded(
+            child: Center(
+              child: SizedBox(
+                width: 280,
+                height: 280,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    // FIXED: Natural rhythm concentric ripples
+                    AnimatedBuilder(
+                      animation: _ringController,
+                      builder: (context, _) {
+                        return CustomPaint(
+                          painter: _NaturalRhythmRingsPainter(
+                            progress: _rings.value,
+                            primaryColor: Theme.of(context).colorScheme.primary,
+                            baseOpacity: isDark ? 0.25 : 0.15,
+                            state: _voiceState,
+                          ),
+                          size: const Size(260, 260),
+                        );
+                      },
+                    ),
+
+                    // Main glowing orb with pulse + ENHANCED audio reaction
+                    AnimatedBuilder(
+                      animation: Listenable.merge(
+                        [_orbPulseController, _waveformController],
+                      ),
+                      builder: (context, _) {
+                        final p = _pulse.value;
+                        // Enhanced scale combining slow pulse and real-time audio level
+                        final scale = 1.0 + 0.04 * p + 0.15 * _audioLevel;
+                        return Transform.scale(
+                          scale: scale,
+                          child: _AppAlignedGlowingOrb(
+                            diameter: 200,
+                            primaryColor: Theme.of(context).colorScheme.primary,
+                            glowOpacity: isDark ? 0.40 : 0.30,
+                            innerStop: 0.55,
+                            outerStop: 1.0,
+                            state: _voiceState,
+                          ),
+                        );
+                      },
+                    ),
+
+                    // FIXED: Voice-reactive waveform (equalizer bars layered on orb)
+                    Positioned(
+                      bottom: 44,
+                      left: 36,
+                      right: 36,
+                      child: AnimatedBuilder(
+                        animation: _waveformController,
+                        builder: (context, _) {
+                          return _VoiceReactiveWaveform(
+                            level: _audioLevel,
+                            frequencyBands: _frequencyBands,
+                            t: _waveformController.value,
+                            barCount: 21,
+                            color: Theme.of(context).colorScheme.onPrimary,
+                            dimColor: Theme.of(context)
+                                .colorScheme
+                                .onPrimary
+                                .withValues(alpha: 0.25),
+                            isActive: _voiceState ==
+                                    VoiceConversationState.listening ||
+                                _voiceState == VoiceConversationState.speaking,
+                          );
+                        },
+                      ),
+                    ),
+
+                    // Center icon/state text
+                    Positioned(
+                      bottom: 12,
+                      child: Opacity(
+                        opacity: 0.9,
+                        child: Column(
+                          children: [
+                            Text(
+                              _voiceState == VoiceConversationState.idle
+                                  ? 'Hold to talk'
+                                  : _voiceState ==
+                                          VoiceConversationState.listening
+                                      ? 'Listening…'
+                                      : _voiceState ==
+                                              VoiceConversationState.thinking
+                                          ? 'Thinking…'
+                                          : 'Speaking…',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelLarge
+                                  ?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurface
+                                        .withValues(alpha: 0.7),
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            SizedBox(height: 16),
-            Text(
-              'COMING SOON',
-              style: TextStyle(
-                color: Colors.orange,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 1.5,
+          ),
+
+          const SizedBox(height: 4),
+
+          // Mic control (press & hold)
+          GestureDetector(
+            onLongPressStart: (_) => _startListening(),
+            onLongPressEnd: (_) => _stopListening(),
+            child: Container(
+              width: double.infinity,
+              height: 56,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Theme.of(context).colorScheme.primary,
+                    Theme.of(context)
+                        .colorScheme
+                        .primary
+                        .withValues(alpha: 0.85),
+                  ],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .primary
+                        .withValues(alpha: 0.35),
+                    blurRadius: 16,
+                    spreadRadius: 2,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Center(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.mic, size: 20, color: Colors.white),
+                    const SizedBox(width: 10),
+                    Text(
+                      'PRESS & HOLD TO SPEAK',
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.0,
+                          ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            SizedBox(height: 24),
-            Text(
-              'Voice input for creating reminders\nis currently in development.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.grey,
-                height: 1.5,
-              ),
-            ),
-          ],
-        ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // Helper text
+          Text(
+            'While holding, speak naturally. Release to send. You can interrupt while it\'s speaking—like Gemini Live—once integrated with your voice backend.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.6),
+                ),
+          ),
+        ],
       ),
     );
   }
+
+  // ---------------- Enhanced Voice interactions ----------------
+
+  void _startListening() {
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _voiceState = VoiceConversationState.listening;
+    });
+    // In a real integration: start mic stream and update _audioLevel + _frequencyBands from FFT analysis
+  }
+
+  void _stopListening() async {
+    HapticFeedback.selectionClick();
+
+    // Simulate: after user releases, go to 'thinking' then 'speaking'
+    setState(() => _voiceState = VoiceConversationState.thinking);
+
+    await Future.delayed(const Duration(milliseconds: 900));
+    if (!mounted) return;
+
+    setState(() => _voiceState = VoiceConversationState.speaking);
+
+    // Simulate speaking for a short time
+    await Future.delayed(const Duration(milliseconds: 1300));
+    if (!mounted) return;
+
+    setState(() => _voiceState = VoiceConversationState.idle);
+  }
+
+  // FIXED: Enhanced mock audio with frequency bands for voice reactivity
+  void _beginEnhancedMockAudio() {
+    final start = DateTime.now();
+    _audioMockTimer =
+        Timer.periodic(const Duration(milliseconds: 50), (Timer t) {
+      if (!mounted) return;
+      final elapsed = DateTime.now().difference(start).inMilliseconds / 1000.0;
+
+      // Base audio level with more natural variation
+      double base = 0.08 +
+          0.04 * math.sin(elapsed * 1.3) +
+          0.03 * math.sin(elapsed * 3.7);
+
+      // State-dependent audio level
+      switch (_voiceState) {
+        case VoiceConversationState.idle:
+          _audioLevel = base * 0.6;
+          break;
+        case VoiceConversationState.listening:
+          _audioLevel =
+              (base + 0.35 + 0.30 * math.sin(elapsed * 4.8)).clamp(0.0, 1.0);
+          break;
+        case VoiceConversationState.thinking:
+          _audioLevel = base * 0.4;
+          break;
+        case VoiceConversationState.speaking:
+          _audioLevel =
+              (base + 0.25 + 0.25 * math.sin(elapsed * 5.4)).clamp(0.0, 1.0);
+          break;
+      }
+
+      // FIXED: Generate individual frequency bands for voice-reactive waveform
+      for (int i = 0; i < _frequencyBands.length; i++) {
+        final freq = 0.5 + i * 0.8; // Different frequency for each band
+        final bandBase = 0.05 + 0.15 * math.sin(elapsed * freq + i * 0.3);
+
+        switch (_voiceState) {
+          case VoiceConversationState.idle:
+            _frequencyBands[i] = bandBase * 0.4;
+            break;
+          case VoiceConversationState.listening:
+            // Higher reactivity during listening
+            _frequencyBands[i] = (bandBase +
+                    0.4 *
+                        _audioLevel *
+                        math.sin(elapsed * (freq * 1.5) + i * 0.2))
+                .clamp(0.0, 1.0);
+            break;
+          case VoiceConversationState.thinking:
+            _frequencyBands[i] = bandBase * 0.3;
+            break;
+          case VoiceConversationState.speaking:
+            // Voice-like pattern during speaking
+            _frequencyBands[i] = (bandBase +
+                    0.3 *
+                        _audioLevel *
+                        math.sin(elapsed * (freq * 2.0) + i * 0.4))
+                .clamp(0.0, 1.0);
+            break;
+        }
+      }
+
+      setState(() {});
+    });
+  }
+
+  // ==================== Bottom sheets & helpers ====================
 
   void _showRepeatSelector() {
     showModalBottomSheet(
@@ -1906,5 +2176,255 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
       case RepeatType.monthly:
         return 'Repeat every month on the same date';
     }
+  }
+}
+
+// ==================== ENHANCED Voice UI helper widgets ====================
+
+class _VoiceStatusChip extends StatelessWidget {
+  final VoiceConversationState state;
+  const _VoiceStatusChip({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    // FIXED: Use app-aligned colors instead of hardcoded ones
+    final (label, color) = switch (state) {
+      VoiceConversationState.idle => (
+          'IDLE',
+          Theme.of(context).colorScheme.outline
+        ),
+      VoiceConversationState.listening => (
+          'LISTENING',
+          Theme.of(context).colorScheme.primary
+        ),
+      VoiceConversationState.thinking => (
+          'THINKING',
+          Theme.of(context).colorScheme.secondary
+        ),
+      VoiceConversationState.speaking => (
+          'SPEAKING',
+          Theme.of(context).colorScheme.tertiary
+        ),
+    };
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.6,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// FIXED: App-aligned glowing orb with theme colors
+class _AppAlignedGlowingOrb extends StatelessWidget {
+  final double diameter;
+  final Color primaryColor;
+  final double glowOpacity;
+  final double innerStop;
+  final double outerStop;
+  final VoiceConversationState state;
+
+  const _AppAlignedGlowingOrb({
+    required this.diameter,
+    required this.primaryColor,
+    required this.glowOpacity,
+    required this.innerStop,
+    required this.outerStop,
+    required this.state,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // FIXED: Use app theme colors with different variations for each state
+    final base = primaryColor;
+    final accent = switch (state) {
+      VoiceConversationState.idle => base.withValues(alpha: 0.7),
+      VoiceConversationState.listening => HSLColor.fromColor(base)
+          .withLightness(0.7)
+          .toColor()
+          .withValues(alpha: 0.8),
+      VoiceConversationState.thinking =>
+        Theme.of(context).colorScheme.secondary.withValues(alpha: 0.7),
+      VoiceConversationState.speaking =>
+        Theme.of(context).colorScheme.tertiary.withValues(alpha: 0.8),
+    };
+
+    return Container(
+      width: diameter,
+      height: diameter,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: RadialGradient(
+          colors: [
+            accent,
+            base,
+          ],
+          stops: [innerStop, outerStop],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: base.withValues(alpha: glowOpacity),
+            blurRadius: 48,
+            spreadRadius: 6,
+          ),
+        ],
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.08),
+          width: 1,
+        ),
+      ),
+    );
+  }
+}
+
+// FIXED: Natural rhythm rings painter with sequential appearance
+class _NaturalRhythmRingsPainter extends CustomPainter {
+  final double progress; // 0..1
+  final Color primaryColor;
+  final double baseOpacity;
+  final VoiceConversationState state;
+
+  _NaturalRhythmRingsPainter({
+    required this.progress,
+    required this.primaryColor,
+    required this.baseOpacity,
+    required this.state,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    final maxR = size.width / 2;
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0;
+
+    // FIXED: Natural rhythm - each ring appears every 0.33 of the cycle
+    // Ring lifecycle: spawn → grow → fade → disappear
+    const ringSpacing = 1.0 / 3.0; // 3 rings, each starts 1/3 cycle apart
+
+    for (int i = 0; i < 3; i++) {
+      // Calculate ring's individual progress (0..1 across its full lifecycle)
+      final ringStart = i * ringSpacing;
+      final ringProgress = ((progress - ringStart) % 1.0);
+
+      // Ring growth: starts small (0.5 of maxR), grows to full size (1.0 of maxR)
+      final r = lerpDouble(maxR * 0.55, maxR, ringProgress);
+
+      // FIXED: Natural fade pattern - strong at start, gentle fade at end
+      double opacity;
+      if (ringProgress < 0.3) {
+        // Growing phase - fade in
+        opacity = lerpDouble(0.0, 0.35, ringProgress / 0.3)!;
+      } else if (ringProgress < 0.7) {
+        // Stable phase - maintain opacity
+        opacity = 0.35;
+      } else {
+        // Fading phase - fade out
+        opacity = lerpDouble(0.35, 0.0, (ringProgress - 0.7) / 0.3)!;
+      }
+
+      // Apply base opacity and state-based intensity
+      final finalOpacity = (opacity + baseOpacity).clamp(0.0, 0.4);
+
+      paint.color = primaryColor.withValues(alpha: finalOpacity);
+      if (r! > 0 && finalOpacity > 0.01) {
+        canvas.drawCircle(center, r, paint);
+      }
+    }
+  }
+
+  double? lerpDouble(double a, double b, double t) => a + (b - a) * t;
+
+  @override
+  bool shouldRepaint(covariant _NaturalRhythmRingsPainter oldDelegate) {
+    return oldDelegate.progress != progress ||
+        oldDelegate.primaryColor != primaryColor ||
+        oldDelegate.state != state;
+  }
+}
+
+// FIXED: Voice-reactive waveform with individual frequency bands
+class _VoiceReactiveWaveform extends StatelessWidget {
+  final double level; // Overall level 0..1
+  final List<double> frequencyBands; // Individual bar levels 0..1
+  final double t; // time 0..1
+  final int barCount;
+  final Color color;
+  final Color dimColor;
+  final bool isActive;
+
+  const _VoiceReactiveWaveform({
+    required this.level,
+    required this.frequencyBands,
+    required this.t,
+    required this.barCount,
+    required this.color,
+    required this.dimColor,
+    required this.isActive,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // FIXED: Use individual frequency bands for voice reactivity
+    final bars = List.generate(barCount, (i) {
+      if (i < frequencyBands.length) {
+        // Use real frequency band data
+        final bandLevel = frequencyBands[i];
+        // Create symmetric profile from center
+        final centerDistance =
+            (i - (barCount - 1) / 2).abs() / ((barCount - 1) / 2);
+        final centerBoost =
+            1.0 - centerDistance * 0.3; // Center bars slightly taller
+        return (bandLevel * centerBoost).clamp(0.05, 1.0);
+      } else {
+        // Fallback to original algorithm for remaining bars
+        final x = (i / (barCount - 1)) * 2 - 1; // -1..1
+        final curve = 1.0 - (x * x); // dome shape
+        final jitter = 0.15 * math.sin((i * 0.9) + t * math.pi * 2);
+        final h = (0.18 + 0.64 * curve) * (0.35 + 0.65 * level + jitter);
+        return h.clamp(0.05, 1.0);
+      }
+    });
+
+    return SizedBox(
+      height: 36,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          for (final h in bars)
+            Container(
+              width: 4,
+              height: 36 * h,
+              decoration: BoxDecoration(
+                color: isActive ? color : dimColor,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 }
