@@ -200,6 +200,40 @@ class _SpacesScreenState extends State<SpacesScreen>
     }
   }
 
+  // Select All / Deselect All functionality
+  void _selectAll() {
+    HapticFeedback.mediumImpact();
+    setState(() {
+      final filteredSpaces = _getFilteredSpaces();
+      _selectedSpaces.addAll(filteredSpaces.map((s) => s.id));
+      _wigglingSpaces.addAll(filteredSpaces.map((s) => s.id));
+    });
+
+    if (_selectedSpaces.isNotEmpty && !_wiggleController.isAnimating) {
+      _wiggleController.repeat(reverse: true);
+    }
+  }
+
+  void _deselectAll() {
+    HapticFeedback.lightImpact();
+    setState(() {
+      _selectedSpaces.clear();
+      _wigglingSpaces.clear();
+    });
+    _wiggleController.stop();
+    _wiggleController.reset();
+  }
+
+  bool get _isAllSelected {
+    final filteredSpaces = _getFilteredSpaces();
+    return filteredSpaces.isNotEmpty &&
+        _selectedSpaces.length == filteredSpaces.length;
+  }
+
+  bool get _isPartiallySelected {
+    return _selectedSpaces.isNotEmpty && !_isAllSelected;
+  }
+
   // === INDIVIDUAL SPACE ACTIONS ===
 
   void _navigateToAddSpace({Space? space}) {
@@ -1763,7 +1797,31 @@ class _SpacesScreenState extends State<SpacesScreen>
 
   List<Widget> _buildBulkActions() {
     return [
-      // Color picker
+      Container(
+        margin: const EdgeInsets.only(right: 4),
+        decoration: BoxDecoration(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: const Color(0xFF007AFF).withValues(alpha: 0.3),
+            width: 0.5,
+          ),
+        ),
+        child: IconButton(
+          icon: Icon(
+            _isAllSelected
+                ? Icons.deselect
+                : (_isPartiallySelected ? Icons.checklist : Icons.select_all),
+            size: 20,
+          ),
+          onPressed: _isAllSelected ? _deselectAll : _selectAll,
+          tooltip: _isAllSelected ? 'Deselect All' : 'Select All',
+          style: IconButton.styleFrom(
+            backgroundColor: Colors.transparent,
+            foregroundColor: const Color(0xFF007AFF),
+          ),
+        ),
+      ),
       Container(
         margin: const EdgeInsets.only(right: 4),
         decoration: BoxDecoration(
@@ -1784,8 +1842,6 @@ class _SpacesScreenState extends State<SpacesScreen>
           ),
         ),
       ),
-
-      // Icon picker
       Container(
         margin: const EdgeInsets.only(right: 4),
         decoration: BoxDecoration(
@@ -1806,8 +1862,6 @@ class _SpacesScreenState extends State<SpacesScreen>
           ),
         ),
       ),
-
-      // ADD THIS: Merge reminders (only show if 2+ spaces selected)
       if (_selectedSpaces.length >= 2)
         Container(
           margin: const EdgeInsets.only(right: 4),
@@ -1829,8 +1883,6 @@ class _SpacesScreenState extends State<SpacesScreen>
             ),
           ),
         ),
-
-      // Expandable delete
       _buildExpandableDeleteButton(),
     ];
   }

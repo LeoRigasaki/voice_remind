@@ -260,6 +260,30 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
     });
   }
 
+  // Select All / Deselect All functionality
+  void _selectAll() {
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _selectedReminders.addAll(_filteredReminders.map((r) => r.id));
+    });
+  }
+
+  void _deselectAll() {
+    HapticFeedback.lightImpact();
+    setState(() {
+      _selectedReminders.clear();
+    });
+  }
+
+  bool get _isAllSelected {
+    return _filteredReminders.isNotEmpty &&
+        _selectedReminders.length == _filteredReminders.length;
+  }
+
+  bool get _isPartiallySelected {
+    return _selectedReminders.isNotEmpty && !_isAllSelected;
+  }
+
   // Bulk actions
   Future<void> _bulkComplete() async {
     try {
@@ -433,6 +457,38 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
             ),
             actions: _isSelectionMode
                 ? [
+                    // Select All button - responsive (ADD THIS FIRST)
+                    Container(
+                      margin: const EdgeInsets.only(right: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: const Color(0xFF007AFF).withValues(alpha: 0.3),
+                          width: 0.5,
+                        ),
+                      ),
+                      child: IconButton(
+                        icon: Icon(
+                          _isAllSelected
+                              ? Icons.deselect
+                              : (_isPartiallySelected
+                                  ? Icons.checklist
+                                  : Icons.select_all),
+                          size: 20,
+                        ),
+                        onPressed: _isAllSelected
+                            ? _deselectAll
+                            : _selectAll, // Fixed the typos here
+                        tooltip: _isAllSelected ? 'Deselect All' : 'Select All',
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          foregroundColor: const Color(0xFF007AFF),
+                        ),
+                      ),
+                    ),
+
+                    // Your existing Complete Selected button
                     Container(
                       margin: const EdgeInsets.only(right: 4),
                       decoration: BoxDecoration(
@@ -453,6 +509,8 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
                         ),
                       ),
                     ),
+
+                    // Your existing Reopen Selected button
                     Container(
                       margin: const EdgeInsets.only(right: 4),
                       decoration: BoxDecoration(
@@ -473,6 +531,8 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
                         ),
                       ),
                     ),
+
+                    // Your existing Delete Selected button
                     Container(
                       margin: const EdgeInsets.only(right: 16),
                       decoration: BoxDecoration(

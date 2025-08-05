@@ -678,6 +678,7 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
                     showModalBottomSheet(
                       context: context,
                       backgroundColor: Colors.transparent,
+                      isScrollControlled: true,
                       builder: (context) => _buildRepeatSelector(),
                     );
                   },
@@ -1006,8 +1007,46 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
   }
 
   Widget _buildRepeatSelector() {
+    // Get screen dimensions for responsive design
+    final screenHeight = MediaQuery.of(context).size.height;
+    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+
+    // Calculate available height
+    final availableHeight = screenHeight -
+        MediaQuery.of(context).padding.top -
+        MediaQuery.of(context).padding.bottom -
+        keyboardHeight -
+        32; // margins
+
+    // Determine device size categories
+    final isSmallDevice = screenHeight < 700;
+    final isVerySmallDevice = screenHeight < 600;
+
+    // Calculate responsive dimensions
+    final maxModalHeight = isVerySmallDevice
+        ? availableHeight * 0.85
+        : isSmallDevice
+            ? availableHeight * 0.75
+            : availableHeight * 0.6;
+
+    final horizontalMargin = isSmallDevice ? 12.0 : 16.0;
+    final verticalPadding = isVerySmallDevice
+        ? 12.0
+        : isSmallDevice
+            ? 16.0
+            : 20.0;
+
     return Container(
-      margin: const EdgeInsets.all(16),
+      margin: EdgeInsets.only(
+        left: horizontalMargin,
+        right: horizontalMargin,
+        top: 16,
+        bottom: 16 + keyboardHeight,
+      ),
+      constraints: BoxConstraints(
+        maxHeight: maxModalHeight,
+        minHeight: 200,
+      ),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
@@ -1019,8 +1058,9 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // HEADER
           Padding(
-            padding: const EdgeInsets.all(20),
+            padding: EdgeInsets.all(verticalPadding),
             child: Row(
               children: [
                 Text(
@@ -1065,68 +1105,108 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
               ],
             ),
           ),
-          for (RepeatType repeat in RepeatType.values)
-            Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () {
-                  setState(() {
-                    _selectedRepeat = repeat;
-                  });
-                  Navigator.pop(context);
-                },
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 20,
-                        height: 20,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: _selectedRepeat == repeat
-                                ? Theme.of(context).colorScheme.onSurface
-                                : Theme.of(context).colorScheme.outline,
-                            width: _selectedRepeat == repeat ? 6 : 2,
+
+          // SCROLLABLE CONTENT
+          Flexible(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (RepeatType repeat in RepeatType.values)
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () {
+                          setState(() {
+                            _selectedRepeat = repeat;
+                          });
+                          Navigator.pop(context);
+                        },
+                        child: Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: isVerySmallDevice
+                                ? 12.0
+                                : isSmallDevice
+                                    ? 14.0
+                                    : 16.0,
+                          ),
+                          child: Row(
+                            children: [
+                              // Radio button
+                              Container(
+                                width: 20,
+                                height: 20,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: _selectedRepeat == repeat
+                                        ? Theme.of(context)
+                                            .colorScheme
+                                            .onSurface
+                                        : Theme.of(context).colorScheme.outline,
+                                    width: _selectedRepeat == repeat ? 6 : 2,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+
+                              // Text content
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _getRepeatDisplayName(repeat),
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w500,
+                                            fontSize: isVerySmallDevice
+                                                ? 14.0
+                                                : isSmallDevice
+                                                    ? 15.0
+                                                    : 16.0,
+                                          ),
+                                    ),
+                                    SizedBox(
+                                        height: isVerySmallDevice ? 2.0 : 4.0),
+                                    Text(
+                                      _getRepeatDescription(repeat),
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .onSurface
+                                                .withValues(alpha: 0.7),
+                                            fontSize: isVerySmallDevice
+                                                ? 11.0
+                                                : isSmallDevice
+                                                    ? 12.0
+                                                    : 13.0,
+                                            height:
+                                                isVerySmallDevice ? 1.3 : 1.4,
+                                          ),
+                                      maxLines: isVerySmallDevice ? 2 : 3,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _getRepeatDisplayName(repeat),
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleMedium
-                                  ?.copyWith(
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                            ),
-                            Text(
-                              _getRepeatDescription(repeat),
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
-                                  ?.copyWith(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurface
-                                        .withValues(alpha: 0.7),
-                                  ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                    ),
+                ],
               ),
             ),
+          ),
+
           const SizedBox(height: 8),
         ],
       ),

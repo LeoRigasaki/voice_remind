@@ -172,6 +172,62 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     });
   }
 
+  // Select All / Deselect All functionality
+  void _selectAll() {
+    HapticFeedback.mediumImpact();
+    setState(() {
+      // Get currently displayed reminders (respecting search/filter)
+      List<Reminder> displayReminders;
+      if (_searchQuery.isNotEmpty) {
+        displayReminders = _reminders.where((reminder) {
+          final titleMatch =
+              reminder.title.toLowerCase().contains(_searchQuery.toLowerCase());
+          final descriptionMatch = reminder.description
+                  ?.toLowerCase()
+                  .contains(_searchQuery.toLowerCase()) ??
+              false;
+          return titleMatch || descriptionMatch;
+        }).toList();
+      } else {
+        displayReminders = _filterState.applyFilters(_reminders);
+      }
+
+      _selectedReminders.addAll(displayReminders.map((r) => r.id));
+    });
+  }
+
+  void _deselectAll() {
+    HapticFeedback.lightImpact();
+    setState(() {
+      _selectedReminders.clear();
+    });
+  }
+
+  bool get _isAllSelected {
+    // Get currently displayed reminders
+    List<Reminder> displayReminders;
+    if (_searchQuery.isNotEmpty) {
+      displayReminders = _reminders.where((reminder) {
+        final titleMatch =
+            reminder.title.toLowerCase().contains(_searchQuery.toLowerCase());
+        final descriptionMatch = reminder.description
+                ?.toLowerCase()
+                .contains(_searchQuery.toLowerCase()) ??
+            false;
+        return titleMatch || descriptionMatch;
+      }).toList();
+    } else {
+      displayReminders = _filterState.applyFilters(_reminders);
+    }
+
+    return displayReminders.isNotEmpty &&
+        _selectedReminders.length == displayReminders.length;
+  }
+
+  bool get _isPartiallySelected {
+    return _selectedReminders.isNotEmpty && !_isAllSelected;
+  }
+
   // Bulk actions
   Future<void> _bulkComplete() async {
     try {
@@ -542,6 +598,36 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       ),
       actions: _isSelectionMode
           ? [
+              // Select All button - responsive (ADD THIS FIRST)
+              Container(
+                margin: const EdgeInsets.only(right: 4),
+                decoration: BoxDecoration(
+                  color: Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: const Color(0xFF007AFF).withValues(alpha: 0.3),
+                    width: 0.5,
+                  ),
+                ),
+                child: IconButton(
+                  icon: Icon(
+                    _isAllSelected
+                        ? Icons.deselect
+                        : (_isPartiallySelected
+                            ? Icons.checklist
+                            : Icons.select_all),
+                    size: 20,
+                  ),
+                  onPressed: _isAllSelected ? _deselectAll : _selectAll,
+                  tooltip: _isAllSelected ? 'Deselect All' : 'Select All',
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    foregroundColor: const Color(0xFF007AFF),
+                  ),
+                ),
+              ),
+
+              // Your existing Complete Selected button
               Container(
                 margin: const EdgeInsets.only(right: 4),
                 decoration: BoxDecoration(
@@ -562,6 +648,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                 ),
               ),
+
+              // Your existing Reopen Selected button
               Container(
                 margin: const EdgeInsets.only(right: 4),
                 decoration: BoxDecoration(
@@ -582,6 +670,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                 ),
               ),
+
+              // Your existing Delete Selected button
               Container(
                 margin: const EdgeInsets.only(right: 4),
                 decoration: BoxDecoration(
@@ -602,6 +692,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                 ),
               ),
+
+              // Your existing Add to Space button
               Container(
                 margin: const EdgeInsets.only(right: 4),
                 decoration: BoxDecoration(
@@ -623,6 +715,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                 ),
               ),
+
+              // Your existing Cancel button
               Container(
                 margin: const EdgeInsets.only(right: 16),
                 decoration: BoxDecoration(

@@ -415,89 +415,131 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
 
     return StatefulBuilder(
       builder: (context, setModalState) {
+        // Get screen dimensions for responsive design
+        final screenHeight = MediaQuery.of(context).size.height;
+        final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+        final availableHeight = screenHeight - keyboardHeight;
+
         return Container(
-          margin: const EdgeInsets.all(16),
+          // FIXED: Use responsive height instead of fixed margin
+          height: availableHeight * 0.9, // Use 90% of available height
+          margin: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            top: keyboardHeight > 0
+                ? 8
+                : 16, // Less margin when keyboard is open
+            bottom: 16,
+          ),
           decoration: BoxDecoration(
             color: Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.circular(16),
           ),
-          child: Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Header
-                Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Row(
-                    children: [
-                      Text(
-                        'Edit AI Reminder',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                      ),
-                      const Spacer(),
-                      IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.close),
-                      ),
-                    ],
+          child: Column(
+            children: [
+              // HEADER - Fixed height, compact
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .outline
+                          .withValues(alpha: 0.1),
+                      width: 1,
+                    ),
                   ),
                 ),
-
-                // Edit form
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Column(
-                      children: [
-                        TextFormField(
-                          controller: titleController,
-                          decoration: const InputDecoration(
-                            labelText: 'Title',
-                            border: OutlineInputBorder(),
+                child: Row(
+                  children: [
+                    Text(
+                      'Edit AI Reminder',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w600,
                           ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close),
+                      style: IconButton.styleFrom(
+                        backgroundColor: Theme.of(context).colorScheme.surface,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // FORM CONTENT - Flexible, scrollable
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      // Title field
+                      TextFormField(
+                        controller: titleController,
+                        decoration: const InputDecoration(
+                          labelText: 'Title',
+                          border: OutlineInputBorder(),
                         ),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          controller: descriptionController,
-                          decoration: const InputDecoration(
-                            labelText: 'Description',
-                            border: OutlineInputBorder(),
+                      ),
+
+                      SizedBox(
+                          height: availableHeight * 0.02), // Responsive spacing
+
+                      // Description field
+                      TextFormField(
+                        controller: descriptionController,
+                        decoration: const InputDecoration(
+                          labelText: 'Description',
+                          border: OutlineInputBorder(),
+                        ),
+                        maxLines: 2,
+                      ),
+
+                      SizedBox(
+                          height: availableHeight * 0.03), // Responsive spacing
+
+                      // Multi-time section
+                      CompactMultiTimeSection(
+                        timeSlots: timeSlots,
+                        onTimeSlotsChanged: (newTimeSlots) {
+                          setModalState(() {
+                            timeSlots = newTimeSlots;
+                          });
+                        },
+                        isMultiTime: isMultiTime,
+                        onMultiTimeToggle: (value) {
+                          setModalState(() {
+                            isMultiTime = value;
+                            if (!value) {
+                              timeSlots.clear();
+                            }
+                          });
+                        },
+                        initialSingleTime: TimeOfDay.fromDateTime(selectedDate),
+                      ),
+
+                      SizedBox(height: availableHeight * 0.02),
+
+                      // Date display (only for single time)
+                      if (!isMultiTime) ...[
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.surface,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .outline
+                                  .withValues(alpha: 0.2),
+                            ),
                           ),
-                          maxLines: 2,
-                        ),
-                        const SizedBox(height: 20),
-
-                        // Multi-time section for AI reminders
-                        CompactMultiTimeSection(
-                          timeSlots: timeSlots,
-                          onTimeSlotsChanged: (newTimeSlots) {
-                            setModalState(() {
-                              timeSlots = newTimeSlots;
-                            });
-                          },
-                          isMultiTime: isMultiTime,
-                          onMultiTimeToggle: (value) {
-                            setModalState(() {
-                              isMultiTime = value;
-                              if (!value) {
-                                timeSlots.clear();
-                              }
-                            });
-                          },
-                          initialSingleTime:
-                              TimeOfDay.fromDateTime(selectedDate),
-                        ),
-
-                        const SizedBox(height: 20),
-
-                        if (!isMultiTime) ...[
-                          const SizedBox(height: 12),
-                          Text(
+                          child: Text(
                             'Scheduled: ${DateFormat('MMM dd, yyyy • h:mm a').format(selectedDate)}',
                             style: Theme.of(context)
                                 .textTheme
@@ -509,89 +551,156 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                                       .withValues(alpha: 0.7),
                                 ),
                           ),
-                        ],
-                        Card(
-                          child: ListTile(
-                            title: const Text('Repeat'),
-                            subtitle:
-                                Text(_getRepeatDisplayName(selectedRepeat)),
-                            trailing: const Icon(Icons.edit),
-                            onTap: () {
-                              showModalBottomSheet(
-                                context: context,
-                                builder: (context) => Container(
-                                  padding: const EdgeInsets.all(20),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Text('Repeat Options',
-                                          style: TextStyle(
-                                              fontSize: 18,
-                                              fontWeight: FontWeight.bold)),
-                                      const SizedBox(height: 16),
-                                      for (RepeatType repeat
-                                          in RepeatType.values)
-                                        ListTile(
-                                          title: Text(
-                                              _getRepeatDisplayName(repeat)),
-                                          leading: Radio<RepeatType>(
-                                            value: repeat,
-                                            groupValue: selectedRepeat,
-                                            onChanged: (value) {
-                                              setModalState(() {
-                                                selectedRepeat = value!;
-                                              });
-                                              Navigator.pop(context);
-                                            },
-                                          ),
-                                          onTap: () {
-                                            setModalState(() {
-                                              selectedRepeat = repeat;
-                                            });
-                                            Navigator.pop(context);
-                                          },
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
                         ),
-                        const SizedBox(height: 32),
-                        // Save button
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            onPressed: () {
-                              final updatedReminder = reminder.copyWith(
-                                title: titleController.text.trim(),
-                                description:
-                                    descriptionController.text.trim().isEmpty
-                                        ? null
-                                        : descriptionController.text.trim(),
-                                scheduledTime: selectedDate,
-                                repeatType: selectedRepeat,
-                                timeSlots: timeSlots,
-                                isMultiTime: isMultiTime,
-                              );
-
-                              setState(() {
-                                _aiGeneratedReminders[index] = updatedReminder;
-                              });
-
-                              Navigator.pop(context);
-                            },
-                            child: const Text('Save Changes'),
-                          ),
-                        ),
-                        const SizedBox(height: 20),
+                        SizedBox(height: availableHeight * 0.02),
                       ],
+
+                      // Repeat selector - simplified
+                      GestureDetector(
+                        onTap: () {
+                          showModalBottomSheet(
+                            context: context,
+                            builder: (context) => Container(
+                              padding: const EdgeInsets.all(20),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Text(
+                                    'Repeat Options',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  for (RepeatType repeat in RepeatType.values)
+                                    ListTile(
+                                      title:
+                                          Text(_getRepeatDisplayName(repeat)),
+                                      leading: Radio<RepeatType>(
+                                        value: repeat,
+                                        groupValue: selectedRepeat,
+                                        onChanged: (value) {
+                                          setModalState(() {
+                                            selectedRepeat = value!;
+                                          });
+                                          Navigator.pop(context);
+                                        },
+                                      ),
+                                      onTap: () {
+                                        setModalState(() {
+                                          selectedRepeat = repeat;
+                                        });
+                                        Navigator.pop(context);
+                                      },
+                                    ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.surface,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .outline
+                                  .withValues(alpha: 0.2),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.repeat),
+                              const SizedBox(width: 12),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Repeat',
+                                    style:
+                                        TextStyle(fontWeight: FontWeight.w500),
+                                  ),
+                                  Text(
+                                    _getRepeatDisplayName(selectedRepeat),
+                                    style: TextStyle(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurface
+                                          .withValues(alpha: 0.7),
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const Spacer(),
+                              const Icon(Icons.edit, size: 20),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      // Extra spacing for keyboard
+                      SizedBox(height: keyboardHeight > 0 ? 80 : 20),
+                    ],
+                  ),
+                ),
+              ),
+
+              // SAVE BUTTON - Fixed at bottom
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  border: Border(
+                    top: BorderSide(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .outline
+                          .withValues(alpha: 0.1),
+                      width: 1,
                     ),
                   ),
                 ),
-              ],
-            ),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      final updatedReminder = reminder.copyWith(
+                        title: titleController.text.trim(),
+                        description: descriptionController.text.trim().isEmpty
+                            ? null
+                            : descriptionController.text.trim(),
+                        scheduledTime: selectedDate,
+                        repeatType: selectedRepeat,
+                        timeSlots: timeSlots,
+                        isMultiTime: isMultiTime,
+                      );
+
+                      setState(() {
+                        _aiGeneratedReminders[index] = updatedReminder;
+                      });
+
+                      Navigator.pop(context);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Theme.of(context).colorScheme.primary,
+                      foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      'Save Changes',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         );
       },
@@ -749,7 +858,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
 
   Widget _buildTabBar() {
     return Container(
-      margin: const EdgeInsets.all(20),
+      margin: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
@@ -760,6 +869,12 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
       child: TabBar(
         controller: _tabController,
         dividerColor: Colors.transparent,
+
+        // KEY FIXES FOR CONSISTENT ANIMATION:
+        indicatorSize: TabBarIndicatorSize.tab, // Spans entire tab area
+        indicatorAnimation:
+            TabIndicatorAnimation.linear, // Smooth linear animation
+
         indicator: BoxDecoration(
           color: Theme.of(context).colorScheme.primary,
           borderRadius: BorderRadius.circular(10),
@@ -770,59 +885,111 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
           fontWeight: FontWeight.w600,
           fontSize: 14,
         ),
+
+        // ENSURE EQUAL TAB DISTRIBUTION:
+        labelPadding: EdgeInsets.zero, // Remove extra padding
+
         tabs: [
-          const Tab(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.edit_outlined, size: 18),
-                SizedBox(width: 8),
-                Text('Manual'),
-              ],
-            ),
-          ),
-          Tab(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  _aiServiceReady ? Icons.auto_awesome : Icons.warning_outlined,
-                  size: 18,
-                ),
-                const SizedBox(width: 8),
-                const Text('AI Text'),
-                if (!_aiServiceReady) ...[
-                  const SizedBox(width: 4),
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: const BoxDecoration(
-                      color: Colors.orange,
-                      shape: BoxShape.circle,
+          // MANUAL TAB - Fixed width container
+          const SizedBox(
+            width: double.infinity, // Takes equal share of available space
+            child: Tab(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.edit_outlined, size: 16),
+                  SizedBox(width: 4),
+                  Flexible(
+                    child: Text(
+                      'Manual',
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
                     ),
                   ),
                 ],
-              ],
+              ),
             ),
           ),
-          const Tab(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.mic_outlined, size: 18),
-                SizedBox(width: 4),
-                Text('Voice'),
-                SizedBox(width: 4),
-                SizedBox(
-                  child: Text(
-                    'SOON',
-                    style: TextStyle(
-                      fontSize: 8,
-                      fontWeight: FontWeight.bold,
+
+          // AI TAB - Fixed width container
+          SizedBox(
+            width: double.infinity, // Takes equal share of available space
+            child: Tab(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    _aiServiceReady
+                        ? Icons.auto_awesome
+                        : Icons.warning_outlined,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'AI Text',
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                        ),
+                        if (!_aiServiceReady) ...[
+                          const SizedBox(width: 2),
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: const BoxDecoration(
+                              color: Colors.orange,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
+            ),
+          ),
+
+          // VOICE TAB - Fixed width container with vertical layout
+          const SizedBox(
+            width: double.infinity, // Takes equal share of available space
+            child: Tab(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.mic_outlined, size: 16),
+                      SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          'Voice',
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 1),
+                  Text(
+                    'SOON',
+                    style: TextStyle(
+                      fontSize: 7,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.orange,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -1052,37 +1219,10 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
       child: Column(
         children: [
           if (!_showPreview) ...[
-            // HEADER WITH COMPACT AI STATUS TAG
+            // COMPACT AI STATUS TAG ONLY
             Row(
+              mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Describe your reminders',
-                        style:
-                            Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: -0.5,
-                                ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Tell me what you need to remember, and I\'ll create smart reminders for you.',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurface
-                                  .withValues(alpha: 0.7),
-                              height: 1.4,
-                            ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 16),
-                // COMPACT AI STATUS TAG
                 Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1149,7 +1289,8 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
               ],
             ),
 
-            const SizedBox(height: 32),
+            // RESPONSIVE SPACING
+            SizedBox(height: MediaQuery.of(context).size.height * 0.02),
 
             // BEAUTIFUL MATERIAL DESIGN TEXT INPUT
             Expanded(
@@ -1175,7 +1316,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                                     ),
                             decoration: InputDecoration(
                               hintText: _aiServiceReady
-                                  ? 'Take medicine at 8AM, 2PM, and 8PM daily'
+                                  ? 'Describe your reminders here...\n\nExample: Take medicine at 8AM, 2PM, and 8PM daily'
                                   : 'Configure AI provider in Settings first...',
                               hintStyle: TextStyle(
                                 color: Theme.of(context)
@@ -1221,7 +1362,8 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                         ),
                       ),
 
-                      const SizedBox(height: 16),
+                      SizedBox(
+                          height: MediaQuery.of(context).size.height * 0.015),
                     ],
                   );
                 },
@@ -1232,7 +1374,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
             if (_aiError != null) ...[
               Container(
                 width: double.infinity,
-                margin: const EdgeInsets.only(bottom: 16),
+                margin: const EdgeInsets.only(bottom: 12),
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
@@ -1362,7 +1504,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
               ),
             ),
           ] else
-            // PREVIEW SECTION
+            // PREVIEW SECTION (unchanged)
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1617,49 +1759,126 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        margin: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Text(
-                'Repeat Options',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-              ),
-            ),
-            for (RepeatType repeat in RepeatType.values)
-              ListTile(
-                title: Text(_getRepeatDisplayName(repeat)),
-                subtitle: Text(_getRepeatDescription(repeat)),
-                leading: Radio<RepeatType>(
-                  value: repeat,
-                  groupValue: _selectedRepeat,
-                  onChanged: (value) {
-                    setState(() {
-                      _selectedRepeat = value!;
-                    });
-                    Navigator.pop(context);
-                  },
+      isScrollControlled: true,
+      builder: (context) {
+        // Get screen dimensions for responsive design
+        final screenHeight = MediaQuery.of(context).size.height;
+        final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+
+        // Calculate available height
+        final availableHeight = screenHeight -
+            MediaQuery.of(context).padding.top -
+            MediaQuery.of(context).padding.bottom -
+            keyboardHeight -
+            32; // margins
+
+        // Determine device size categories
+        final isSmallDevice = screenHeight < 700;
+        final isVerySmallDevice = screenHeight < 600;
+
+        // Calculate responsive dimensions
+        final maxModalHeight = isVerySmallDevice
+            ? availableHeight * 0.85
+            : isSmallDevice
+                ? availableHeight * 0.75
+                : availableHeight * 0.6;
+
+        final horizontalMargin = isSmallDevice ? 12.0 : 16.0;
+        final verticalPadding = isVerySmallDevice
+            ? 12.0
+            : isSmallDevice
+                ? 16.0
+                : 20.0;
+
+        return Container(
+          margin: EdgeInsets.only(
+            left: horizontalMargin,
+            right: horizontalMargin,
+            top: 16,
+            bottom: 16 + keyboardHeight,
+          ),
+          constraints: BoxConstraints(
+            maxHeight: maxModalHeight,
+            minHeight: 200,
+          ),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // HEADER
+              Padding(
+                padding: EdgeInsets.all(verticalPadding),
+                child: Text(
+                  'Repeat Options',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                 ),
-                onTap: () {
-                  setState(() {
-                    _selectedRepeat = repeat;
-                  });
-                  Navigator.pop(context);
-                },
               ),
-            const SizedBox(height: 20),
-          ],
-        ),
-      ),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (RepeatType repeat in RepeatType.values)
+                        ListTile(
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: isVerySmallDevice ? 4.0 : 8.0,
+                          ),
+                          title: Text(
+                            _getRepeatDisplayName(repeat),
+                            style: TextStyle(
+                              fontSize: isVerySmallDevice
+                                  ? 14.0
+                                  : isSmallDevice
+                                      ? 15.0
+                                      : 16.0,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          subtitle: Text(
+                            _getRepeatDescription(repeat),
+                            style: TextStyle(
+                              fontSize: isVerySmallDevice
+                                  ? 11.0
+                                  : isSmallDevice
+                                      ? 12.0
+                                      : 13.0,
+                              height: isVerySmallDevice ? 1.3 : 1.4,
+                            ),
+                            maxLines: isVerySmallDevice ? 2 : 3,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          leading: Radio<RepeatType>(
+                            value: repeat,
+                            groupValue: _selectedRepeat,
+                            onChanged: (value) {
+                              setState(() {
+                                _selectedRepeat = value!;
+                              });
+                              Navigator.pop(context);
+                            },
+                          ),
+                          onTap: () {
+                            setState(() {
+                              _selectedRepeat = repeat;
+                            });
+                            Navigator.pop(context);
+                          },
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              SizedBox(height: isVerySmallDevice ? 10 : 20),
+            ],
+          ),
+        );
+      },
     );
   }
 

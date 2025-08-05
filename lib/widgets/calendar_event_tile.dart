@@ -195,18 +195,19 @@ class _CalendarEventTileState extends State<CalendarEventTile>
   Widget _buildTileBody() {
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Enhanced responsive breakpoints
-        final isVerySmall =
-            constraints.maxWidth < 70 || constraints.maxHeight < 35;
-        final isSmall =
-            constraints.maxWidth < 140 || constraints.maxHeight < 55;
-        final isMedium =
-            constraints.maxWidth < 200 || constraints.maxHeight < 80;
+        // IMPROVED responsive breakpoints with better height detection
+        final isVerySmall = constraints.maxWidth < 70 ||
+            constraints.maxHeight < 32; // Lowered from 35 to 32
+        final isSmall = constraints.maxWidth < 140 ||
+            constraints.maxHeight < 50; // Lowered from 55 to 50
+        final isMedium = constraints.maxWidth < 200 ||
+            constraints.maxHeight < 75; // Lowered from 80 to 75
 
         if (isVerySmall) {
           return _buildMinimalContent();
         } else if (isSmall) {
-          return _buildCompactContent();
+          return _buildCompactContent(
+              constraints); // Pass constraints for overflow protection
         } else if (isMedium) {
           return _buildMediumContent(constraints);
         } else {
@@ -220,21 +221,22 @@ class _CalendarEventTileState extends State<CalendarEventTile>
     final theme = Theme.of(context);
 
     return Padding(
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.all(3), // Reduced from 4 to 3
       child: Row(
         children: [
-          _buildStatusIndicator(size: 8),
-          const SizedBox(width: 4),
+          _buildStatusIndicator(size: 6), // Reduced from 8 to 6
+          const SizedBox(width: 3), // Reduced from 4 to 3
           Expanded(
             child: Text(
               widget.event.title,
               style: theme.textTheme.bodySmall?.copyWith(
-                fontSize: 10,
+                fontSize: 9, // Reduced from 10 to 9
                 fontWeight: FontWeight.w600,
                 color: _getTextColor(theme),
                 decoration: widget.event.isCompleted
                     ? TextDecoration.lineThrough
                     : null,
+                height: 1.1, // Tighter line height
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -245,25 +247,32 @@ class _CalendarEventTileState extends State<CalendarEventTile>
     );
   }
 
-  Widget _buildCompactContent() {
+  Widget _buildCompactContent(BoxConstraints constraints) {
     final theme = Theme.of(context);
 
+    // Calculate available space for content
+    const paddingVertical = 5.0; // Reduced from 6 to 5
+    final availableHeight = constraints.maxHeight - (paddingVertical * 2);
+
+    // Determine if we can show time info based on available space
+    final canShowTimeInfo = availableHeight > 20 && widget.showTimeInfo;
+
     return Padding(
-      padding: const EdgeInsets.all(6),
+      padding: const EdgeInsets.all(paddingVertical),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Header with status and title
+          // Header with status and title - ALWAYS show
           Row(
             children: [
-              _buildStatusIndicator(size: 10),
-              const SizedBox(width: 6),
+              _buildStatusIndicator(size: 8), // Reduced from 10 to 8
+              const SizedBox(width: 4), // Reduced from 6 to 4
               Expanded(
                 child: Text(
                   widget.event.title,
                   style: theme.textTheme.bodySmall?.copyWith(
-                    fontSize: 11,
+                    fontSize: 10, // Reduced from 11 to 10
                     fontWeight: FontWeight.w600,
                     color: _getTextColor(theme),
                     decoration: widget.event.isCompleted
@@ -271,16 +280,16 @@ class _CalendarEventTileState extends State<CalendarEventTile>
                         : null,
                     height: 1.2,
                   ),
-                  maxLines: 2,
+                  maxLines: 1, // Reduced from 2 to 1 to save space
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
           ),
 
-          // Time info if space allows
-          if (widget.showTimeInfo) ...[
-            const SizedBox(height: 4),
+          // Time info ONLY if there's enough space
+          if (canShowTimeInfo) ...[
+            const SizedBox(height: 3), // Reduced from 4 to 3
             _buildCompactTimeInfo(theme),
           ],
         ],
@@ -291,24 +300,33 @@ class _CalendarEventTileState extends State<CalendarEventTile>
   Widget _buildMediumContent(BoxConstraints constraints) {
     final theme = Theme.of(context);
 
+    // Calculate spacing based on available height
+    const paddingVertical = 6.0;
+    final availableHeight = constraints.maxHeight - (paddingVertical * 2);
+
+    // Adaptive spacing and features based on available height
+    final canShowDescription =
+        widget.event.description?.isNotEmpty == true && availableHeight > 50;
+    final canShowTimeInfo = widget.showTimeInfo && availableHeight > 35;
+    final spacingHeight = availableHeight > 60 ? 6.0 : 4.0;
+
     return Padding(
-      padding: const EdgeInsets.all(8),
+      padding: const EdgeInsets.all(paddingVertical),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // Header with enhanced styling
           _buildEnhancedHeader(theme),
 
           // Description if available and space permits
-          if (widget.event.description?.isNotEmpty == true &&
-              constraints.maxHeight > 65) ...[
-            const SizedBox(height: 6),
+          if (canShowDescription) ...[
+            SizedBox(height: spacingHeight),
             _buildDescription(theme),
           ],
 
           // Footer with time and space info
-          if (widget.showTimeInfo && constraints.maxHeight > 50) ...[
-            const Spacer(),
+          if (canShowTimeInfo) ...[
+            SizedBox(height: spacingHeight),
             _buildMediumFooter(theme),
           ],
         ],
@@ -319,24 +337,34 @@ class _CalendarEventTileState extends State<CalendarEventTile>
   Widget _buildFullContent(BoxConstraints constraints) {
     final theme = Theme.of(context);
 
+    // Calculate spacing based on available height
+    const paddingVertical = 8.0; // Reduced from 12 to 8
+    final availableHeight = constraints.maxHeight - (paddingVertical * 2);
+
+    // Adaptive spacing and features
+    final canShowDescription =
+        widget.event.description?.isNotEmpty == true && availableHeight > 60;
+    final canShowTimeInfo = widget.showTimeInfo && availableHeight > 40;
+    final spacingHeight = availableHeight > 80 ? 8.0 : 6.0;
+
     return Padding(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(paddingVertical),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
           // Enhanced header with all features
           _buildEnhancedHeader(theme),
 
           // Description with better formatting
-          if (widget.event.description?.isNotEmpty == true &&
-              constraints.maxHeight > 80) ...[
-            const SizedBox(height: 8),
+          if (canShowDescription) ...[
+            SizedBox(height: spacingHeight),
             _buildDescription(theme),
           ],
 
           // Rich footer with all details
-          if (widget.showTimeInfo) ...[
-            const Spacer(),
+          if (canShowTimeInfo) ...[
+            SizedBox(height: spacingHeight),
             _buildRichFooter(theme),
           ],
         ],
@@ -441,17 +469,18 @@ class _CalendarEventTileState extends State<CalendarEventTile>
       children: [
         Icon(
           widget.event.isAllDay ? Icons.today : Icons.access_time,
-          size: 10,
+          size: 8, // Reduced from 10 to 8
           color: _getSecondaryTextColor(theme),
         ),
-        const SizedBox(width: 4),
+        const SizedBox(width: 3), // Reduced from 4 to 3
         Expanded(
           child: Text(
             _getTimeText(),
             style: theme.textTheme.labelSmall?.copyWith(
               color: _getSecondaryTextColor(theme),
-              fontSize: 9,
+              fontSize: 8, // Reduced from 9 to 8
               fontWeight: FontWeight.w500,
+              height: 1.1, // Tighter line height
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
