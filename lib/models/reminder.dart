@@ -32,7 +32,19 @@ class TimeSlot {
 
   /// Helper methods
   bool get isCompleted => status == ReminderStatus.completed;
+  bool isOverdueFor(DateTime reminderDate) {
+    final now = DateTime.now();
+    final slotDateTime = DateTime(
+      reminderDate.year,
+      reminderDate.month,
+      reminderDate.day,
+      time.hour,
+      time.minute,
+    );
+    return status == ReminderStatus.pending && slotDateTime.isBefore(now);
+  }
 
+  /// 🔧 Backward compatibility - assumes current date for single-time reminders
   bool get isOverdue {
     final now = DateTime.now();
     final todayWithTime = DateTime(
@@ -154,18 +166,20 @@ class Reminder {
   /// Smart getters for multi-time logic
   bool get hasMultipleTimes => timeSlots.isNotEmpty;
 
+  ///Overall status now uses correct date for overdue calculation
   ReminderStatus get overallStatus {
     if (!hasMultipleTimes) return status; // Single-time reminder
 
     if (timeSlots.every((slot) => slot.isCompleted)) {
       return ReminderStatus.completed;
-    } else if (timeSlots.any((slot) => slot.isOverdue)) {
+    } else if (timeSlots.any((slot) => slot.isOverdueFor(scheduledTime))) {
       return ReminderStatus.overdue;
     } else {
       return ReminderStatus.pending;
     }
   }
 
+  ///Next pending slot now considers the reminder's date
   TimeSlot? get nextPendingSlot {
     if (!hasMultipleTimes) return null;
 
@@ -176,18 +190,26 @@ class Reminder {
 
     if (pendingSlots.isEmpty) return null;
 
-    // Sort by time and find next upcoming slot
+    // Sort by time
     pendingSlots.sort((a, b) => a.timeInMinutes.compareTo(b.timeInMinutes));
+    final reminderDate = scheduledTime;
 
-    final currentTimeInMinutes = now.hour * 60 + now.minute;
+    // If reminder is for today, use current time comparison
+    if (reminderDate.year == now.year &&
+        reminderDate.month == now.month &&
+        reminderDate.day == now.day) {
+      final currentTimeInMinutes = now.hour * 60 + now.minute;
 
-    // Find next slot after current time
-    final nextSlot = pendingSlots.firstWhere(
-      (slot) => slot.timeInMinutes > currentTimeInMinutes,
-      orElse: () => pendingSlots.first, // Wrap around to first slot if needed
-    );
-
-    return nextSlot;
+      // Find next slot after current time
+      final nextSlot = pendingSlots.firstWhere(
+        (slot) => slot.timeInMinutes > currentTimeInMinutes,
+        orElse: () => pendingSlots.first, // Wrap around to first slot if needed
+      );
+      return nextSlot;
+    } else {
+      // If reminder is for future/past date, return first pending slot
+      return pendingSlots.first;
+    }
   }
 
   TimeSlot? get activeTimeSlot {

@@ -595,8 +595,8 @@ class _ReminderDetailsBottomSheetState extends State<ReminderDetailsBottomSheet>
 
               // Time slots list
               for (int i = 0; i < reminder.timeSlots.length; i++)
-                _buildTimeSlotRow(
-                    reminder.timeSlots[i], i < reminder.timeSlots.length - 1),
+                _buildTimeSlotRow(reminder, reminder.timeSlots[i],
+                    i < reminder.timeSlots.length - 1),
             ],
           ),
         ),
@@ -609,9 +609,10 @@ class _ReminderDetailsBottomSheetState extends State<ReminderDetailsBottomSheet>
     );
   }
 
-  Widget _buildTimeSlotRow(TimeSlot timeSlot, bool showDivider) {
+  Widget _buildTimeSlotRow(
+      Reminder reminder, TimeSlot timeSlot, bool showDivider) {
     final isSelected = timeSlot.id == _selectedTimeSlotId;
-    final slotColor = _getTimeSlotColor(timeSlot);
+    final slotColor = _getTimeSlotColor(reminder, timeSlot);
 
     return Column(
       children: [
@@ -687,7 +688,7 @@ class _ReminderDetailsBottomSheetState extends State<ReminderDetailsBottomSheet>
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    _getTimeSlotStatusText(timeSlot),
+                    _getTimeSlotStatusText(reminder, timeSlot),
                     style: TextStyle(
                       color: slotColor,
                       fontSize: 11,
@@ -1139,20 +1140,20 @@ class _ReminderDetailsBottomSheetState extends State<ReminderDetailsBottomSheet>
     }
   }
 
-  Color _getTimeSlotColor(TimeSlot timeSlot) {
+  Color _getTimeSlotColor(Reminder reminder, TimeSlot timeSlot) {
     if (timeSlot.isCompleted) {
       return const Color(0xFF28A745);
-    } else if (timeSlot.isOverdue) {
+    } else if (timeSlot.isOverdueFor(reminder.scheduledTime)) {
       return const Color(0xFFDC3545);
     } else {
       return Theme.of(context).colorScheme.primary;
     }
   }
 
-  String _getTimeSlotStatusText(TimeSlot timeSlot) {
+  String _getTimeSlotStatusText(Reminder reminder, TimeSlot timeSlot) {
     if (timeSlot.isCompleted) {
       return 'DONE';
-    } else if (timeSlot.isOverdue) {
+    } else if (timeSlot.isOverdueFor(reminder.scheduledTime)) {
       return 'OVERDUE';
     } else {
       return 'PENDING';
@@ -1280,7 +1281,7 @@ class _ReminderDetailsBottomSheetState extends State<ReminderDetailsBottomSheet>
     final totalDays = difference.inDays;
 
     if (totalDays > 7) {
-      return 'In ${totalDays} days';
+      return 'In $totalDays days';
     } else if (totalDays >= 1) {
       return 'In $totalDays day${totalDays == 1 ? '' : 's'}';
     } else if (totalHours >= 1) {

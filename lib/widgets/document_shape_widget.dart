@@ -70,7 +70,7 @@ class DocumentShapePainter extends CustomPainter {
     // Create the exact path from the SVG
     final Path path = Path();
 
-    // FIXED: Make corner radius scale with size instead of fixed 11.0
+    // Make corner radius scale with size instead of fixed 11.0
     final double cornerRadius = (size.width * 0.05)
         .clamp(3.0, 15.0); // 5% of width, clamped between 3-15px
 

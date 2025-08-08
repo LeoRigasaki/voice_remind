@@ -543,7 +543,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
         final availableHeight = screenHeight - keyboardHeight;
 
         return Container(
-          // FIXED: Use responsive height instead of fixed margin
+          // Use responsive height instead of fixed margin
           height: availableHeight * 0.9, // Use 90% of available height
           margin: EdgeInsets.only(
             left: 16,
@@ -2449,7 +2449,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
           break;
       }
 
-      // FIXED: Generate individual frequency bands for voice-reactive waveform
+      // Generate individual frequency bands for voice-reactive waveform
       for (int i = 0; i < _frequencyBands.length; i++) {
         final freq = 0.5 + i * 0.8; // Different frequency for each band
         final bandBase = 0.05 + 0.15 * math.sin(elapsed * freq + i * 0.3);
@@ -2659,7 +2659,7 @@ class _VoiceStatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // FIXED: Use app-aligned colors instead of hardcoded ones
+    // Use app-aligned colors instead of hardcoded ones
     final (label, color) = switch (state) {
       VoiceConversationState.idle => (
           'IDLE',
@@ -2709,7 +2709,7 @@ class _VoiceStatusChip extends StatelessWidget {
   }
 }
 
-// FIXED: App-aligned glowing orb with theme colors
+// App-aligned glowing orb with theme colors
 class _AppAlignedGlowingOrb extends StatelessWidget {
   final double diameter;
   final Color primaryColor;
@@ -2729,7 +2729,7 @@ class _AppAlignedGlowingOrb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // FIXED: Use app theme colors with different variations for each state
+    // Use app theme colors with different variations for each state
     final base = primaryColor;
     final accent = switch (state) {
       VoiceConversationState.idle => base.withValues(alpha: 0.7),
@@ -2771,7 +2771,7 @@ class _AppAlignedGlowingOrb extends StatelessWidget {
   }
 }
 
-// FIXED: Natural rhythm rings painter with sequential appearance
+// Natural rhythm rings painter with sequential appearance
 class _NaturalRhythmRingsPainter extends CustomPainter {
   final double progress; // 0..1
   final Color primaryColor;
@@ -2793,7 +2793,7 @@ class _NaturalRhythmRingsPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.0;
 
-    // FIXED: Natural rhythm - each ring appears every 0.33 of the cycle
+    // Natural rhythm - each ring appears every 0.33 of the cycle
     // Ring lifecycle: spawn → grow → fade → disappear
     const ringSpacing = 1.0 / 3.0; // 3 rings, each starts 1/3 cycle apart
 
@@ -2805,7 +2805,7 @@ class _NaturalRhythmRingsPainter extends CustomPainter {
       // Ring growth: starts small (0.5 of maxR), grows to full size (1.0 of maxR)
       final r = lerpDouble(maxR * 0.55, maxR, ringProgress);
 
-      // FIXED: Natural fade pattern - strong at start, gentle fade at end
+      // Natural fade pattern - strong at start, gentle fade at end
       double opacity;
       if (ringProgress < 0.3) {
         // Growing phase - fade in
@@ -2838,7 +2838,7 @@ class _NaturalRhythmRingsPainter extends CustomPainter {
   }
 }
 
-// FIXED: Voice-reactive waveform with individual frequency bands
+// Voice-reactive waveform with individual frequency bands
 class _VoiceReactiveWaveform extends StatelessWidget {
   final double level; // Overall level 0..1
   final List<double> frequencyBands; // Individual bar levels 0..1
@@ -2860,7 +2860,7 @@ class _VoiceReactiveWaveform extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // FIXED: Use individual frequency bands for voice reactivity
+    // Use individual frequency bands for voice reactivity
     final bars = List.generate(barCount, (i) {
       if (i < frequencyBands.length) {
         // Use real frequency band data

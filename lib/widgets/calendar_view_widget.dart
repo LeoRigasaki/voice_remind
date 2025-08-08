@@ -179,7 +179,7 @@ class CalendarViewWidgetState extends State<CalendarViewWidget> {
         onTapped: _onEmptySpaceTapped,
         onMultiDayTapped: _onMultiDayTapped,
 
-        // FIXED: Drag and drop handling with proper data persistence
+        // Drag and drop handling with proper data persistence
         onEventChanged: _onEventChanged,
         onEventCreated: _onEventCreated,
         onEventCreate: _onEventCreate,
@@ -403,7 +403,7 @@ class CalendarViewWidgetState extends State<CalendarViewWidget> {
     _showQuickAddDialog(dateRange);
   }
 
-  /// FIXED: Handle event changed (drag/drop or resize) with proper data persistence
+  /// Handle event changed (drag/drop or resize) with proper data persistence
   Future<void> _onEventChanged(
     kalender.CalendarEvent<CalendarEvent> originalEvent,
     kalender.CalendarEvent<CalendarEvent> updatedEvent,
@@ -434,7 +434,7 @@ class CalendarViewWidgetState extends State<CalendarViewWidget> {
       );
     }
 
-    // FIXED: Properly update the reminder with new time from drag operation
+    // Properly update the reminder with new time from drag operation
     final success = await CalendarService.instance.updateReminderFromCalendar(
       reminderId: calendarEvent.id,
       startTime: updatedEvent.dateTimeRange.start,

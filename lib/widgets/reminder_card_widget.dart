@@ -121,18 +121,18 @@ class _ReminderCardWidgetState extends State<ReminderCardWidget> {
     return widget.reminder.description;
   }
 
-  // Get scheduled time for progress calculation
+  // 🔧 Get scheduled time for progress calculation
   DateTime get _displayScheduledTime {
     if (widget.reminder.hasMultipleTimes) {
       final activeSlot = _activeTimeSlot;
       if (activeSlot != null) {
-        final now = DateTime.now();
+        // ✅ Use reminder's scheduled date instead of current date
         return DateTime(
-          now.year,
-          now.month,
-          now.day,
-          activeSlot.time.hour,
-          activeSlot.time.minute,
+          widget.reminder.scheduledTime.year, // Use reminder's year
+          widget.reminder.scheduledTime.month, // Use reminder's month
+          widget.reminder.scheduledTime.day, // Use reminder's day
+          activeSlot.time.hour, // Use slot's hour
+          activeSlot.time.minute, // Use slot's minute
         );
       }
     }
@@ -143,7 +143,11 @@ class _ReminderCardWidgetState extends State<ReminderCardWidget> {
   bool get _isDisplayOverdue {
     if (widget.reminder.hasMultipleTimes) {
       final activeSlot = _activeTimeSlot;
-      return activeSlot?.isOverdue ?? false;
+      if (activeSlot != null) {
+        return !activeSlot.isCompleted &&
+            _displayScheduledTime.isBefore(DateTime.now());
+      }
+      return false;
     }
     return !widget.reminder.isCompleted &&
         widget.reminder.scheduledTime.isBefore(DateTime.now());
@@ -630,20 +634,18 @@ class _ReminderCardWidgetState extends State<ReminderCardWidget> {
     );
   }
 
-  // Calculate progress for the active/selected time slot
+  // 🔧 Calculate progress for the active/selected time slot
   double _calculateActiveProgress() {
     if (widget.reminder.hasMultipleTimes) {
       final activeSlot = _activeTimeSlot;
       if (activeSlot == null) return 0.0;
 
       if (activeSlot.isCompleted) return 1.0;
-
-      // Calculate progress for this specific time slot
       final now = DateTime.now();
       final slotTime = DateTime(
-        now.year,
-        now.month,
-        now.day,
+        widget.reminder.scheduledTime.year,
+        widget.reminder.scheduledTime.month,
+        widget.reminder.scheduledTime.day,
         activeSlot.time.hour,
         activeSlot.time.minute,
       );
