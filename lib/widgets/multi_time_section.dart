@@ -3,13 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/reminder.dart';
 
-/// Improved multi-time section with simplified UX and subtle design
 class MultiTimeSection extends StatefulWidget {
   final List<TimeSlot> timeSlots;
   final ValueChanged<List<TimeSlot>> onTimeSlotsChanged;
   final bool isMultiTime;
   final ValueChanged<bool> onMultiTimeToggle;
   final TimeOfDay? initialSingleTime;
+  final ValueChanged<TimeOfDay>? onSingleTimeChanged;
   final String? singleTimeLabel;
   final bool showToggleButton;
   final bool isCompact;
@@ -24,6 +24,7 @@ class MultiTimeSection extends StatefulWidget {
     required this.isMultiTime,
     required this.onMultiTimeToggle,
     this.initialSingleTime,
+    this.onSingleTimeChanged,
     this.singleTimeLabel = 'Time',
     this.showToggleButton = true,
     this.isCompact = false,
@@ -41,6 +42,7 @@ class _MultiTimeSectionState extends State<MultiTimeSection>
   late AnimationController _fadeController;
   late AnimationController _expandController;
   final ScrollController _scrollController = ScrollController();
+  late TimeOfDay _currentSingleTime;
 
   // For validation
   final Map<String, String?> _validationErrors = {};
@@ -48,6 +50,7 @@ class _MultiTimeSectionState extends State<MultiTimeSection>
   @override
   void initState() {
     super.initState();
+    _currentSingleTime = widget.initialSingleTime ?? TimeOfDay.now();
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 300),
       vsync: this,
@@ -75,12 +78,54 @@ class _MultiTimeSectionState extends State<MultiTimeSection>
   void didUpdateWidget(MultiTimeSection oldWidget) {
     super.didUpdateWidget(oldWidget);
 
+    if (widget.initialSingleTime != null &&
+        widget.initialSingleTime != oldWidget.initialSingleTime) {
+      _currentSingleTime = widget.initialSingleTime!;
+    }
+
     if (widget.isMultiTime != oldWidget.isMultiTime) {
       if (widget.isMultiTime) {
         _expandController.forward();
       } else {
         _expandController.reverse();
       }
+    }
+  }
+
+  Future<void> _selectSingleTime() async {
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: _currentSingleTime,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            timePickerTheme: TimePickerThemeData(
+              backgroundColor: Theme.of(context).colorScheme.surface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .outline
+                      .withValues(alpha: 0.2),
+                  width: 0.5,
+                ),
+              ),
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null && picked != _currentSingleTime) {
+      setState(() {
+        _currentSingleTime = picked;
+      });
+
+      widget.onSingleTimeChanged?.call(picked);
+
+      HapticFeedback.lightImpact();
     }
   }
 
@@ -95,18 +140,14 @@ class _MultiTimeSectionState extends State<MultiTimeSection>
       // Switch to multi time mode
       widget.onMultiTimeToggle(true);
 
-      // Create initial time slots if we have a single time
-      if (widget.initialSingleTime != null) {
-        final initialSlot = TimeSlot(
-          time: widget.initialSingleTime!,
-          description: null,
-        );
-        widget.onTimeSlotsChanged([initialSlot]);
-      }
+      final initialSlot = TimeSlot(
+        time: _currentSingleTime,
+        description: null,
+      );
+      widget.onTimeSlotsChanged([initialSlot]);
     }
   }
 
-  // Simplified: Add time directly without showing max slots warning immediately
   void _addTimeSlot() {
     if (widget.timeSlots.length >= widget.maxTimeSlots) {
       _showMaxSlotsReachedSnackBar();
@@ -249,34 +290,47 @@ class _MultiTimeSectionState extends State<MultiTimeSection>
               ),
         ),
         const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            border: Border.all(
-              color:
-                  Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
-            ),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                Icons.access_time,
+        GestureDetector(
+          onTap: _selectSingleTime,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              border: Border.all(
                 color: Theme.of(context)
                     .colorScheme
-                    .onSurface
-                    .withValues(alpha: 0.6),
-                size: 20,
+                    .outline
+                    .withValues(alpha: 0.2),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  widget.initialSingleTime?.format(context) ?? 'Select time',
-                  style: Theme.of(context).textTheme.bodyLarge,
-                  overflow: TextOverflow.ellipsis,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.access_time,
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.6),
+                  size: 20,
                 ),
-              ),
-            ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    _currentSingleTime.format(context),
+                    style: Theme.of(context).textTheme.bodyLarge,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Icon(
+                  Icons.edit,
+                  size: 16,
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.4),
+                ),
+              ],
+            ),
           ),
         ),
 
@@ -420,8 +474,6 @@ class _MultiTimeSectionState extends State<MultiTimeSection>
           ),
           const SizedBox(height: 8),
         ],
-
-        // IMPROVED: Simplified add button
         if (widget.timeSlots.length < widget.maxTimeSlots)
           GestureDetector(
             onTap: _addTimeSlot,
@@ -533,6 +585,7 @@ class CompactMultiTimeSection extends StatelessWidget {
       isMultiTime: isMultiTime,
       onMultiTimeToggle: onMultiTimeToggle,
       initialSingleTime: initialSingleTime,
+      onSingleTimeChanged: null,
       isCompact: true,
       padding: const EdgeInsets.all(12),
       addButtonText: 'Add Time',

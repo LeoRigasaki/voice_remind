@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'dart:async';
 import 'dart:math' as math;
-
+import '../services/voice_service.dart';
 import '../models/reminder.dart';
 import '../services/storage_service.dart';
 import '../services/notification_service.dart';
@@ -54,6 +54,14 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
   bool _isMultiTime = false;
   List<TimeSlot> _timeSlots = [];
 
+  StreamSubscription<VoiceState>? _voiceStateSubscription;
+  StreamSubscription<String>? _voiceTranscriptionSubscription;
+  StreamSubscription<List<Reminder>>? _voiceResultsSubscription;
+
+  List<Reminder> _voiceGeneratedReminders = [];
+  bool _showVoicePreview = false;
+  String? _voiceError;
+  String _voiceTranscription = '';
   // AI Text state
   final _aiInputController = TextEditingController();
   List<Reminder> _aiGeneratedReminders = [];
@@ -92,7 +100,8 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
   @override
   void initState() {
     super.initState();
-
+    // Initialize voice service
+    _initializeVoiceService();
     _currentMode = widget.initialMode;
 
     // Initialize animation controllers
@@ -105,19 +114,19 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
       vsync: this,
     );
 
-    // FIXED: Slower, more natural pulse for breathing effect
+    // Slower, more natural pulse for breathing effect
     _orbPulseController = AnimationController(
       duration: const Duration(milliseconds: 2400), // Slower breathing
       vsync: this,
     )..repeat(reverse: true);
 
-    // FIXED: Consistent rhythm for ripples - each ring spawns every 800ms
+    // Consistent rhythm for ripples - each ring spawns every 800ms
     _ringController = AnimationController(
       duration: const Duration(milliseconds: 2400), // 3 rings × 800ms each
       vsync: this,
     )..repeat();
 
-    // FIXED: Voice-reactive waveform animation
+    // Voice-reactive waveform animation
     _waveformController = AnimationController(
       duration:
           const Duration(milliseconds: 150), // Faster for voice reactivity
@@ -145,6 +154,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
         setState(() {
           _currentMode = ReminderCreationMode.values[_tabController.index];
         });
+
         _animateTabSwitch();
       }
     });
@@ -198,6 +208,78 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
     }
   }
 
+  void _onSingleTimeChanged(TimeOfDay newTime) {
+    setState(() {
+      _selectedTime = newTime;
+      // Update selected date to preserve the date but use new time
+      _selectedDate = DateTime(
+        _selectedDate.year,
+        _selectedDate.month,
+        _selectedDate.day,
+        newTime.hour,
+        newTime.minute,
+      );
+    });
+  }
+
+  Future<void> _initializeVoiceService() async {
+    try {
+      await VoiceService.initialize();
+
+      // Subscribe to voice service streams
+      _voiceStateSubscription =
+          VoiceService.instance.stateStream.listen(_onVoiceStateChanged);
+      _voiceTranscriptionSubscription = VoiceService
+          .instance.transcriptionStream
+          .listen(_onVoiceTranscription);
+      _voiceResultsSubscription =
+          VoiceService.instance.resultsStream.listen(_onVoiceResults);
+
+      debugPrint('✅ Voice service initialized in modal');
+    } catch (e) {
+      debugPrint('❌ Voice service initialization failed: $e');
+      setState(() {
+        _voiceError = 'Voice service not available: ${e.toString()}';
+      });
+    }
+  }
+
+  void _onVoiceStateChanged(VoiceState state) {
+    // Map VoiceService states to your existing UI states
+    setState(() {
+      _voiceState = switch (state) {
+        VoiceState.idle => VoiceConversationState.idle,
+        VoiceState.recording => VoiceConversationState.listening,
+        VoiceState.processing => VoiceConversationState.thinking,
+        VoiceState.completed => VoiceConversationState.idle,
+        VoiceState.error => VoiceConversationState.idle,
+      };
+
+      if (state == VoiceState.error) {
+        _voiceError = 'Voice processing failed. Please try again.';
+      } else if (state == VoiceState.completed) {
+        _voiceError = null;
+      }
+    });
+  }
+
+  void _onVoiceTranscription(String transcription) {
+    setState(() {
+      _voiceTranscription = transcription;
+    });
+  }
+
+  void _onVoiceResults(List<Reminder> reminders) {
+    setState(() {
+      _voiceGeneratedReminders = reminders;
+      _showVoicePreview = reminders.isNotEmpty;
+      // Select all generated reminders by default
+      _selectedReminderIndices = Set.from(
+        List.generate(reminders.length, (index) => index),
+      );
+    });
+  }
+
   void _populateFieldsForEditing() {
     final reminder = widget.reminder!;
     _titleController.text = reminder.title;
@@ -234,7 +316,9 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
     _ringController.dispose();
     _waveformController.dispose();
     _audioMockTimer?.cancel();
-
+    _voiceStateSubscription?.cancel();
+    _voiceTranscriptionSubscription?.cancel();
+    _voiceResultsSubscription?.cancel();
     super.dispose();
   }
 
@@ -1039,7 +1123,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
         key: _formKey,
         child: Column(
           children: [
-            // Current Time Display
+            // Current Time Display (unchanged)
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(16),
@@ -1144,26 +1228,30 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                       isMultiTime: _isMultiTime,
                       onMultiTimeToggle: _onMultiTimeToggle,
                       initialSingleTime: _selectedTime,
+                      onSingleTimeChanged: _onSingleTimeChanged,
                       singleTimeLabel: 'Time',
                       padding: EdgeInsets.zero,
                     ),
 
                     const SizedBox(height: 24),
 
-                    // Date selector (only for single-time)
-                    if (!_isMultiTime) ...[
-                      Card(
-                        child: ListTile(
-                          leading: const Icon(Icons.calendar_today_outlined),
-                          title: const Text('Date'),
-                          subtitle: Text(DateFormat('EEEE, MMMM d, y')
-                              .format(_selectedDate)),
-                          trailing: const Icon(Icons.edit),
-                          onTap: _selectDate,
+                    // Date selector
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.calendar_today_outlined),
+                        title: Text(_isMultiTime ? 'Base Date' : 'Date'),
+                        subtitle: Text(
+                          _isMultiTime
+                              ? '${DateFormat('EEEE, MMMM d, y').format(_selectedDate)} (for all times)'
+                              : DateFormat('EEEE, MMMM d, y')
+                                  .format(_selectedDate),
                         ),
+                        trailing: const Icon(Icons.edit),
+                        onTap: _selectDate,
                       ),
-                      const SizedBox(height: 16),
-                    ],
+                    ),
+
+                    const SizedBox(height: 16),
 
                     // Repeat selector
                     Card(
@@ -1196,7 +1284,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
               ),
             ),
 
-            // Create button
+            // Create button (unchanged)
             Padding(
               padding: const EdgeInsets.only(top: 20),
               child: SizedBox(
@@ -1730,23 +1818,132 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
     );
   }
 
-  // ==================== ENHANCED VOICE TAB ====================
-
   Widget _buildVoiceTab() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // Show preview if we have voice results (similar to AI text preview)
+    if (_showVoicePreview && _voiceGeneratedReminders.isNotEmpty) {
+      return _buildVoicePreview();
+    }
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
       child: Column(
         children: [
-          // Status chip with app-aligned colors
-          Align(
-            alignment: Alignment.centerRight,
-            child: _VoiceStatusChip(state: _voiceState),
+          // Status chip with AI provider info
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              // AI Status chip (like AI text tab)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: _aiServiceReady
+                      ? Colors.green.withValues(alpha: 0.1)
+                      : Colors.orange.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: _aiServiceReady
+                        ? Colors.green.withValues(alpha: 0.3)
+                        : Colors.orange.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      _aiServiceReady ? Icons.smart_toy : Icons.warning_rounded,
+                      size: 14,
+                      color: _aiServiceReady ? Colors.green : Colors.orange,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      _aiServiceReady
+                          ? _currentAIProvider.toUpperCase()
+                          : 'NO AI',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: _aiServiceReady ? Colors.green : Colors.orange,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Your existing voice status chip
+              _VoiceStatusChip(state: _voiceState),
+            ],
           ),
 
           const SizedBox(height: 12),
 
+          // Show transcription if available
+          if (_voiceTranscription.isNotEmpty) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .outline
+                      .withValues(alpha: 0.2),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'I heard:',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '"$_voiceTranscription"',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontStyle: FontStyle.italic,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          // Show error if any
+          if (_voiceError != null) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              margin: const EdgeInsets.only(bottom: 20),
+              decoration: BoxDecoration(
+                color: Colors.red.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.error_outline, color: Colors.red, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _voiceError!,
+                      style: const TextStyle(color: Colors.red),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          // Your existing beautiful voice UI (keep everything the same!)
           Expanded(
             child: Center(
               child: SizedBox(
@@ -1755,7 +1952,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
-                    // FIXED: Natural rhythm concentric ripples
+                    // Your existing natural rhythm concentric ripples
                     AnimatedBuilder(
                       animation: _ringController,
                       builder: (context, _) {
@@ -1771,14 +1968,13 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                       },
                     ),
 
-                    // Main glowing orb with pulse + ENHANCED audio reaction
+                    // Your existing main glowing orb
                     AnimatedBuilder(
                       animation: Listenable.merge(
                         [_orbPulseController, _waveformController],
                       ),
                       builder: (context, _) {
                         final p = _pulse.value;
-                        // Enhanced scale combining slow pulse and real-time audio level
                         final scale = 1.0 + 0.04 * p + 0.15 * _audioLevel;
                         return Transform.scale(
                           scale: scale,
@@ -1794,7 +1990,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                       },
                     ),
 
-                    // FIXED: Voice-reactive waveform (equalizer bars layered on orb)
+                    // Your existing voice-reactive waveform
                     Positioned(
                       bottom: 44,
                       left: 36,
@@ -1820,7 +2016,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                       ),
                     ),
 
-                    // Center icon/state text
+                    // Your existing center icon/state text
                     Positioned(
                       bottom: 12,
                       child: Opacity(
@@ -1828,15 +2024,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                         child: Column(
                           children: [
                             Text(
-                              _voiceState == VoiceConversationState.idle
-                                  ? 'Hold to talk'
-                                  : _voiceState ==
-                                          VoiceConversationState.listening
-                                      ? 'Listening…'
-                                      : _voiceState ==
-                                              VoiceConversationState.thinking
-                                          ? 'Thinking…'
-                                          : 'Speaking…',
+                              _getVoiceStatusText(),
                               style: Theme.of(context)
                                   .textTheme
                                   .labelLarge
@@ -1859,7 +2047,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
 
           const SizedBox(height: 4),
 
-          // Mic control (press & hold)
+          // Your existing mic control (press & hold) with updated functionality
           GestureDetector(
             onLongPressStart: (_) => _startListening(),
             onLongPressEnd: (_) => _stopListening(),
@@ -1868,39 +2056,63 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
               height: 56,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(16),
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Theme.of(context).colorScheme.primary,
-                    Theme.of(context)
+                gradient: _aiServiceReady
+                    ? LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Theme.of(context).colorScheme.primary,
+                          Theme.of(context)
+                              .colorScheme
+                              .primary
+                              .withValues(alpha: 0.85),
+                        ],
+                      )
+                    : null,
+                color: !_aiServiceReady
+                    ? Theme.of(context)
                         .colorScheme
-                        .primary
-                        .withValues(alpha: 0.85),
-                  ],
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .primary
-                        .withValues(alpha: 0.35),
-                    blurRadius: 16,
-                    spreadRadius: 2,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
+                        .outline
+                        .withValues(alpha: 0.2)
+                    : null,
+                boxShadow: _aiServiceReady
+                    ? [
+                        BoxShadow(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .primary
+                              .withValues(alpha: 0.35),
+                          blurRadius: 16,
+                          spreadRadius: 2,
+                          offset: const Offset(0, 6),
+                        ),
+                      ]
+                    : null,
               ),
               child: Center(
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.mic, size: 20, color: Colors.white),
+                    Icon(_aiServiceReady ? Icons.mic : Icons.settings_outlined,
+                        size: 20,
+                        color: _aiServiceReady
+                            ? Colors.white
+                            : Theme.of(context)
+                                .colorScheme
+                                .onSurface
+                                .withValues(alpha: 0.5)),
                     const SizedBox(width: 10),
                     Text(
-                      'PRESS & HOLD TO SPEAK',
+                      _aiServiceReady
+                          ? 'PRESS & HOLD TO SPEAK'
+                          : 'CONFIGURE AI FIRST',
                       style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                            color: Colors.white,
+                            color: _aiServiceReady
+                                ? Colors.white
+                                : Theme.of(context)
+                                    .colorScheme
+                                    .onSurface
+                                    .withValues(alpha: 0.5),
                             fontWeight: FontWeight.w700,
                             letterSpacing: 1.0,
                           ),
@@ -1913,9 +2125,11 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
 
           const SizedBox(height: 12),
 
-          // Helper text
+          // Updated helper text
           Text(
-            'While holding, speak naturally. Release to send. You can interrupt while it\'s speaking—like Gemini Live—once integrated with your voice backend.',
+            _aiServiceReady
+                ? 'While holding, speak naturally. Release to process. Your voice will be processed by ${_currentAIProvider.toUpperCase()}.'
+                : 'Configure an AI provider in Settings to enable voice features.',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: Theme.of(context)
@@ -1929,35 +2143,282 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
     );
   }
 
-  // ---------------- Enhanced Voice interactions ----------------
+  // Voice status text method
+  String _getVoiceStatusText() {
+    switch (_voiceState) {
+      case VoiceConversationState.idle:
+        return _aiServiceReady ? 'Hold to talk' : 'Setup AI first';
+      case VoiceConversationState.listening:
+        return 'Listening…';
+      case VoiceConversationState.thinking:
+        return 'Processing…';
+      case VoiceConversationState.speaking:
+        return 'Generating…';
+    }
+  }
 
-  void _startListening() {
-    HapticFeedback.mediumImpact();
-    setState(() {
-      _voiceState = VoiceConversationState.listening;
-    });
-    // In a real integration: start mic stream and update _audioLevel + _frequencyBands from FFT analysis
+  Widget _buildVoicePreview() {
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(
+            children: [
+              Text(
+                'Voice Reminders',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.green.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border:
+                      Border.all(color: Colors.green.withValues(alpha: 0.3)),
+                ),
+                child: Text(
+                  '${_voiceGeneratedReminders.length} found',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.green,
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          // Show transcription
+          if (_voiceTranscription.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .outline
+                      .withValues(alpha: 0.2),
+                ),
+              ),
+              child: Text(
+                'From: "$_voiceTranscription"',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontStyle: FontStyle.italic,
+                    ),
+              ),
+            ),
+          ],
+
+          const SizedBox(height: 16),
+
+          // Reminders list (reuse your existing AI preview logic)
+          Expanded(
+            child: ListView.builder(
+              itemCount: _voiceGeneratedReminders.length,
+              itemBuilder: (context, index) {
+                final reminder = _voiceGeneratedReminders[index];
+                final isSelected = _selectedReminderIndices.contains(index);
+
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  color: isSelected
+                      ? Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withValues(alpha: 0.1)
+                      : Theme.of(context).colorScheme.surface,
+                  child: ListTile(
+                    leading: Checkbox(
+                      value: isSelected,
+                      onChanged: (value) {
+                        setState(() {
+                          if (value == true) {
+                            _selectedReminderIndices.add(index);
+                          } else {
+                            _selectedReminderIndices.remove(index);
+                          }
+                        });
+                      },
+                    ),
+                    title: Text(
+                      reminder.title,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w500,
+                        color: isSelected
+                            ? Theme.of(context).colorScheme.primary
+                            : null,
+                      ),
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (reminder.description != null) ...[
+                          Text(reminder.description!),
+                          const SizedBox(height: 4),
+                        ],
+                        // Show timing info
+                        if (reminder.hasMultipleTimes) ...[
+                          Text(
+                            '${reminder.timeSlots.length} times: ${reminder.timeSlots.map((slot) => slot.formattedTime).join(', ')}',
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.primary,
+                              fontWeight: FontWeight.w500,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ] else ...[
+                          Text(
+                            DateFormat('MMM dd • h:mm a')
+                                .format(reminder.scheduledTime),
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.primary,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    trailing: IconButton(
+                      onPressed: () => _editVoiceReminder(index),
+                      icon: const Icon(Icons.edit_outlined, size: 20),
+                      style: IconButton.styleFrom(
+                        backgroundColor: Theme.of(context).colorScheme.surface,
+                      ),
+                    ),
+                    onTap: () {
+                      setState(() {
+                        if (isSelected) {
+                          _selectedReminderIndices.remove(index);
+                        } else {
+                          _selectedReminderIndices.add(index);
+                        }
+                      });
+                    },
+                  ),
+                );
+              },
+            ),
+          ),
+
+          // Action buttons
+          Padding(
+            padding: const EdgeInsets.only(top: 16),
+            child: Row(
+              children: [
+                // Try again button
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () {
+                      setState(() {
+                        _showVoicePreview = false;
+                        _voiceGeneratedReminders.clear();
+                        _selectedReminderIndices.clear();
+                        _voiceTranscription = '';
+                      });
+                      VoiceService.instance.resetState();
+                    },
+                    child: const Text('TRY AGAIN'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // Create reminders button
+                Expanded(
+                  flex: 2,
+                  child: ElevatedButton(
+                    onPressed: _selectedReminderIndices.isEmpty || _isLoading
+                        ? null
+                        : () async {
+                            // Copy voice results to AI reminders for creation
+                            setState(() {
+                              _aiGeneratedReminders = _voiceGeneratedReminders;
+                            });
+                            await _createSelectedReminders();
+                          },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Theme.of(context).colorScheme.primary,
+                      foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: _isLoading
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Text(
+                            'CREATE ${_selectedReminderIndices.length} REMINDER${_selectedReminderIndices.length == 1 ? '' : 'S'}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _startListening() async {
+    if (!_aiServiceReady) {
+      _showAIConfigurationDialog();
+      return;
+    }
+
+    try {
+      HapticFeedback.mediumImpact();
+
+      // Clear previous results
+      VoiceService.instance.resetState();
+      setState(() {
+        _showVoicePreview = false;
+        _voiceError = null;
+        _voiceTranscription = '';
+        _voiceGeneratedReminders.clear();
+        _voiceState =
+            VoiceConversationState.listening; // Start your UI animation
+      });
+
+      // Start real voice recording
+      await VoiceService.instance.startRecording();
+    } catch (e) {
+      setState(() {
+        _voiceError = e.toString();
+        _voiceState = VoiceConversationState.idle;
+      });
+    }
   }
 
   void _stopListening() async {
-    HapticFeedback.selectionClick();
+    try {
+      HapticFeedback.selectionClick();
+      setState(() => _voiceState = VoiceConversationState.thinking);
 
-    // Simulate: after user releases, go to 'thinking' then 'speaking'
-    setState(() => _voiceState = VoiceConversationState.thinking);
-
-    await Future.delayed(const Duration(milliseconds: 900));
-    if (!mounted) return;
-
-    setState(() => _voiceState = VoiceConversationState.speaking);
-
-    // Simulate speaking for a short time
-    await Future.delayed(const Duration(milliseconds: 1300));
-    if (!mounted) return;
-
-    setState(() => _voiceState = VoiceConversationState.idle);
+      // Stop real voice recording and process
+      await VoiceService.instance.stopRecording();
+    } catch (e) {
+      setState(() {
+        _voiceError = e.toString();
+        _voiceState = VoiceConversationState.idle;
+      });
+    }
   }
 
-  // FIXED: Enhanced mock audio with frequency bands for voice reactivity
   void _beginEnhancedMockAudio() {
     final start = DateTime.now();
     _audioMockTimer =
@@ -2163,6 +2624,17 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
       case RepeatType.monthly:
         return 'Monthly';
     }
+  }
+
+  void _editVoiceReminder(int index) {
+    final reminder = _voiceGeneratedReminders[index];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _buildEditReminderSheet(reminder, index),
+    );
   }
 
   String _getRepeatDescription(RepeatType repeat) {

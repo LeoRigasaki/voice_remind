@@ -164,8 +164,6 @@ class NotificationService {
       notificationDetails,
       payload: payload,
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
       matchDateTimeComponents: _getMatchDateTimeComponents(reminder.repeatType),
     );
   }
@@ -209,8 +207,6 @@ class NotificationService {
       notificationDetails,
       payload: reminder.id,
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
       matchDateTimeComponents: _getMatchDateTimeComponents(reminder.repeatType),
     );
   }

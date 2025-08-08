@@ -1,5 +1,5 @@
 // [lib/services]/ai_reminder_service.dart
-
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -237,6 +237,41 @@ class AIReminderService {
     try {
       final response =
           await _model!.generateContent([Content.text(fullPrompt)]);
+
+      if (response.text == null || response.text!.isEmpty) {
+        throw Exception('Empty response from Gemini AI');
+      }
+
+      return _parseResponse(response.text!);
+    } catch (e) {
+      if (e.toString().contains('API_KEY_INVALID')) {
+        throw Exception(
+            'Invalid Gemini API key. Please check your API key in Settings.');
+      }
+      rethrow;
+    }
+  }
+
+  static Future<AIReminderResponse> parseRemindersFromAudio({
+    required Uint8List audioBytes,
+    required String prompt,
+  }) async {
+    if (!canGenerateReminders || _currentProvider != 'gemini') {
+      throw Exception('Gemini provider required for audio processing');
+    }
+
+    if (_model == null) {
+      throw Exception('Gemini model not initialized');
+    }
+
+    try {
+      // Create content with audio data
+      final content = [
+        Content.text(prompt),
+        Content.data('audio/wav', audioBytes),
+      ];
+
+      final response = await _model!.generateContent(content);
 
       if (response.text == null || response.text!.isEmpty) {
         throw Exception('Empty response from Gemini AI');

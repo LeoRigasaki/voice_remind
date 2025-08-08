@@ -25,7 +25,7 @@ android {
         applicationId = "com.example.voice_remind"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = 23
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -52,5 +52,6 @@ flutter {
 }
 
 dependencies {
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    // FIXED: Updated desugar_jdk_libs to version 2.1.4+ for flutter_local_notifications compatibility
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

@@ -10,6 +10,7 @@ import 'services/update_service.dart';
 import 'widgets/update_dialog.dart';
 import 'screens/main_navigation.dart';
 import 'services/ai_reminder_service.dart';
+import 'services/voice_service.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 // Global notification plugin instance
@@ -51,7 +52,32 @@ void main() async {
   await ThemeService.initialize();
   debugPrint('✅ Theme service initialized');
 
+  // Initialize voice service
+  await _initializeVoiceService();
+
   runApp(const VoiceRemindApp());
+}
+
+Future<void> _initializeVoiceService() async {
+  try {
+    debugPrint('🎤 Initializing Voice service...');
+
+    // Check if voice service is available
+    final isAvailable = await VoiceService.isAvailable();
+    if (!isAvailable) {
+      debugPrint('⚠️ Voice service not available - permissions needed');
+      return;
+    }
+
+    // Initialize voice service
+    await VoiceService.initialize();
+    debugPrint('✅ Voice service initialized successfully');
+  } catch (e) {
+    debugPrint('⚠️ Voice service initialization failed: $e');
+    debugPrint(
+        '💡 Voice features will be disabled until permissions are granted');
+    // Don't throw - let the app continue without voice initially
+  }
 }
 
 Future<void> _initializeAIService() async {

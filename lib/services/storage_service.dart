@@ -1,7 +1,9 @@
 // [lib/services]/storage_service.dart
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/material.dart';
 import '../models/reminder.dart';
 
 class StorageService {
@@ -13,6 +15,18 @@ class StorageService {
   static const String _groqApiKeyKey = 'groq_api_key';
   static const String _selectedAIProviderKey = 'selected_ai_provider';
 
+  // Backup keys for redundancy
+  static const String _geminiApiKeyBackupKey = 'gemini_api_key_backup';
+  static const String _groqApiKeyBackupKey = 'groq_api_key_backup';
+  static const String _selectedAIProviderBackupKey =
+      'selected_ai_provider_backup';
+
+  // Version tracking
+  static const String _storageVersionKey = 'storage_version';
+  static const String _apiConfigVersionKey = 'api_config_version';
+  static const int _currentStorageVersion = 2;
+  static const int _currentApiConfigVersion = 1;
+
   // Stream controller for real-time updates
   static final StreamController<List<Reminder>> _remindersController =
       StreamController<List<Reminder>>.broadcast();
@@ -23,18 +37,107 @@ class StorageService {
 
   static Future<void> initialize() async {
     _prefs = await SharedPreferences.getInstance();
-    // Perform migration if needed
-    await _performMigration();
-    // Emit initial data
+
+    await _performEnhancedMigration();
+    await _verifyAndRecoverAPIKeys();
+
     final initialReminders = await getReminders();
     _remindersController.add(initialReminders);
+
+    debugPrint('✅ StorageService initialized with enhanced API persistence');
+  }
+
+  static Future<void> _performEnhancedMigration() async {
+    try {
+      final currentStorageVersion = _prefs?.getInt(_storageVersionKey) ?? 0;
+      final currentApiVersion = _prefs?.getInt(_apiConfigVersionKey) ?? 0;
+
+      if (currentStorageVersion < _currentStorageVersion) {
+        await _performMigration();
+        await _prefs?.setInt(_storageVersionKey, _currentStorageVersion);
+      }
+
+      if (currentApiVersion < _currentApiConfigVersion) {
+        await _migrateAndBackupAPIConfig();
+        await _prefs?.setInt(_apiConfigVersionKey, _currentApiConfigVersion);
+      }
+    } catch (e) {
+      debugPrint('❌ Migration failed: $e');
+    }
+  }
+
+  static Future<void> _migrateAndBackupAPIConfig() async {
+    try {
+      final geminiKey = _prefs?.getString(_geminiApiKeyKey);
+      final groqKey = _prefs?.getString(_groqApiKeyKey);
+      final selectedProvider = _prefs?.getString(_selectedAIProviderKey);
+
+      if (geminiKey != null && geminiKey.isNotEmpty) {
+        await _prefs?.setString(_geminiApiKeyBackupKey, geminiKey);
+      }
+
+      if (groqKey != null && groqKey.isNotEmpty) {
+        await _prefs?.setString(_groqApiKeyBackupKey, groqKey);
+      }
+
+      if (selectedProvider != null && selectedProvider.isNotEmpty) {
+        await _prefs?.setString(_selectedAIProviderBackupKey, selectedProvider);
+      }
+    } catch (e) {
+      debugPrint('⚠️ API config migration failed: $e');
+    }
+  }
+
+  static Future<void> _verifyAndRecoverAPIKeys() async {
+    try {
+      bool recoveredAny = false;
+
+      // Check and recover Gemini key
+      final geminiKey = _prefs?.getString(_geminiApiKeyKey);
+      if (geminiKey == null || geminiKey.isEmpty) {
+        final backupKey = _prefs?.getString(_geminiApiKeyBackupKey);
+        if (backupKey != null && backupKey.isNotEmpty) {
+          await _prefs?.setString(_geminiApiKeyKey, backupKey);
+          recoveredAny = true;
+          debugPrint('🔄 Recovered Gemini API key from backup');
+        }
+      }
+
+      // Check and recover Groq key
+      final groqKey = _prefs?.getString(_groqApiKeyKey);
+      if (groqKey == null || groqKey.isEmpty) {
+        final backupKey = _prefs?.getString(_groqApiKeyBackupKey);
+        if (backupKey != null && backupKey.isNotEmpty) {
+          await _prefs?.setString(_groqApiKeyKey, backupKey);
+          recoveredAny = true;
+          debugPrint('🔄 Recovered Groq API key from backup');
+        }
+      }
+
+      // Check and recover selected provider
+      final selectedProvider = _prefs?.getString(_selectedAIProviderKey);
+      if (selectedProvider == null || selectedProvider.isEmpty) {
+        final backupProvider = _prefs?.getString(_selectedAIProviderBackupKey);
+        if (backupProvider != null && backupProvider.isNotEmpty) {
+          await _prefs?.setString(_selectedAIProviderKey, backupProvider);
+          recoveredAny = true;
+          debugPrint('🔄 Recovered selected provider from backup');
+        }
+      }
+
+      if (recoveredAny) {
+        debugPrint('✅ API keys recovered successfully');
+      }
+    } catch (e) {
+      debugPrint('❌ API key verification failed: $e');
+    }
   }
 
   /// Migrate existing single-time reminders to support multi-time format
   static Future<void> _performMigration() async {
     final String? remindersJson = _prefs?.getString(_remindersKey);
     if (remindersJson == null || remindersJson.isEmpty) {
-      return; // No data to migrate
+      return;
     }
 
     try {
@@ -46,12 +149,9 @@ class StorageService {
         final Map<String, dynamic> reminderData =
             Map<String, dynamic>.from(reminderMap);
 
-        // Check if this reminder needs migration (doesn't have timeSlots or isMultiTime)
         if (!reminderData.containsKey('timeSlots') ||
             !reminderData.containsKey('isMultiTime')) {
           needsMigration = true;
-
-          // Add default empty timeSlots and set isMultiTime to false for existing single-time reminders
           reminderData['timeSlots'] = <Map<String, dynamic>>[];
           reminderData['isMultiTime'] = false;
         }
@@ -64,17 +164,14 @@ class StorageService {
         await _prefs?.setString(_remindersKey, migratedJson);
       }
     } catch (e) {
-      // If migration fails, log but don't crash
-      print('Migration failed: $e');
+      debugPrint('❌ Reminder migration failed: $e');
     }
   }
 
-  // Dispose method to close stream controller
   static void dispose() {
     _remindersController.close();
   }
 
-  // Get all reminders
   static Future<List<Reminder>> getReminders() async {
     final String? remindersJson = _prefs?.getString(_remindersKey);
     if (remindersJson == null || remindersJson.isEmpty) {
@@ -86,33 +183,33 @@ class StorageService {
       return remindersList
           .map((reminderMap) => Reminder.fromMap(reminderMap))
           .toList()
-        ..sort((a, b) =>
-            a.scheduledTime.compareTo(b.scheduledTime)); // Sort by time
+        ..sort((a, b) => a.scheduledTime.compareTo(b.scheduledTime));
     } catch (e) {
-      // If there's an error parsing, return empty list
+      debugPrint('❌ Error loading reminders: $e');
       return [];
     }
   }
 
-  // Save all reminders and emit update
   static Future<void> saveReminders(List<Reminder> reminders) async {
-    final List<Map<String, dynamic>> remindersMapList =
-        reminders.map((reminder) => reminder.toMap()).toList();
-    final String remindersJson = json.encode(remindersMapList);
-    await _prefs?.setString(_remindersKey, remindersJson);
+    try {
+      final List<Map<String, dynamic>> remindersMapList =
+          reminders.map((reminder) => reminder.toMap()).toList();
+      final String remindersJson = json.encode(remindersMapList);
+      await _prefs?.setString(_remindersKey, remindersJson);
 
-    // Emit updated reminders to stream
-    _remindersController.add(reminders);
+      _remindersController.add(reminders);
+    } catch (e) {
+      debugPrint('❌ Error saving reminders: $e');
+      rethrow;
+    }
   }
 
-  // Add a new reminder
   static Future<void> addReminder(Reminder reminder) async {
     final List<Reminder> reminders = await getReminders();
     reminders.add(reminder);
     await saveReminders(reminders);
   }
 
-  // Update an existing reminder
   static Future<void> updateReminder(Reminder updatedReminder) async {
     final List<Reminder> reminders = await getReminders();
     final int index = reminders.indexWhere((r) => r.id == updatedReminder.id);
@@ -123,14 +220,12 @@ class StorageService {
     }
   }
 
-  // Delete a reminder
   static Future<void> deleteReminder(String reminderId) async {
     final List<Reminder> reminders = await getReminders();
     reminders.removeWhere((reminder) => reminder.id == reminderId);
     await saveReminders(reminders);
   }
 
-  // Get reminder by ID
   static Future<Reminder?> getReminderById(String reminderId) async {
     final List<Reminder> reminders = await getReminders();
     try {
@@ -140,17 +235,15 @@ class StorageService {
     }
   }
 
-  // Clear all reminders
   static Future<void> clearAllReminders() async {
     await _prefs?.remove(_remindersKey);
-    _remindersController.add([]); // Emit empty list
+    _remindersController.add([]);
   }
 
   // =============================================================================
   // Multi-Time Reminder Methods
   // =============================================================================
 
-  /// Get reminders by time slot status (for multi-time reminders)
   static Future<List<Reminder>> getRemindersBySlotStatus(
       ReminderStatus status) async {
     final List<Reminder> allReminders = await getReminders();
@@ -161,7 +254,6 @@ class StorageService {
         .toList();
   }
 
-  /// Update specific time slot status
   static Future<void> updateTimeSlotStatus(
       String reminderId, String timeSlotId, ReminderStatus newStatus) async {
     final Reminder? reminder = await getReminderById(reminderId);
@@ -182,7 +274,6 @@ class StorageService {
     }
   }
 
-  /// Add time slot to existing reminder
   static Future<void> addTimeSlot(String reminderId, TimeSlot timeSlot) async {
     final Reminder? reminder = await getReminderById(reminderId);
     if (reminder != null) {
@@ -195,7 +286,6 @@ class StorageService {
     }
   }
 
-  /// Remove time slot from reminder
   static Future<void> removeTimeSlot(
       String reminderId, String timeSlotId) async {
     final Reminder? reminder = await getReminderById(reminderId);
@@ -211,7 +301,6 @@ class StorageService {
     }
   }
 
-  /// Update time slot details
   static Future<void> updateTimeSlot(
       String reminderId, String timeSlotId, TimeSlot updatedTimeSlot) async {
     final Reminder? reminder = await getReminderById(reminderId);
@@ -228,7 +317,6 @@ class StorageService {
     }
   }
 
-  /// Convert single-time reminder to multi-time
   static Future<void> convertToMultiTime(
       String reminderId, List<TimeSlot> timeSlots) async {
     final Reminder? reminder = await getReminderById(reminderId);
@@ -241,7 +329,6 @@ class StorageService {
     }
   }
 
-  /// Convert multi-time reminder to single-time
   static Future<void> convertToSingleTime(String reminderId) async {
     final Reminder? reminder = await getReminderById(reminderId);
     if (reminder != null && reminder.hasMultipleTimes) {
@@ -257,7 +344,6 @@ class StorageService {
   // Existing Methods (Updated for Multi-Time Support)
   // =============================================================================
 
-  // Get reminders by status (handles both single and multi-time)
   static Future<List<Reminder>> getRemindersByStatus(
       ReminderStatus status) async {
     final List<Reminder> allReminders = await getReminders();
@@ -270,7 +356,6 @@ class StorageService {
     }).toList();
   }
 
-  // Get upcoming reminders (next 24 hours) - updated for multi-time
   static Future<List<Reminder>> getUpcomingReminders() async {
     final List<Reminder> allReminders = await getReminders();
     final DateTime now = DateTime.now();
@@ -289,7 +374,6 @@ class StorageService {
       ..sort((a, b) => a.scheduledTime.compareTo(b.scheduledTime));
   }
 
-  // Get overdue reminders - updated for multi-time
   static Future<List<Reminder>> getOverdueReminders() async {
     final List<Reminder> allReminders = await getReminders();
 
@@ -304,13 +388,11 @@ class StorageService {
       ..sort((a, b) => b.scheduledTime.compareTo(a.scheduledTime));
   }
 
-  // Update reminder status (handles both single and multi-time)
   static Future<void> updateReminderStatus(
       String reminderId, ReminderStatus newStatus) async {
     final Reminder? reminder = await getReminderById(reminderId);
     if (reminder != null) {
       if (reminder.hasMultipleTimes) {
-        // For multi-time reminders, update all pending slots
         final updatedTimeSlots = reminder.timeSlots.map((slot) {
           if (slot.status == ReminderStatus.pending) {
             return slot.copyWith(
@@ -325,14 +407,12 @@ class StorageService {
         final updatedReminder = reminder.copyWith(timeSlots: updatedTimeSlots);
         await updateReminder(updatedReminder);
       } else {
-        // For single-time reminders, update normally
         final Reminder updatedReminder = reminder.copyWith(status: newStatus);
         await updateReminder(updatedReminder);
       }
     }
   }
 
-  // Statistics helpers - updated for multi-time
   static Future<int> getTotalRemindersCount() async {
     final List<Reminder> reminders = await getReminders();
     return reminders.length;
@@ -360,13 +440,11 @@ class StorageService {
     }).length;
   }
 
-  // Force refresh - manually emit current data
   static Future<void> refreshData() async {
     final reminders = await getReminders();
     _remindersController.add(reminders);
   }
 
-  // Get reminders by space ID
   static Future<List<Reminder>> getRemindersBySpace(String? spaceId) async {
     final List<Reminder> allReminders = await getReminders();
     return allReminders
@@ -374,13 +452,11 @@ class StorageService {
         .toList();
   }
 
-  // Get reminders without space assignment
   static Future<List<Reminder>> getRemindersWithoutSpace() async {
     final List<Reminder> allReminders = await getReminders();
     return allReminders.where((reminder) => reminder.spaceId == null).toList();
   }
 
-  // Update reminder space assignment
   static Future<void> updateReminderSpace(
       String reminderId, String? spaceId) async {
     final Reminder? reminder = await getReminderById(reminderId);
@@ -390,13 +466,11 @@ class StorageService {
     }
   }
 
-  // Get count of reminders in a space
   static Future<int> getSpaceReminderCount(String spaceId) async {
     final List<Reminder> spaceReminders = await getRemindersBySpace(spaceId);
     return spaceReminders.length;
   }
 
-  // Remove all reminders from a space (when space is deleted)
   static Future<void> removeRemindersFromSpace(String spaceId) async {
     final List<Reminder> allReminders = await getReminders();
     final List<Reminder> updatedReminders = allReminders.map((reminder) {
@@ -410,59 +484,120 @@ class StorageService {
   }
 
   // =============================================================================
-  // AI Configuration Methods (Unchanged)
+  // Enhanced AI Configuration Methods with Backup System
   // =============================================================================
 
-  /// Save Gemini API Key
   static Future<void> setGeminiApiKey(String? apiKey) async {
-    if (apiKey == null || apiKey.isEmpty) {
-      await _prefs?.remove(_geminiApiKeyKey);
-    } else {
-      await _prefs?.setString(_geminiApiKeyKey, apiKey);
+    try {
+      if (apiKey == null || apiKey.isEmpty) {
+        await _prefs?.remove(_geminiApiKeyKey);
+        await _prefs?.remove(_geminiApiKeyBackupKey);
+      } else {
+        await _prefs?.setString(_geminiApiKeyKey, apiKey);
+        await _prefs?.setString(_geminiApiKeyBackupKey, apiKey);
+        debugPrint('💾 Saved Gemini API key with backup');
+      }
+    } catch (e) {
+      debugPrint('❌ Error saving Gemini API key: $e');
+      rethrow;
     }
   }
 
-  /// Get Gemini API Key
   static Future<String?> getGeminiApiKey() async {
-    return _prefs?.getString(_geminiApiKeyKey);
+    try {
+      String? apiKey = _prefs?.getString(_geminiApiKeyKey);
+
+      if (apiKey == null || apiKey.isEmpty) {
+        apiKey = _prefs?.getString(_geminiApiKeyBackupKey);
+        if (apiKey != null && apiKey.isNotEmpty) {
+          await _prefs?.setString(_geminiApiKeyKey, apiKey);
+          debugPrint('🔄 Restored Gemini API key from backup');
+        }
+      }
+
+      return apiKey;
+    } catch (e) {
+      debugPrint('❌ Error retrieving Gemini API key: $e');
+      return null;
+    }
   }
 
-  /// Save Groq API Key
   static Future<void> setGroqApiKey(String? apiKey) async {
-    if (apiKey == null || apiKey.isEmpty) {
-      await _prefs?.remove(_groqApiKeyKey);
-    } else {
-      await _prefs?.setString(_groqApiKeyKey, apiKey);
+    try {
+      if (apiKey == null || apiKey.isEmpty) {
+        await _prefs?.remove(_groqApiKeyKey);
+        await _prefs?.remove(_groqApiKeyBackupKey);
+      } else {
+        await _prefs?.setString(_groqApiKeyKey, apiKey);
+        await _prefs?.setString(_groqApiKeyBackupKey, apiKey);
+        debugPrint('💾 Saved Groq API key with backup');
+      }
+    } catch (e) {
+      debugPrint('❌ Error saving Groq API key: $e');
+      rethrow;
     }
   }
 
-  /// Get Groq API Key
   static Future<String?> getGroqApiKey() async {
-    return _prefs?.getString(_groqApiKeyKey);
-  }
+    try {
+      String? apiKey = _prefs?.getString(_groqApiKeyKey);
 
-  /// Save Selected AI Provider
-  static Future<void> setSelectedAIProvider(String? provider) async {
-    if (provider == null || provider == 'none') {
-      await _prefs?.remove(_selectedAIProviderKey);
-    } else {
-      await _prefs?.setString(_selectedAIProviderKey, provider);
+      if (apiKey == null || apiKey.isEmpty) {
+        apiKey = _prefs?.getString(_groqApiKeyBackupKey);
+        if (apiKey != null && apiKey.isNotEmpty) {
+          await _prefs?.setString(_groqApiKeyKey, apiKey);
+          debugPrint('🔄 Restored Groq API key from backup');
+        }
+      }
+
+      return apiKey;
+    } catch (e) {
+      debugPrint('❌ Error retrieving Groq API key: $e');
+      return null;
     }
   }
 
-  /// Get Selected AI Provider
-  static Future<String?> getSelectedAIProvider() async {
-    return _prefs?.getString(_selectedAIProviderKey);
+  static Future<void> setSelectedAIProvider(String? provider) async {
+    try {
+      if (provider == null || provider == 'none') {
+        await _prefs?.remove(_selectedAIProviderKey);
+        await _prefs?.remove(_selectedAIProviderBackupKey);
+      } else {
+        await _prefs?.setString(_selectedAIProviderKey, provider);
+        await _prefs?.setString(_selectedAIProviderBackupKey, provider);
+        debugPrint('💾 Saved selected provider ($provider) with backup');
+      }
+    } catch (e) {
+      debugPrint('❌ Error saving selected provider: $e');
+      rethrow;
+    }
   }
 
-  /// Check if any AI provider is configured
+  static Future<String?> getSelectedAIProvider() async {
+    try {
+      String? provider = _prefs?.getString(_selectedAIProviderKey);
+
+      if (provider == null || provider.isEmpty) {
+        provider = _prefs?.getString(_selectedAIProviderBackupKey);
+        if (provider != null && provider.isNotEmpty) {
+          await _prefs?.setString(_selectedAIProviderKey, provider);
+          debugPrint('🔄 Restored selected provider from backup');
+        }
+      }
+
+      return provider;
+    } catch (e) {
+      debugPrint('❌ Error retrieving selected provider: $e');
+      return null;
+    }
+  }
+
   static Future<bool> hasAnyAIProvider() async {
     final geminiKey = await getGeminiApiKey();
     final groqKey = await getGroqApiKey();
     return (geminiKey?.isNotEmpty == true) || (groqKey?.isNotEmpty == true);
   }
 
-  /// Get AI configuration status
   static Future<Map<String, dynamic>> getAIConfigurationStatus() async {
     final geminiKey = await getGeminiApiKey();
     final groqKey = await getGroqApiKey();
@@ -475,38 +610,42 @@ class StorageService {
       'hasAnyProvider':
           (geminiKey?.isNotEmpty == true) || (groqKey?.isNotEmpty == true),
       'geminiStatus': geminiKey?.isNotEmpty == true
-          ? 'Configured (${geminiKey!.substring(0, 8)}...)'
+          ? 'Configured (${geminiKey!.substring(0, math.min(8, geminiKey.length))}...)'
           : 'Not configured',
       'groqStatus': groqKey?.isNotEmpty == true
-          ? 'Configured (${groqKey!.substring(0, 8)}...)'
+          ? 'Configured (${groqKey!.substring(0, math.min(8, groqKey.length))}...)'
           : 'Not configured',
     };
   }
 
-  /// Clear all AI configuration
   static Future<void> clearAIConfiguration() async {
-    await _prefs?.remove(_geminiApiKeyKey);
-    await _prefs?.remove(_groqApiKeyKey);
-    await _prefs?.remove(_selectedAIProviderKey);
+    try {
+      await _prefs?.remove(_geminiApiKeyKey);
+      await _prefs?.remove(_groqApiKeyKey);
+      await _prefs?.remove(_selectedAIProviderKey);
+      await _prefs?.remove(_geminiApiKeyBackupKey);
+      await _prefs?.remove(_groqApiKeyBackupKey);
+      await _prefs?.remove(_selectedAIProviderBackupKey);
+      debugPrint('🗑️ Cleared all AI configuration and backups');
+    } catch (e) {
+      debugPrint('❌ Error clearing AI configuration: $e');
+      rethrow;
+    }
   }
 
-  /// Validate API key format (basic validation)
   static bool isValidApiKeyFormat(String apiKey, String provider) {
     if (apiKey.isEmpty) return false;
 
     switch (provider.toLowerCase()) {
       case 'gemini':
-        // Gemini API keys typically start with "AI" and are 39 characters long
         return apiKey.startsWith('AI') && apiKey.length >= 30;
       case 'groq':
-        // Groq API keys typically start with "gsk_" and are longer
         return apiKey.startsWith('gsk_') && apiKey.length >= 30;
       default:
-        return apiKey.length >= 20; // Generic minimum length
+        return apiKey.length >= 20;
     }
   }
 
-  /// Test if an API key is accessible (doesn't test if it works, just if it's stored)
   static Future<bool> isAPIKeyConfigured(String provider) async {
     switch (provider.toLowerCase()) {
       case 'gemini':
@@ -520,7 +659,6 @@ class StorageService {
     }
   }
 
-  /// Get current provider API key
   static Future<String?> getCurrentProviderApiKey() async {
     final selectedProvider = await getSelectedAIProvider();
     if (selectedProvider == null || selectedProvider == 'none') {
@@ -537,7 +675,6 @@ class StorageService {
     }
   }
 
-  /// Switch AI provider (if API key is available)
   static Future<bool> switchAIProvider(String newProvider) async {
     if (newProvider == 'none') {
       await setSelectedAIProvider('none');
@@ -550,28 +687,51 @@ class StorageService {
       return true;
     }
 
-    return false; // No API key available for this provider
+    return false;
   }
 
-  /// Export AI configuration (for backup/restore)
   static Future<Map<String, String?>> exportAIConfiguration() async {
     return {
       'geminiApiKey': await getGeminiApiKey(),
       'groqApiKey': await getGroqApiKey(),
       'selectedProvider': await getSelectedAIProvider(),
+      'geminiApiKeyBackup': _prefs?.getString(_geminiApiKeyBackupKey),
+      'groqApiKeyBackup': _prefs?.getString(_groqApiKeyBackupKey),
+      'selectedProviderBackup': _prefs?.getString(_selectedAIProviderBackupKey),
+      'storageVersion': _currentStorageVersion.toString(),
+      'apiConfigVersion': _currentApiConfigVersion.toString(),
     };
   }
 
-  /// Import AI configuration (for backup/restore)
   static Future<void> importAIConfiguration(Map<String, String?> config) async {
-    if (config['geminiApiKey'] != null) {
-      await setGeminiApiKey(config['geminiApiKey']);
-    }
-    if (config['groqApiKey'] != null) {
-      await setGroqApiKey(config['groqApiKey']);
-    }
-    if (config['selectedProvider'] != null) {
-      await setSelectedAIProvider(config['selectedProvider']);
+    try {
+      if (config['geminiApiKey'] != null) {
+        await setGeminiApiKey(config['geminiApiKey']);
+      }
+      if (config['groqApiKey'] != null) {
+        await setGroqApiKey(config['groqApiKey']);
+      }
+      if (config['selectedProvider'] != null) {
+        await setSelectedAIProvider(config['selectedProvider']);
+      }
+
+      if (config['geminiApiKeyBackup'] != null) {
+        await _prefs?.setString(
+            _geminiApiKeyBackupKey, config['geminiApiKeyBackup']!);
+      }
+      if (config['groqApiKeyBackup'] != null) {
+        await _prefs?.setString(
+            _groqApiKeyBackupKey, config['groqApiKeyBackup']!);
+      }
+      if (config['selectedProviderBackup'] != null) {
+        await _prefs?.setString(
+            _selectedAIProviderBackupKey, config['selectedProviderBackup']!);
+      }
+
+      debugPrint('✅ AI configuration imported successfully');
+    } catch (e) {
+      debugPrint('❌ Error importing AI configuration: $e');
+      rethrow;
     }
   }
 }

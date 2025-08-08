@@ -146,6 +146,20 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
     }
   }
 
+  void _onSingleTimeChanged(TimeOfDay newTime) {
+    setState(() {
+      _selectedTime = newTime;
+      // Update selected date to preserve the date but use new time
+      _selectedDate = DateTime(
+        _selectedDate.year,
+        _selectedDate.month,
+        _selectedDate.day,
+        newTime.hour,
+        newTime.minute,
+      );
+    });
+  }
+
   void _onMultiTimeToggle(bool isMultiTime) {
     setState(() {
       _isMultiTime = isMultiTime;
@@ -652,8 +666,10 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
               [
                 _buildOptionTile(
                   icon: Icons.calendar_today_outlined,
-                  title: 'Date',
-                  subtitle: DateFormat('EEEE, MMMM d, y').format(_selectedDate),
+                  title: _isMultiTime ? 'Base Date' : 'Date',
+                  subtitle: _isMultiTime
+                      ? '${DateFormat('EEEE, MMMM d, y').format(_selectedDate)} (for all times)'
+                      : DateFormat('EEEE, MMMM d, y').format(_selectedDate),
                   onTap: _selectDate,
                 ),
                 _buildDivider(),
@@ -665,11 +681,13 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
                   isMultiTime: _isMultiTime,
                   onMultiTimeToggle: _onMultiTimeToggle,
                   initialSingleTime: _selectedTime,
+                  onSingleTimeChanged: _onSingleTimeChanged,
                   singleTimeLabel: 'Time',
                   showToggleButton: true,
                   padding: EdgeInsets.zero,
                 ),
                 _buildDivider(),
+
                 _buildOptionTile(
                   icon: Icons.repeat,
                   title: 'Repeat',
