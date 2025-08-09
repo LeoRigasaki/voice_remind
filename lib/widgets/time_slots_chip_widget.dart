@@ -1,26 +1,27 @@
+// [lib/widgets]/time_slots_chip_widget.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/reminder.dart';
 
-/// Subtle and minimalist chip widget for multi-time reminders
+/// Modern, responsive chip widget for multi-time reminders with horizontal scrolling
 class TimeSlotsChipWidget extends StatefulWidget {
   final List<TimeSlot> timeSlots;
   final String? selectedTimeSlotId;
   final ValueChanged<String> onTimeSlotSelected;
-  final bool showArrows;
   final double chipHeight;
   final EdgeInsets padding;
   final bool isCompact;
+  final bool showScrollHint;
 
   const TimeSlotsChipWidget({
     super.key,
     required this.timeSlots,
     this.selectedTimeSlotId,
     required this.onTimeSlotSelected,
-    this.showArrows = true,
-    this.chipHeight = 32.0,
-    this.padding = const EdgeInsets.symmetric(horizontal: 4.0),
+    this.chipHeight = 36.0,
+    this.padding = const EdgeInsets.symmetric(horizontal: 16.0),
     this.isCompact = false,
+    this.showScrollHint = true,
   });
 
   @override
@@ -29,98 +30,105 @@ class TimeSlotsChipWidget extends StatefulWidget {
 
 class _TimeSlotsChipWidgetState extends State<TimeSlotsChipWidget>
     with TickerProviderStateMixin {
-  final PageController _pageController = PageController();
+  final ScrollController _scrollController = ScrollController();
   late AnimationController _slideController;
-  int _currentPage = 0;
-  final int _chipsPerPage = 4; // Increased from 3 to show more chips
+  late AnimationController _hintController;
+  bool _showLeftHint = false;
+  bool _showRightHint = false;
 
   @override
   void initState() {
     super.initState();
     _slideController = AnimationController(
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 400),
       vsync: this,
     );
+    _hintController = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+
     _slideController.forward();
 
-    // Set initial page to show selected chip
-    if (widget.selectedTimeSlotId != null) {
-      final selectedIndex = widget.timeSlots
-          .indexWhere((slot) => slot.id == widget.selectedTimeSlotId);
-      if (selectedIndex != -1) {
-        _currentPage = selectedIndex ~/ _chipsPerPage;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (_pageController.hasClients) {
-            _pageController.animateToPage(
-              _currentPage,
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-            );
-          }
-        });
+    // Add scroll listener for hints
+    _scrollController.addListener(_updateScrollHints);
+
+    // Auto-scroll to selected chip and show hints
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToSelectedChip();
+      _updateScrollHints();
+      if (widget.showScrollHint && widget.timeSlots.length > 3) {
+        _showScrollHints();
       }
-    }
+    });
   }
 
   @override
   void dispose() {
     _slideController.dispose();
-    _pageController.dispose();
+    _hintController.dispose();
+    _scrollController.removeListener(_updateScrollHints);
+    _scrollController.dispose();
     super.dispose();
   }
 
   @override
   void didUpdateWidget(TimeSlotsChipWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-
-    // Update current page if selected time slot changed
-    if (widget.selectedTimeSlotId != oldWidget.selectedTimeSlotId &&
-        widget.selectedTimeSlotId != null) {
-      final selectedIndex = widget.timeSlots
-          .indexWhere((slot) => slot.id == widget.selectedTimeSlotId);
-      if (selectedIndex != -1) {
-        final newPage = selectedIndex ~/ _chipsPerPage;
-        if (newPage != _currentPage) {
-          setState(() => _currentPage = newPage);
-          _pageController.animateToPage(
-            _currentPage,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeInOut,
-          );
-        }
-      }
+    if (widget.selectedTimeSlotId != oldWidget.selectedTimeSlotId) {
+      _scrollToSelectedChip();
     }
   }
 
-  int get _totalPages => (widget.timeSlots.length / _chipsPerPage).ceil();
+  void _updateScrollHints() {
+    if (!mounted || !_scrollController.hasClients) return;
 
-  bool get _canGoBack => _currentPage > 0;
-  bool get _canGoForward => _currentPage < _totalPages - 1;
-  bool get _shouldShowNavigation =>
-      widget.showArrows && widget.timeSlots.length > _chipsPerPage;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.position.pixels;
 
-  void _goToPreviousPage() {
-    if (_canGoBack) {
-      HapticFeedback.lightImpact();
-      setState(() => _currentPage--);
-      _pageController.animateToPage(
-        _currentPage,
+    setState(() {
+      _showLeftHint = currentScroll > 20;
+      _showRightHint = currentScroll < maxScroll - 20;
+    });
+  }
+
+  void _showScrollHints() {
+    if (widget.timeSlots.length > 3) {
+      _hintController.forward().then((_) {
+        Future.delayed(const Duration(milliseconds: 1500), () {
+          if (mounted) _hintController.reverse();
+        });
+      });
+    }
+  }
+
+  void _scrollToSelectedChip() {
+    if (widget.selectedTimeSlotId == null || !_scrollController.hasClients) {
+      return;
+    }
+
+    final selectedIndex = widget.timeSlots
+        .indexWhere((slot) => slot.id == widget.selectedTimeSlotId);
+
+    if (selectedIndex != -1) {
+      final chipWidth = _getChipWidth();
+      final spacing = 8.0;
+      final targetPosition = (selectedIndex * (chipWidth + spacing)) -
+          (MediaQuery.of(context).size.width / 2) +
+          (chipWidth / 2);
+
+      _scrollController.animateTo(
+        targetPosition.clamp(0.0, _scrollController.position.maxScrollExtent),
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
       );
     }
   }
 
-  void _goToNextPage() {
-    if (_canGoForward) {
-      HapticFeedback.lightImpact();
-      setState(() => _currentPage++);
-      _pageController.animateToPage(
-        _currentPage,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
-    }
+  double _getChipWidth() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    if (widget.isCompact || screenWidth < 350) return 70.0;
+    return 85.0;
   }
 
   void _onChipTapped(TimeSlot timeSlot) {
@@ -128,141 +136,145 @@ class _TimeSlotsChipWidgetState extends State<TimeSlotsChipWidget>
     widget.onTimeSlotSelected(timeSlot.id);
   }
 
-  // IMPROVED: More subtle color scheme
+  // Modern Material 3 inspired color scheme
   Color _getChipBackgroundColor(
-      TimeSlot timeSlot, bool isSelected, bool isDark) {
+      TimeSlot timeSlot, bool isSelected, ColorScheme colorScheme) {
     if (isSelected) {
-      return Theme.of(context).colorScheme.primary.withValues(alpha: 0.15);
+      return colorScheme.primaryContainer;
     }
 
     switch (timeSlot.status) {
       case ReminderStatus.completed:
-        return isDark
-            ? Colors.green.withValues(alpha: 0.15)
-            : Colors.green.withValues(alpha: 0.1);
+        return Colors.green
+            .withValues(alpha: 0.85); // Clean green for completed
       case ReminderStatus.overdue:
-        return isDark
-            ? Colors.red.withValues(alpha: 0.15)
-            : Colors.red.withValues(alpha: 0.1);
+        return colorScheme.errorContainer.withValues(alpha: 0.7);
       case ReminderStatus.pending:
-        return isDark
-            ? Colors.grey.withValues(alpha: 0.1)
-            : Colors.grey.withValues(alpha: 0.05);
+        return colorScheme.surfaceContainerHighest.withValues(alpha: 0.6);
     }
   }
 
-  Color _getChipBorderColor(TimeSlot timeSlot, bool isSelected, bool isDark) {
+  Color _getChipTextColor(
+      TimeSlot timeSlot, bool isSelected, ColorScheme colorScheme) {
     if (isSelected) {
-      return Theme.of(context).colorScheme.primary.withValues(alpha: 0.4);
+      return colorScheme.onPrimaryContainer;
     }
 
     switch (timeSlot.status) {
       case ReminderStatus.completed:
-        return Colors.green.withValues(alpha: 0.3);
+        return Colors.white; // White text on green background
       case ReminderStatus.overdue:
-        return Colors.red.withValues(alpha: 0.3);
+        return colorScheme.onErrorContainer;
       case ReminderStatus.pending:
-        return Theme.of(context).colorScheme.outline.withValues(alpha: 0.2);
+        return colorScheme.onSurface;
     }
   }
 
-  Color _getChipTextColor(TimeSlot timeSlot, bool isSelected, bool isDark) {
-    if (isSelected) {
-      return Theme.of(context).colorScheme.primary;
+  // Subtle status indicator with modern design - NO indicator for completed chips
+  Widget? _getStatusIndicator(
+      TimeSlot timeSlot, bool isSelected, ColorScheme colorScheme) {
+    // Never show status indicator when selected or completed
+    if (isSelected ||
+        timeSlot.status == ReminderStatus.pending ||
+        timeSlot.status == ReminderStatus.completed) {
+      return null;
     }
 
-    switch (timeSlot.status) {
-      case ReminderStatus.completed:
-        return isDark ? Colors.green.shade300 : Colors.green.shade700;
-      case ReminderStatus.overdue:
-        return isDark ? Colors.red.shade300 : Colors.red.shade700;
-      case ReminderStatus.pending:
-        return Theme.of(context).colorScheme.onSurface;
+    // Only show red dot for overdue
+    if (timeSlot.status == ReminderStatus.overdue) {
+      return Container(
+        width: 6,
+        height: 6,
+        decoration: BoxDecoration(
+          color: colorScheme.error,
+          shape: BoxShape.circle,
+        ),
+      );
     }
+
+    return null;
   }
 
-  // IMPROVED: Minimal status indicator
-  Widget? _getStatusIndicator(TimeSlot timeSlot, bool isSelected) {
-    if (isSelected) return null; // Don't show status when selected
-
-    switch (timeSlot.status) {
-      case ReminderStatus.completed:
-        return Container(
-          width: 6,
-          height: 6,
-          decoration: BoxDecoration(
-            color: Colors.green,
-            shape: BoxShape.circle,
-          ),
-        );
-      case ReminderStatus.overdue:
-        return Container(
-          width: 6,
-          height: 6,
-          decoration: BoxDecoration(
-            color: Colors.red,
-            shape: BoxShape.circle,
-          ),
-        );
-      case ReminderStatus.pending:
-        return null;
-    }
-  }
-
-  // IMPROVED: Cleaner chip design
-  Widget _buildChip(TimeSlot timeSlot, bool isDark) {
+  Widget _buildChip(TimeSlot timeSlot, ColorScheme colorScheme) {
     final isSelected = timeSlot.id == widget.selectedTimeSlotId;
-    final chipBackgroundColor =
-        _getChipBackgroundColor(timeSlot, isSelected, isDark);
-    final chipBorderColor = _getChipBorderColor(timeSlot, isSelected, isDark);
-    final textColor = _getChipTextColor(timeSlot, isSelected, isDark);
-    final statusIndicator = _getStatusIndicator(timeSlot, isSelected);
-
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isVeryCompact = screenWidth < 350 || widget.isCompact;
+    final chipWidth = _getChipWidth();
+    final isVeryCompact =
+        widget.isCompact || MediaQuery.of(context).size.width < 350;
 
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeOut,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOutCubic,
+      width: chipWidth,
       height: widget.chipHeight,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: () => _onChipTapped(timeSlot),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(widget.chipHeight / 2),
           child: Container(
-            padding: EdgeInsets.symmetric(
-              horizontal: isVeryCompact ? 8 : 10,
-              vertical: isVeryCompact ? 4 : 6,
-            ),
             decoration: BoxDecoration(
-              color: chipBackgroundColor,
-              border: Border.all(
-                color: chipBorderColor,
-                width: isSelected ? 1.0 : 0.5,
-              ),
-              borderRadius: BorderRadius.circular(16),
+              color: _getChipBackgroundColor(timeSlot, isSelected, colorScheme),
+              borderRadius: BorderRadius.circular(widget.chipHeight / 2),
+              border: isSelected
+                  ? Border.all(
+                      color: colorScheme.primary.withValues(alpha: 0.4),
+                      width:
+                          2.0, // Slightly thicker border for better visibility
+                    )
+                  : timeSlot.status == ReminderStatus.completed
+                      ? Border.all(
+                          color: Colors.green.shade700.withValues(alpha: 0.3),
+                          width: 1.0,
+                        )
+                      : null,
+              boxShadow: isSelected
+                  ? [
+                      BoxShadow(
+                        color: colorScheme.primary.withValues(alpha: 0.2),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ]
+                  : timeSlot.status == ReminderStatus.completed
+                      ? [
+                          BoxShadow(
+                            color: Colors.green.withValues(alpha: 0.15),
+                            blurRadius: 4,
+                            offset: const Offset(0, 1),
+                          ),
+                        ]
+                      : null,
             ),
             child: Row(
-              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Status indicator (subtle dot)
-                if (statusIndicator != null) ...[
-                  statusIndicator,
+                // Status indicator (only for overdue, never for completed or selected)
+                if (_getStatusIndicator(timeSlot, isSelected, colorScheme) !=
+                    null) ...[
+                  _getStatusIndicator(timeSlot, isSelected, colorScheme)!,
                   SizedBox(width: isVeryCompact ? 4 : 6),
                 ],
 
-                // Time text
-                Text(
-                  isVeryCompact
-                      ? timeSlot.formattedTime24
-                      : timeSlot.formattedTime,
-                  style: TextStyle(
-                    color: textColor,
-                    fontSize: isVeryCompact ? 11 : 13,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                    letterSpacing: -0.2,
+                // Time text - clean and simple
+                Flexible(
+                  child: Text(
+                    isVeryCompact
+                        ? timeSlot.formattedTime24
+                        : timeSlot.formattedTime,
+                    style: TextStyle(
+                      color:
+                          _getChipTextColor(timeSlot, isSelected, colorScheme),
+                      fontSize: isVeryCompact ? 12 : 13,
+                      fontWeight: isSelected
+                          ? FontWeight.w700
+                          : timeSlot.status == ReminderStatus.completed
+                              ? FontWeight.w600
+                              : FontWeight.w500,
+                      letterSpacing: -0.1,
+                    ),
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
@@ -273,57 +285,99 @@ class _TimeSlotsChipWidgetState extends State<TimeSlotsChipWidget>
     );
   }
 
-  // IMPROVED: Subtle navigation arrows
-  Widget _buildNavigationButton({
-    required IconData icon,
-    required VoidCallback? onPressed,
-    required bool enabled,
-    required bool isDark,
-  }) {
-    return AnimatedOpacity(
-      opacity: enabled ? 0.8 : 0.3,
-      duration: const Duration(milliseconds: 200),
-      child: GestureDetector(
-        onTap: enabled ? onPressed : null,
-        child: Container(
-          width: 24,
-          height: widget.chipHeight,
-          decoration: BoxDecoration(
-            color: Theme.of(context)
-                .colorScheme
-                .surfaceContainer
-                .withValues(alpha: 0.5),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color:
-                  Theme.of(context).colorScheme.outline.withValues(alpha: 0.1),
-              width: 0.5,
+  Widget _buildScrollHint({required bool isLeft}) {
+    return AnimatedBuilder(
+      animation: _hintController,
+      builder: (context, child) {
+        return AnimatedOpacity(
+          opacity: _hintController.value * 0.7,
+          duration: const Duration(milliseconds: 200),
+          child: Container(
+            width: 24,
+            height: widget.chipHeight,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: isLeft ? Alignment.centerLeft : Alignment.centerRight,
+                end: isLeft ? Alignment.centerRight : Alignment.centerLeft,
+                colors: [
+                  Theme.of(context).scaffoldBackgroundColor,
+                  Theme.of(context)
+                      .scaffoldBackgroundColor
+                      .withValues(alpha: 0),
+                ],
+              ),
+            ),
+            child: Icon(
+              isLeft ? Icons.chevron_left : Icons.chevron_right,
+              size: 16,
+              color: Theme.of(context).colorScheme.outline.withValues(
+                    alpha: _hintController.value * 0.8,
+                  ),
             ),
           ),
-          child: Icon(
-            icon,
-            size: 14,
-            color: enabled
-                ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)
-                : Theme.of(context)
-                    .colorScheme
-                    .onSurface
-                    .withValues(alpha: 0.3),
-          ),
-        ),
-      ),
+        );
+      },
     );
   }
 
-  List<Widget> _getVisibleChips() {
-    final startIndex = _currentPage * _chipsPerPage;
-    final endIndex =
-        (startIndex + _chipsPerPage).clamp(0, widget.timeSlots.length);
-    return widget.timeSlots
-        .sublist(startIndex, endIndex)
-        .map((slot) =>
-            _buildChip(slot, Theme.of(context).brightness == Brightness.dark))
-        .toList();
+  Widget _buildScrollIndicator() {
+    if (widget.timeSlots.length <= 3) return const SizedBox.shrink();
+
+    return Container(
+      height: 3,
+      margin: const EdgeInsets.only(top: 8),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return AnimatedBuilder(
+            animation: _scrollController,
+            builder: (context, child) {
+              if (!_scrollController.hasClients) {
+                return const SizedBox.shrink();
+              }
+
+              final maxScroll = _scrollController.position.maxScrollExtent;
+              final currentScroll = _scrollController.position.pixels;
+              final indicatorWidth = constraints.maxWidth * 0.6;
+              final indicatorPosition = (currentScroll / maxScroll) *
+                  (constraints.maxWidth - indicatorWidth);
+
+              return Stack(
+                children: [
+                  // Track
+                  Container(
+                    width: double.infinity,
+                    height: 3,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .outline
+                          .withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(1.5),
+                    ),
+                  ),
+                  // Indicator
+                  AnimatedPositioned(
+                    duration: const Duration(milliseconds: 100),
+                    left: indicatorPosition,
+                    child: Container(
+                      width: indicatorWidth,
+                      height: 3,
+                      decoration: BoxDecoration(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .primary
+                            .withValues(alpha: 0.6),
+                        borderRadius: BorderRadius.circular(1.5),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      ),
+    );
   }
 
   @override
@@ -332,7 +386,7 @@ class _TimeSlotsChipWidgetState extends State<TimeSlotsChipWidget>
       return const SizedBox.shrink();
     }
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
 
     return SlideTransition(
       position: Tween<Offset>(
@@ -344,72 +398,59 @@ class _TimeSlotsChipWidgetState extends State<TimeSlotsChipWidget>
       )),
       child: Container(
         padding: widget.padding,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // Left navigation arrow (more subtle)
-            if (_shouldShowNavigation) ...[
-              _buildNavigationButton(
-                icon: Icons.chevron_left,
-                onPressed: _goToPreviousPage,
-                enabled: _canGoBack,
-                isDark: isDark,
-              ),
-              const SizedBox(width: 8),
-            ],
-
-            // Chips container
-            Flexible(
-              child: widget.timeSlots.length <= _chipsPerPage
-                  ? Wrap(
-                      spacing: 6,
-                      runSpacing: 4,
-                      alignment: WrapAlignment.center,
-                      children: widget.timeSlots
-                          .map((slot) => _buildChip(slot, isDark))
-                          .toList(),
-                    )
-                  : SizedBox(
-                      height: widget.chipHeight,
-                      child: PageView.builder(
-                        controller: _pageController,
-                        onPageChanged: (page) {
-                          setState(() => _currentPage = page);
-                        },
-                        itemCount: _totalPages,
-                        itemBuilder: (context, pageIndex) {
-                          final visibleChips = _getVisibleChips();
-                          return Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: visibleChips.asMap().entries.map((entry) {
-                              final index = entry.key;
-                              final chip = entry.value;
-                              return Flexible(
-                                child: Padding(
-                                  padding: EdgeInsets.only(
-                                    right:
-                                        index < visibleChips.length - 1 ? 6 : 0,
-                                  ),
-                                  child: chip,
-                                ),
-                              );
-                            }).toList(),
-                          );
+            // Main scrollable chips container
+            SizedBox(
+              height: widget.chipHeight,
+              child: Stack(
+                children: [
+                  // Scrollable chips
+                  Positioned.fill(
+                    child: ScrollConfiguration(
+                      behavior: ScrollConfiguration.of(context).copyWith(
+                        scrollbars: false, // Hide scrollbar for cleaner look
+                      ),
+                      child: ListView.separated(
+                        controller: _scrollController,
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        physics: const BouncingScrollPhysics(),
+                        itemCount: widget.timeSlots.length,
+                        separatorBuilder: (context, index) =>
+                            const SizedBox(width: 8),
+                        itemBuilder: (context, index) {
+                          return _buildChip(
+                              widget.timeSlots[index], colorScheme);
                         },
                       ),
                     ),
+                  ),
+
+                  // Left scroll hint
+                  if (_showLeftHint && widget.showScrollHint)
+                    Positioned(
+                      left: 0,
+                      top: 0,
+                      bottom: 0,
+                      child: _buildScrollHint(isLeft: true),
+                    ),
+
+                  // Right scroll hint
+                  if (_showRightHint && widget.showScrollHint)
+                    Positioned(
+                      right: 0,
+                      top: 0,
+                      bottom: 0,
+                      child: _buildScrollHint(isLeft: false),
+                    ),
+                ],
+              ),
             ),
 
-            // Right navigation arrow (more subtle)
-            if (_shouldShowNavigation) ...[
-              const SizedBox(width: 8),
-              _buildNavigationButton(
-                icon: Icons.chevron_right,
-                onPressed: _goToNextPage,
-                enabled: _canGoForward,
-                isDark: isDark,
-              ),
-            ],
+            // Scroll indicator for many chips
+            _buildScrollIndicator(),
           ],
         ),
       ),
@@ -436,10 +477,37 @@ class CompactTimeSlotsChipWidget extends StatelessWidget {
       timeSlots: timeSlots,
       selectedTimeSlotId: selectedTimeSlotId,
       onTimeSlotSelected: onTimeSlotSelected,
+      chipHeight: 32,
+      isCompact: true,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      showScrollHint: false, // No hints in compact mode
+    );
+  }
+}
+
+/// Minimal version for very constrained spaces
+class MinimalTimeSlotsChipWidget extends StatelessWidget {
+  final List<TimeSlot> timeSlots;
+  final String? selectedTimeSlotId;
+  final ValueChanged<String> onTimeSlotSelected;
+
+  const MinimalTimeSlotsChipWidget({
+    super.key,
+    required this.timeSlots,
+    this.selectedTimeSlotId,
+    required this.onTimeSlotSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TimeSlotsChipWidget(
+      timeSlots: timeSlots,
+      selectedTimeSlotId: selectedTimeSlotId,
+      onTimeSlotSelected: onTimeSlotSelected,
       chipHeight: 28,
       isCompact: true,
-      padding: const EdgeInsets.symmetric(horizontal: 2),
-      showArrows: false, // No arrows in compact mode
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      showScrollHint: false,
     );
   }
 }
@@ -474,5 +542,22 @@ extension TimeSlotsChipHelper on List<TimeSlot> {
 
     // If no pending slots, return first slot
     return isNotEmpty ? first : null;
+  }
+
+  /// Get a summary string for display (e.g., "3 pending, 2 completed")
+  String get statusSummary {
+    final pending =
+        where((slot) => slot.status == ReminderStatus.pending).length;
+    final completed =
+        where((slot) => slot.status == ReminderStatus.completed).length;
+    final overdue =
+        where((slot) => slot.status == ReminderStatus.overdue).length;
+
+    final parts = <String>[];
+    if (pending > 0) parts.add('$pending pending');
+    if (completed > 0) parts.add('$completed completed');
+    if (overdue > 0) parts.add('$overdue overdue');
+
+    return parts.join(', ');
   }
 }

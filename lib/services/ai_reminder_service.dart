@@ -428,7 +428,7 @@ class AIReminderService {
           'icon': 'auto_awesome',
           'color': 'green',
           'freeLimit': '15 requests/minute',
-          'signupUrl': 'https://ai.google.dev',
+          'signupUrl': 'https://aistudio.google.com/apikey/',
         };
       case 'groq':
         return {
@@ -437,7 +437,7 @@ class AIReminderService {
           'icon': 'flash_on',
           'color': 'blue',
           'freeLimit': '14,400 requests/day',
-          'signupUrl': 'https://console.groq.com',
+          'signupUrl': 'https://console.groq.com/keys/',
         };
       case 'none':
       default:

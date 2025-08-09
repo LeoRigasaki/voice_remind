@@ -1,200 +1,367 @@
-# VoiceRemind - AI Voice-First Reminder App
+<p align="center">
+   <img src="https://img.shields.io/badge/platforms-android_web_ios-00ff00?style=for-the-badge&labelColor=2d2d2d&color=000000"/>
+   <a href="https://github.com/LeoRigasaki/voice_remind/releases"><img src="https://img.shields.io/github/downloads/LeoRigasaki/voice_remind/total?label=Downloads&logo=android&logoColor=00ff00&style=for-the-badge&labelColor=2d2d2d&color=000000"></a>
+</p>
 
-A beautiful voice-first reminder application built with Flutter. VoiceRemind allows users to create reminders through natural speech and get intelligent notifications across all platforms.
+<p align="center">
+   <img src="https://img.shields.io/badge/status-Early%20Access-ff0040?style=for-the-badge&labelColor=2d2d2d&color=000000"/>
+   <a href="https://github.com/LeoRigasaki/voice_remind/stargazers"><img src="https://img.shields.io/github/stars/LeoRigasaki/voice_remind?style=for-the-badge&label=Stars&labelColor=2d2d2d&color=000000&logoColor=00ff00" alt="Stars" /></a>
+   <img src="https://img.shields.io/badge/AI%20Powered-Gemini%20%7C%20Groq-00ff00?style=for-the-badge&labelColor=2d2d2d&color=000000"/>
+</p>
 
-## 🚀 Vision
+# VoiceRemind - Voice-First Reminder App
 
-**How it works:**
-- **You speak:** "Remind me tomorrow at 8 a.m. to send the report."
-- **AI listens:** Speech-to-text converts your words into text
-- **AI understands:** LLM figures out date, time, and task details
-- **It schedules:** Reminder syncs to the cloud and all your devices
-- **It reminds you:** Push notifications with optional voice playback
+**Status: Early Access - Working with Voice and AI Features**
 
-## ✨ Current Features
+Create reminders using your voice or AI-powered text generation. Speak naturally or type casually and let AI understand what you want to remember.
 
-- ✅ **Beautiful Material 3 UI** with modern design
-- ✅ **Local reminder management** (create, edit, delete, mark complete)
-- ✅ **Smart notifications** with cross-platform support
-- ✅ **Dashboard with statistics** (total, pending, completed, overdue)
-- ✅ **Repeat options** (daily, weekly, monthly)
-- ✅ **Multi-platform support** (macOS, Windows, Linux, Android, iOS, Web)
-- ✅ **Offline-first architecture** with local storage
+## What VoiceRemind Does
 
-## 🔄 Planned Features
+**AI Text:** Type "Remind me to call mom tomorrow at 3pm and buy groceries tonight"  
+**VoiceRemind:** Creates two separate reminders with correct dates and times
 
-- 🔮 **Voice input** with speech-to-text
-- 🔮 **Natural language processing** for intelligent scheduling
-- 🔮 **Text-to-speech** for voice reminders
-- 🔮 **Cloud synchronization** across devices
-- 🔮 **AI-powered reminder suggestions**
+**Voice Input:** Say "Meeting with John next Tuesday at 3 PM"  
+**VoiceRemind:** Understands your speech and creates a properly scheduled reminder
 
-## 🛠️ Tech Stack
+The app works by using AI to understand natural language and create smart reminders from your speech or text.
 
-- **Framework:** Flutter 3.24.5 with Dart 3.5.0
-- **UI:** Material 3 design system
-- **Storage:** SharedPreferences (local), planned cloud sync
-- **Notifications:** flutter_local_notifications with timezone support
-- **State Management:** Built-in setState (simple and effective)
-- **Architecture:** Clean, modular structure with services and models
+## Current Status
 
-## 🏃‍♂️ How to Run
+**Working Right Now:**
+- AI-powered reminder generation from text (Gemini and Groq support)
+- Voice input with speech recognition
+- Create, edit, and delete reminders manually
+- Get notifications when reminders are due
+- Organize reminders into different spaces
+- Search through your reminders
+- Full Android support
+- Basic iPhone support
+- Web browser support
 
-### Prerequisites
-- Flutter SDK installed and configured
-- Android Studio (for Android emulator)
-- VS Code or preferred IDE with Flutter extensions
+**Still Being Improved:**
+- Advanced voice processing features
+- Cloud sync across devices
+- More intelligent scheduling options
 
-### 1. Clone and Setup
-```bash
-git clone [repository-url]
-cd voice_remind
-flutter pub get
-```
+## Installation
 
-### 2. Check Your Setup
-```bash
-flutter doctor
-```
-Make sure all platforms you want to target show ✅
+### Android (Primary Platform - Fully Supported)
+1. Download the APK file from our GitHub releases
+2. Enable "Install from unknown sources" in Android Settings > Security
+3. Install the APK file
+4. Grant microphone permissions when prompted
+5. Open VoiceRemind and start creating reminders
 
-### 3. Run on Different Platforms
+### iPhone/iPad (Basic Support)
+Currently requires building from source code. Basic functionality works but some features may have limitations.
 
-#### macOS Desktop
-```bash
-flutter run -d macos
-```
+### Web Browser (Recommended Alternative)
+Visit our GitHub Pages site - works well on desktop and mobile browsers (Chrome, Firefox, Safari, Edge)
 
-#### Windows Desktop
-```bash
-flutter run -d windows
-```
+### Desktop Platforms (Limited Support)
 
-#### Linux Desktop
-```bash
-flutter run -d linux
-```
+**Windows & macOS:** Available but currently have known issues due to limited testing. We recommend using the web version on desktop until these are resolved.
 
-#### Android Emulator
-```bash
-# First, start an emulator
-flutter emulators --launch Pixel_4
+**Issues may include:**
+- Notification problems
+- Voice recognition reliability
+- Performance issues
+- UI scaling problems
 
-# Then run the app
-flutter run -d emulator-5554
-```
+If you want to try desktop versions anyway, download from GitHub releases but expect some problems.
 
-#### Web Browser
-```bash
-flutter run -d chrome
-```
+## Setting Up AI Features
 
-#### iOS Simulator (macOS only)
-```bash
-flutter run -d apple_ios_simulator
-```
+VoiceRemind needs an AI provider for voice recognition and smart text processing. Choose one:
 
-### 4. Development Commands
+### Option 1: Google Gemini (Recommended for Voice)
+1. Go to **https://aistudio.google.com/apikey/**
+2. Click "Get API key in Google AI Studio"
+3. Sign in with your Google account
+4. Create a new project or select existing one
+5. Click "Create API key"
+6. Copy the key (starts with "AIza...")
 
-```bash
-# See available devices
-flutter devices
+**Free limits:** 15 requests per minute, 1500 requests per day
 
-# See available emulators
-flutter emulators
+### Option 2: Groq (Fastest for Text)
+1. Go to **https://console.groq.com/keys/**
+2. Sign up for a free account
+3. Navigate to "API Keys" section
+4. Create new API key
+5. Copy the key (starts with "gsk_...")
 
-# Hot reload (while app is running)
-# Press 'r' in terminal
+**Free limits:** 14,400 requests per day (very generous)
 
-# Hot restart (while app is running)
-# Press 'R' in terminal
+### Configure in VoiceRemind
+1. Open VoiceRemind
+2. Tap the Settings icon (gear icon in top right)
+3. Select "AI Provider Configuration"
+4. Choose your provider (Gemini or Groq)
+5. Paste your API key
+6. Tap "Save"
 
-# Clean build
-flutter clean
-flutter pub get
-```
+**Success indicator:** You'll see a green "AI Ready" status when configured correctly.
 
-## 📱 Testing the App
+## How to Use
 
-### Core Features to Test
-1. **Create Reminders**: Tap the "+ Add Reminder" button
-2. **Set Notifications**: Create a reminder for 1-2 minutes from now
-3. **Test Notifications**: Use the "Test Notification" button in the app bar
-4. **Mark Complete**: Tap on reminders to toggle completion
-5. **View Statistics**: Check the dashboard cards for counts
-6. **Repeat Options**: Try creating daily/weekly reminders
+### Creating Reminders with AI Text
 
-### Platform-Specific Testing
-- **Desktop (macOS/Windows/Linux)**: Test keyboard navigation and window resizing
-- **Mobile (Android/iOS)**: Test touch interactions and notifications
-- **Web**: Test responsive design and browser notifications
+1. Tap the "+" button
+2. Select "AI" tab
+3. Type naturally: "Doctor appointment next Friday at 2:30 PM"
+4. Tap "Generate Reminders"
+5. Review the suggested reminders
+6. Select which ones to create
+7. Tap "Create Selected Reminders"
 
-## 🐛 Common Issues & Solutions
+**Examples that work well:**
+- "Meeting with Sarah tomorrow at 10am"
+- "Buy groceries tonight and walk the dog at 6pm"
+- "Call dentist next week and pay rent by Friday"
+- "Take medicine every morning at 8am"
 
-### Android Build Issues
-If you get NDK or desugaring errors:
-```bash
-flutter clean
-flutter pub get
-flutter run -d android
-```
+### Creating Reminders with Voice
 
-The project is configured with:
-- NDK version 27.0.12077973
-- Core library desugaring enabled
-- Java 11 compatibility
+1. Tap the "+" button
+2. Select "Voice" tab
+3. Tap "Start Recording"
+4. Speak clearly: "Remind me to submit the report by Thursday afternoon"
+5. Tap "Stop Recording"
+6. Review the generated reminders
+7. Select and create the ones you want
 
-### Emulator Not Found
-```bash
-# List available emulators
-flutter emulators
+**Voice tips:**
+- Speak clearly and at normal pace
+- Include specific times when possible
+- Mention dates relative to today ("tomorrow", "next Monday")
+- You can create multiple reminders in one sentence
 
-# Launch specific emulator
-flutter emulators --launch <emulator-id>
-```
+### Manual Reminder Creation
 
-### Notification Issues
-- **Android**: Ensure emulator has notification permissions
-- **macOS**: Check System Preferences > Notifications
-- **Web**: Browser will prompt for notification permission
+1. Tap the "+" button
+2. Select "Manual" tab
+3. Enter title and description
+4. Set date and time
+5. Choose repeat options (daily, weekly, monthly)
+6. Tap "Create Reminder"
 
-## 📁 Project Structure
+### Managing Your Reminders
 
-```
-lib/
-├── main.dart              # App entry point
-├── models/                # Data models
-│   └── reminder.dart      # Reminder model with enums
-├── services/              # Business logic
-│   ├── storage_service.dart     # Local data persistence
-│   └── notification_service.dart # Cross-platform notifications
-└── screens/               # UI screens
-    ├── home_screen.dart   # Main dashboard
-    └── add_reminder_screen.dart # Create/edit reminders
-```
+**View All Reminders:**
+- Home screen shows upcoming reminders
+- Completed reminders appear in "Done" section
+- Overdue reminders are highlighted in red
 
-## 🎯 Development Priorities
+**Mark Complete:**
+- Tap the checkbox next to any reminder
+- Completed reminders move to bottom section
 
-1. **Phase 1**: Voice input integration (speech-to-text)
-2. **Phase 2**: Natural language processing for smart scheduling
-3. **Phase 3**: Cloud synchronization and multi-device support
-4. **Phase 4**: AI-powered features and voice output
+**Edit or Delete:**
+- Tap any reminder to open details
+- Use edit button to modify
+- Use delete button to remove permanently
 
-## 🤝 Contributing
+**Search and Filter:**
+- Tap search icon to find specific reminders
+- Use filter button to sort by date, status, or space
+- Filter by completion status or urgency
 
-1. **Pick a platform** to test on (Windows/Linux/Android)
-2. **Run the app** and test all features
-3. **Report issues** or suggest improvements
-4. **Focus areas**: UI/UX, cross-platform compatibility, performance
+### Organizing with Spaces
 
-## 📚 Documentation
+**Create Spaces:**
+1. Go to Settings
+2. Tap "Manage Spaces"  
+3. Add spaces like "Work", "Personal", "Health", "Shopping"
+4. Assign reminders to spaces when creating them
 
-- [Technical Project Plan](docs/VoiceRemind%20-%20Technical%20Project%20Plan%20&%20Developer%20Documentation.md) - Comprehensive development strategy
-- [Flutter Documentation](https://flutter.dev/docs)
-- [Material 3 Design](https://m3.material.io/)
+**Use Spaces:**
+- Select space from dropdown on home screen
+- Filter reminders by workspace
+- Organize different life areas separately
+
+## Notifications
+
+VoiceRemind sends smart notifications:
+
+**Android (Fully Supported):**
+- Sound and vibration alerts
+- Persistent notifications for important items
+- Notification badges on app icon
+- Quick actions from notification panel
+
+**Web Browser (Recommended for Desktop):**
+- Browser notifications (allow when prompted)
+- Works even when tab is closed
+- Sound alerts in supported browsers
+- Cross-platform compatibility
+
+**iPhone/iPad (Basic Support):**
+- Standard iOS notifications
+- May have some limitations compared to Android
+
+**Desktop Apps (Known Issues):**
+- Windows/macOS notification systems may not work reliably
+- We recommend using the web version for consistent notifications
+
+## Troubleshooting
+
+### AI Features Not Working
+
+**"AI Provider Not Configured" message:**
+1. Go to Settings > AI Provider Configuration
+2. Make sure you selected a provider (Gemini or Groq)
+3. Verify your API key is entered correctly
+4. Check your internet connection
+
+**"Invalid API Key" error:**
+1. Double-check you copied the full API key
+2. Make sure key is from the correct provider
+3. Try generating a new API key
+4. Verify your account has remaining credits
+
+**Poor AI results:**
+1. Be more specific with dates and times
+2. Use clear, simple language
+3. Try breaking complex requests into smaller parts
+4. Switch between Gemini and Groq to see which works better
+
+### Voice Recognition Problems
+
+**Voice not recognized:**
+1. Check microphone permissions in device settings
+2. Speak clearly and at normal pace
+3. Ensure good microphone quality
+4. Try in a quiet environment
+
+**Wrong transcription:**
+1. Speak more slowly and clearly
+2. Use common words when possible
+3. Repeat numbers clearly ("three P M" instead of "3pm")
+4. Try the AI text tab as backup
+
+### General App Issues
+
+**No notifications appearing:**
+1. Check device notification settings
+2. Make sure VoiceRemind has notification permissions
+3. Test with a reminder set for 1 minute from now
+4. Restart the app and try again
+5. **Desktop users:** Try the web version instead
+
+**App crashes or won't start:**
+1. Restart your device
+2. Reinstall the app
+3. Make sure you have enough storage space
+4. Check that your device meets minimum requirements
+5. **Desktop users:** Use web browser version as alternative
+
+**Performance slow:**
+1. Close other apps running in background
+2. Clear app data (will lose local reminders)
+3. Check your internet connection for AI features
+4. Try reducing number of active reminders
+5. **Desktop users:** Switch to web browser version
+
+### Platform-Specific Issues
+
+**Windows/macOS Desktop:**
+- If experiencing crashes, UI problems, or notification issues
+- Switch to web browser version for better reliability
+- Desktop versions need more testing and may have bugs
+
+**iPhone/iPad:**
+- Limited testing on iOS devices
+- Some features may not work perfectly
+- Web browser version recommended as backup
+
+## Privacy and Your Data
+
+**Local Storage:**
+- All reminders stored on your device
+- No account required to use basic features
+- Works completely offline (except AI features)
+
+**AI Processing:**
+- Text/voice you input is sent to your chosen AI provider
+- No other personal data is shared
+- You control which AI provider to use
+- Audio recordings stay on your device
+
+**API Keys:**
+- Stored only on your device
+- Never shared with VoiceRemind developers
+- You pay for your own AI usage (free tiers available)
+- Can be deleted anytime in settings
+
+## Costs and Limits
+
+**VoiceRemind App:** Completely free
+
+**AI Usage:**
+- **Gemini:** 15 requests/minute, 1500/day (free)
+- **Groq:** 14,400 requests/day (free)
+- Both providers have generous free tiers
+- Check provider websites for current limits
+
+**Typical Usage:**
+- Creating 20-30 reminders per day stays within free limits
+- Voice recognition uses 1 request per recording
+- Text generation uses 1 request per generation
+
+## Getting Help
+
+**Common Questions:**
+- Works completely offline for basic reminders
+- Voice features require internet for processing
+- No ads, subscriptions, or hidden costs
+- Your data never leaves your device (except AI processing)
+
+**Report Problems:**
+1. Note what you were doing when problem occurred
+2. Include your device type and operating system
+3. Mention whether you were using AI features
+4. Submit issue on our GitHub repository
+
+**Feature Requests:**
+- Submit suggestions on GitHub
+- Join community discussions
+- Help test new features
+
+## System Requirements
+
+**Android:** Version 5.0 (API 21) or higher *(Fully Supported)*  
+**Web Browser:** Chrome 88+, Firefox 85+, Safari 14+, Edge 88+ *(Recommended for Desktop)*  
+**iPhone/iPad:** iOS 11.0 or higher *(Basic Support)*  
+**Windows:** Windows 10 or higher *(Limited Support - Known Issues)*  
+**macOS:** macOS 10.14 or higher *(Limited Support - Known Issues)*
+
+**For Voice Features:**
+- Microphone access
+- Internet connection for AI processing
+- Clear audio environment recommended
+
+**Recommended Setup:**
+- **Mobile:** Android device with VoiceRemind APK
+- **Desktop:** Use web browser version for best experience
+
+## What's Coming Next
+
+**Short Term:**
+- Enhanced voice processing accuracy
+- Better offline capabilities
+- More natural language understanding
+
+**Medium Term:**
+- Cloud sync across devices
+- Calendar integration
+- Voice output (app speaks reminders)
+
+**Long Term:**
+- Apple Watch support
+- Smart home integration
+- Advanced AI scheduling
 
 ---
 
-**Current Status**: ✅ MVP Complete | 🔄 Voice Features In Development
-
-*Built with ❤️ using Flutter for a zero-cost, community-driven approach*
+**Note:** This is early access software. While core features work reliably, some advanced features are still being improved. Keep important reminders backed up elsewhere if needed.
