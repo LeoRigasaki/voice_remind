@@ -100,9 +100,13 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
   @override
   void initState() {
     super.initState();
+    _initializeModal();
+  }
+
+  Future<void> _initializeModal() async {
     // Initialize voice service
     _initializeVoiceService();
-    _currentMode = widget.initialMode;
+    await _loadDefaultTabPreference();
 
     // Initialize animation controllers
     _slideController = AnimationController(
@@ -146,7 +150,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
     _tabController = TabController(
       length: 3,
       vsync: this,
-      initialIndex: _currentMode.index,
+      initialIndex: _modeToIndex(_currentMode),
     );
 
     _tabController.addListener(() {
@@ -205,6 +209,23 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
       }
     } catch (e) {
       debugPrint('Failed to load AI service status: $e');
+    }
+  }
+
+  Future<void> _loadDefaultTabPreference() async {
+    try {
+      final defaultTabIndex = await StorageService.getDefaultReminderTab();
+      final defaultMode = _indexToMode(defaultTabIndex);
+
+      // Only use preference if no explicit initialMode was provided
+      if (widget.initialMode == ReminderCreationMode.manual) {
+        setState(() {
+          _currentMode = defaultMode;
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to load default tab preference: $e');
+      // Fallback to manual if loading fails
     }
   }
 
@@ -300,6 +321,30 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
     HapticFeedback.lightImpact();
     _scaleController.reset();
     _scaleController.forward();
+  }
+
+  ReminderCreationMode _indexToMode(int index) {
+    switch (index) {
+      case 0:
+        return ReminderCreationMode.manual;
+      case 1:
+        return ReminderCreationMode.aiText;
+      case 2:
+        return ReminderCreationMode.voice;
+      default:
+        return ReminderCreationMode.manual;
+    }
+  }
+
+  int _modeToIndex(ReminderCreationMode mode) {
+    switch (mode) {
+      case ReminderCreationMode.manual:
+        return 0;
+      case ReminderCreationMode.aiText:
+        return 1;
+      case ReminderCreationMode.voice:
+        return 2;
+    }
   }
 
   @override

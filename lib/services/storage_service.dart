@@ -27,6 +27,10 @@ class StorageService {
   static const String _selectedAIProviderBackupKey =
       'selected_ai_provider_backup';
 
+  // Default Tab Preference Keys
+  static const String _defaultReminderTabKey = 'default_reminder_tab';
+  static const String _snoozeUseCustomKey = 'snooze_use_custom';
+  static const String _snoozeCustomMinutesKey = 'snooze_custom_minutes';
   // Version tracking
   static const String _storageVersionKey = 'storage_version';
   static const String _apiConfigVersionKey = 'api_config_version';
@@ -369,6 +373,67 @@ class StorageService {
   static Future<void> clearAllReminders() async {
     await _prefs?.remove(_remindersKey);
     _remindersController.add([]);
+  }
+
+  // =============================================================================
+  // NEW: Default Tab Preference Methods
+  // =============================================================================
+
+  /// Set the default reminder creation tab (0=Manual, 1=AI Text, 2=Voice)
+  static Future<void> setDefaultReminderTab(int tabIndex) async {
+    try {
+      await _prefs?.setInt(_defaultReminderTabKey, tabIndex);
+      debugPrint('💾 Saved default reminder tab: $tabIndex');
+    } catch (e) {
+      debugPrint('❌ Error saving default reminder tab: $e');
+      rethrow;
+    }
+  }
+
+  /// Get the default reminder creation tab (0=Manual, 1=AI Text, 2=Voice)
+  /// Returns 0 (Manual) by default
+  static Future<int> getDefaultReminderTab() async {
+    try {
+      return _prefs?.getInt(_defaultReminderTabKey) ??
+          0; // Default to Manual (0)
+    } catch (e) {
+      debugPrint('❌ Error getting default reminder tab: $e');
+      return 0; // Fallback to Manual
+    }
+  }
+
+  /// Set default reminder tab by mode string
+  static Future<void> setDefaultReminderTabByMode(String mode) async {
+    int index = 0; // Manual
+    switch (mode.toLowerCase()) {
+      case 'manual':
+        index = 0;
+        break;
+      case 'ai':
+      case 'aitext':
+      case 'ai text':
+        index = 1;
+        break;
+      case 'voice':
+        index = 2;
+        break;
+    }
+    await setDefaultReminderTab(index);
+  }
+
+  /// Get default reminder tab as mode string
+  static Future<String> getDefaultReminderTabMode() async {
+    final index = await getDefaultReminderTab();
+    switch (index) {
+      case 0:
+        return 'Manual';
+      case 1:
+        return 'AI Text';
+      case 2:
+        return 'Voice';
+      default:
+        return 'Manual';
+    }
   }
 
   // =============================================================================
@@ -952,5 +1017,64 @@ class StorageService {
       debugPrint('❌ Error importing AI configuration: $e');
       rethrow;
     }
+  }
+
+  /// Set whether to use custom snooze duration (false = default 10min+1hour)
+  static Future<void> setSnoozeUseCustom(bool useCustom) async {
+    try {
+      await _prefs?.setBool(_snoozeUseCustomKey, useCustom);
+      debugPrint('💾 Saved snooze use custom: $useCustom');
+    } catch (e) {
+      debugPrint('❌ Error saving snooze use custom: $e');
+      rethrow;
+    }
+  }
+
+  /// Get whether to use custom snooze duration (false = default)
+  static Future<bool> getSnoozeUseCustom() async {
+    try {
+      return _prefs?.getBool(_snoozeUseCustomKey) ?? false; // Default to false
+    } catch (e) {
+      debugPrint('❌ Error getting snooze use custom: $e');
+      return false; // Fallback to default
+    }
+  }
+
+  /// Set custom snooze duration in minutes
+  static Future<void> setSnoozeCustomMinutes(int minutes) async {
+    try {
+      // Validate range
+      final validMinutes = minutes.clamp(1, 120);
+      await _prefs?.setInt(_snoozeCustomMinutesKey, validMinutes);
+      debugPrint('💾 Saved custom snooze minutes: $validMinutes');
+    } catch (e) {
+      debugPrint('❌ Error saving custom snooze minutes: $e');
+      rethrow;
+    }
+  }
+
+  /// Get custom snooze duration in minutes (default: 15)
+  static Future<int> getSnoozeCustomMinutes() async {
+    try {
+      return _prefs?.getInt(_snoozeCustomMinutesKey) ??
+          15; // Default to 15 minutes
+    } catch (e) {
+      debugPrint('❌ Error getting custom snooze minutes: $e');
+      return 15; // Fallback to 15 minutes
+    }
+  }
+
+  /// Get snooze configuration summary
+  static Future<Map<String, dynamic>> getSnoozeConfiguration() async {
+    final useCustom = await getSnoozeUseCustom();
+    final customMinutes = await getSnoozeCustomMinutes();
+
+    return {
+      'useCustom': useCustom,
+      'customMinutes': customMinutes,
+      'description': useCustom
+          ? 'Custom: $customMinutes minutes'
+          : 'Default: 10min, 1hour',
+    };
   }
 }

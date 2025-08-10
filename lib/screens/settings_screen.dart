@@ -35,6 +35,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _hasGeminiKey = false;
   bool _hasGroqKey = false;
 
+  // Default Tab variables
+  String _defaultReminderTab = 'Manual';
+  bool _snoozeUseCustom = false;
+  int _snoozeCustomMinutes = 15;
+
   @override
   void initState() {
     super.initState();
@@ -55,6 +60,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await Future.wait([
       _loadUpdateSettings(),
       _loadAISettings(),
+      _loadDefaultTabSettings(),
+      _loadSnoozeSettings(),
     ]);
   }
 
@@ -94,6 +101,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _loadDefaultTabSettings() async {
+    try {
+      final defaultTab = await StorageService.getDefaultReminderTabMode();
+      if (mounted) {
+        setState(() {
+          _defaultReminderTab = defaultTab;
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to load default tab settings: $e');
+    }
+  }
+
+  Future<void> _loadSnoozeSettings() async {
+    try {
+      final useCustom = await StorageService.getSnoozeUseCustom();
+      final customMinutes = await StorageService.getSnoozeCustomMinutes();
+      if (mounted) {
+        setState(() {
+          _snoozeUseCustom = useCustom;
+          _snoozeCustomMinutes = customMinutes;
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to load snooze settings: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -123,6 +158,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           const SizedBox(height: 8),
 
+          // Default Reminder Creation
+          _buildCleanSettingTile(
+            icon: Icons.add_circle_outline,
+            title: 'Default Reminder Creation',
+            subtitle: 'Opens $_defaultReminderTab tab by default',
+            onTap: () => _navigateToDefaultTabSettings(),
+          ),
+
+          const SizedBox(height: 8),
+
           // Appearance
           _buildCleanSettingTile(
             icon: Icons.palette_outlined,
@@ -139,6 +184,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: 'Notifications',
             subtitle: 'Reminder and alert settings',
             onTap: () => _showComingSoonSnackBar('Notifications'),
+          ),
+
+          const SizedBox(height: 8),
+          // Snooze Duration
+          _buildCleanSettingTile(
+            icon: Icons.snooze_outlined,
+            title: 'Snooze Duration',
+            subtitle: _getSnoozeStatusText(),
+            onTap: () => _navigateToSnoozeSettings(),
           ),
 
           const SizedBox(height: 8),
@@ -270,6 +324,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  void _navigateToDefaultTabSettings() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => _DefaultTabSettingsPage(
+          selectedTab: _defaultReminderTab,
+          onTabChanged: (tab) {
+            setState(() {
+              _defaultReminderTab = tab;
+            });
+          },
+        ),
+      ),
+    );
+  }
+
   void _navigateToAppearanceSettings() {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -320,6 +389,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
       MaterialPageRoute(
         builder: (context) => _AboutSettingsPage(
           currentVersion: _currentVersion,
+        ),
+      ),
+    );
+  }
+
+  String _getSnoozeStatusText() {
+    if (_snoozeUseCustom) {
+      return 'Custom: $_snoozeCustomMinutes minutes';
+    } else {
+      return 'Default: 10min, 1hour';
+    }
+  }
+
+  void _navigateToSnoozeSettings() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => _SnoozeSettingsPage(
+          useCustom: _snoozeUseCustom,
+          customMinutes: _snoozeCustomMinutes,
+          onSnoozeChanged: (useCustom, customMinutes) {
+            setState(() {
+              _snoozeUseCustom = useCustom;
+              _snoozeCustomMinutes = customMinutes;
+            });
+          },
         ),
       ),
     );
@@ -390,6 +484,210 @@ class _SettingsScreenState extends State<SettingsScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
+  }
+}
+
+// Default Tab Settings Page
+class _DefaultTabSettingsPage extends StatefulWidget {
+  final String selectedTab;
+  final Function(String) onTabChanged;
+
+  const _DefaultTabSettingsPage({
+    required this.selectedTab,
+    required this.onTabChanged,
+  });
+
+  @override
+  State<_DefaultTabSettingsPage> createState() =>
+      _DefaultTabSettingsPageState();
+}
+
+class _DefaultTabSettingsPageState extends State<_DefaultTabSettingsPage> {
+  late String _selectedTab;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedTab = widget.selectedTab;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Default Reminder Creation'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        children: [
+          Text(
+            'Choose Default Tab',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w500,
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.7),
+                ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Select which tab should open by default when you tap the + button to create a new reminder.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.7),
+                ),
+          ),
+          const SizedBox(height: 24),
+
+          // Manual option
+          _buildTabOptionTile(
+            icon: Icons.edit_outlined,
+            title: 'Manual',
+            subtitle: 'Create reminders by filling out forms',
+            value: 'Manual',
+            description:
+                'Perfect for precise control over reminder details, scheduling, and repeat options.',
+          ),
+
+          const SizedBox(height: 8),
+
+          // AI Text option
+          _buildTabOptionTile(
+            icon: Icons.auto_awesome,
+            title: 'AI Text',
+            subtitle: 'Type naturally and let AI create reminders',
+            value: 'AI Text',
+            description:
+                'Great for creating multiple reminders quickly from natural language descriptions.',
+          ),
+
+          const SizedBox(height: 8),
+
+          // Voice option
+          _buildTabOptionTile(
+            icon: Icons.mic_outlined,
+            title: 'Voice',
+            subtitle: 'Speak your reminders out loud',
+            value: 'Voice',
+            description:
+                'Ideal for hands-free reminder creation while you\'re busy or on the go.',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTabOptionTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required String value,
+    required String description,
+  }) {
+    final isSelected = _selectedTab == value;
+
+    return Card(
+      elevation: isSelected ? 2 : 0,
+      color: isSelected
+          ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.1)
+          : null,
+      child: ListTile(
+        contentPadding: const EdgeInsets.all(16),
+        leading: Icon(
+          icon,
+          size: 28,
+          color: isSelected
+              ? Theme.of(context).colorScheme.primary
+              : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+        ),
+        title: Text(
+          title,
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            color: isSelected
+                ? Theme.of(context).colorScheme.primary
+                : Theme.of(context).colorScheme.onSurface,
+          ),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 4),
+            Text(
+              subtitle,
+              style: TextStyle(
+                fontWeight: FontWeight.w500,
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.8),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              description,
+              style: TextStyle(
+                fontSize: 13,
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.6),
+                height: 1.3,
+              ),
+            ),
+          ],
+        ),
+        trailing: Radio<String>(
+          value: value,
+          groupValue: _selectedTab,
+          onChanged: (String? newValue) {
+            if (newValue != null) {
+              _updateDefaultTab(newValue);
+            }
+          },
+        ),
+        onTap: () => _updateDefaultTab(value),
+      ),
+    );
+  }
+
+  Future<void> _updateDefaultTab(String newTab) async {
+    setState(() {
+      _selectedTab = newTab;
+    });
+
+    try {
+      await StorageService.setDefaultReminderTabByMode(newTab);
+      widget.onTabChanged(newTab);
+
+      HapticFeedback.lightImpact();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Default reminder creation set to $newTab'),
+            behavior: SnackBarBehavior.floating,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to save preference: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        );
+      }
+    }
   }
 }
 
@@ -1480,6 +1778,447 @@ class _AboutSettingsPage extends StatelessWidget {
         content: Text('$feature is coming soon!'),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
+  }
+}
+
+class _SnoozeSettingsPage extends StatefulWidget {
+  final bool useCustom;
+  final int customMinutes;
+  final Function(bool, int) onSnoozeChanged;
+
+  const _SnoozeSettingsPage({
+    required this.useCustom,
+    required this.customMinutes,
+    required this.onSnoozeChanged,
+  });
+
+  @override
+  State<_SnoozeSettingsPage> createState() => _SnoozeSettingsPageState();
+}
+
+class _SnoozeSettingsPageState extends State<_SnoozeSettingsPage> {
+  late bool _useCustom;
+  late double _customMinutes;
+
+  @override
+  void initState() {
+    super.initState();
+    _useCustom = widget.useCustom;
+    _customMinutes = widget.customMinutes.toDouble();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Snooze Duration'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        children: [
+          Text(
+            'Snooze Options',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w500,
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.7),
+                ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Choose how long reminders should be snoozed when you tap the snooze button.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.7),
+                ),
+          ),
+          const SizedBox(height: 24),
+
+          // Default option
+          _buildSnoozeOptionTile(
+            icon: Icons.restore,
+            title: 'Default',
+            subtitle: 'Two snooze options: 10 minutes and 1 hour',
+            value: false,
+            description:
+                'Classic snooze with quick 10-minute option and longer 1-hour option.',
+          ),
+
+          const SizedBox(height: 8),
+
+          // Custom option
+          _buildSnoozeOptionTile(
+            icon: Icons.tune,
+            title: 'Custom',
+            subtitle: 'Set your own snooze duration',
+            value: true,
+            description: 'Choose any duration between 1 and 120 minutes.',
+          ),
+
+          if (_useCustom) ...[
+            const SizedBox(height: 24),
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Theme.of(context)
+                    .colorScheme
+                    .primary
+                    .withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .primary
+                      .withValues(alpha: 0.3),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Custom Snooze Duration',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Slider
+                  Row(
+                    children: [
+                      // Minus button
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surface,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .outline
+                                .withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: IconButton(
+                          onPressed: _customMinutes > 1
+                              ? () {
+                                  setState(() {
+                                    _customMinutes =
+                                        (_customMinutes - 1).clamp(1, 120);
+                                  });
+                                }
+                              : null,
+                          icon: const Icon(Icons.remove),
+                          iconSize: 20,
+                          constraints: const BoxConstraints(
+                            minWidth: 40,
+                            minHeight: 40,
+                          ),
+                        ),
+                      ),
+
+                      // Slider
+                      Expanded(
+                        child: Slider(
+                          value: _customMinutes,
+                          min: 1,
+                          max: 120,
+                          divisions: 119,
+                          label: '${_customMinutes.round()} min',
+                          onChanged: (value) {
+                            setState(() {
+                              _customMinutes = value;
+                            });
+                          },
+                        ),
+                      ),
+
+                      // Plus button
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surface,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .outline
+                                .withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: IconButton(
+                          onPressed: _customMinutes < 120
+                              ? () {
+                                  setState(() {
+                                    _customMinutes =
+                                        (_customMinutes + 1).clamp(1, 120);
+                                  });
+                                }
+                              : null,
+                          icon: const Icon(Icons.add),
+                          iconSize: 20,
+                          constraints: const BoxConstraints(
+                            minWidth: 40,
+                            minHeight: 40,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    alignment: WrapAlignment.center,
+                    children: [
+                      _buildPresetButton(5),
+                      _buildPresetButton(10),
+                      _buildPresetButton(15),
+                      _buildPresetButton(30),
+                      _buildPresetButton(60),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+// Direct input field
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Or enter directly: ',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      SizedBox(
+                        width: 80,
+                        child: TextField(
+                          keyboardType: TextInputType.number,
+                          textAlign: TextAlign.center,
+                          decoration: const InputDecoration(
+                            hintText: '15',
+                            contentPadding: EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 8),
+                            border: OutlineInputBorder(),
+                          ),
+                          onSubmitted: (value) {
+                            final intValue = int.tryParse(value);
+                            if (intValue != null &&
+                                intValue >= 1 &&
+                                intValue <= 120) {
+                              setState(() {
+                                _customMinutes = intValue.toDouble();
+                              });
+                            }
+                          },
+                        ),
+                      ),
+                      const Text(' min'),
+                    ],
+                  ),
+                  // Current value display
+                  Center(
+                    child: Text(
+                      '${_customMinutes.round()} minutes',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  // Range indicators
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '1 min',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurface
+                                  .withValues(alpha: 0.6),
+                            ),
+                      ),
+                      Text(
+                        '120 min',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurface
+                                  .withValues(alpha: 0.6),
+                            ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          const SizedBox(height: 32),
+
+          // Save button
+          FilledButton(
+            onPressed: _saveSettings,
+            child: const Text('Save Settings'),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Reset to default button
+          if (_useCustom)
+            OutlinedButton(
+              onPressed: () {
+                setState(() {
+                  _useCustom = false;
+                  _customMinutes = 15;
+                });
+                _saveSettings();
+              },
+              child: const Text('Reset to Default'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSnoozeOptionTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool value,
+    required String description,
+  }) {
+    final isSelected = _useCustom == value;
+
+    return Card(
+      elevation: isSelected ? 2 : 0,
+      color: isSelected
+          ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.1)
+          : null,
+      child: ListTile(
+        contentPadding: const EdgeInsets.all(16),
+        leading: Icon(
+          icon,
+          size: 28,
+          color: isSelected
+              ? Theme.of(context).colorScheme.primary
+              : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+        ),
+        title: Text(
+          title,
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            color: isSelected
+                ? Theme.of(context).colorScheme.primary
+                : Theme.of(context).colorScheme.onSurface,
+          ),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 4),
+            Text(
+              subtitle,
+              style: TextStyle(
+                fontWeight: FontWeight.w500,
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.8),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              description,
+              style: TextStyle(
+                fontSize: 13,
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.6),
+                height: 1.3,
+              ),
+            ),
+          ],
+        ),
+        trailing: Radio<bool>(
+          value: value,
+          groupValue: _useCustom,
+          onChanged: (bool? newValue) {
+            if (newValue != null) {
+              setState(() {
+                _useCustom = newValue;
+              });
+            }
+          },
+        ),
+        onTap: () => setState(() => _useCustom = value),
+      ),
+    );
+  }
+
+  Future<void> _saveSettings() async {
+    try {
+      await StorageService.setSnoozeUseCustom(_useCustom);
+      await StorageService.setSnoozeCustomMinutes(_customMinutes.round());
+
+      widget.onSnoozeChanged(_useCustom, _customMinutes.round());
+
+      HapticFeedback.lightImpact();
+    } catch (e) {
+      debugPrint('Failed to save snooze settings: $e');
+      // No SnackBar shown - just log the error
+    }
+  }
+
+  Widget _buildPresetButton(int minutes) {
+    final isSelected = _customMinutes.round() == minutes;
+
+    return Material(
+      color: isSelected
+          ? Theme.of(context).colorScheme.primary
+          : Theme.of(context).colorScheme.surface,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () {
+          setState(() {
+            _customMinutes = minutes.toDouble();
+          });
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isSelected
+                  ? Theme.of(context).colorScheme.primary
+                  : Theme.of(context)
+                      .colorScheme
+                      .outline
+                      .withValues(alpha: 0.3),
+            ),
+          ),
+          child: Text(
+            '${minutes}m',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: isSelected
+                  ? Theme.of(context).colorScheme.onPrimary
+                  : Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
+        ),
       ),
     );
   }

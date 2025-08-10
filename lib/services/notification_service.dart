@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/reminder.dart';
 import 'storage_service.dart';
 
@@ -12,8 +13,8 @@ class NotificationService {
 
   // Action IDs for notification buttons
   static const String completeActionId = 'complete_action';
-  static const String snooze10ActionId = 'snooze_10m_action';
-  static const String snooze1hActionId = 'snooze_1h_action';
+  static const String snoozeAction1Id = 'snooze_action_1';
+  static const String snoozeAction2Id = 'snooze_action_2';
 
   static Future<void> initialize() async {
     // Initialize timezone database
@@ -30,25 +31,21 @@ class NotificationService {
       '✓ Complete',
     );
 
-    final DarwinNotificationAction snooze10Action =
-        DarwinNotificationAction.plain(
-      snooze10ActionId,
-      '⏰ 10min',
-    );
-
-    final DarwinNotificationAction snooze1hAction =
-        DarwinNotificationAction.plain(
-      snooze1hActionId,
-      '⏰ 1hour',
-    );
+    final snoozeConfig = await _getSnoozeConfig();
+    final snoozeActions =
+        (snoozeConfig['actions'] as List<Map<String, dynamic>>)
+            .map((action) => DarwinNotificationAction.plain(
+                  action['id'] as String,
+                  action['label'] as String,
+                ))
+            .toList();
 
     final DarwinNotificationCategory reminderCategory =
         DarwinNotificationCategory(
       'reminder_category',
       actions: <DarwinNotificationAction>[
         completeAction,
-        snooze10Action,
-        snooze1hAction,
+        ...snoozeActions,
       ],
       options: <DarwinNotificationCategoryOption>{
         DarwinNotificationCategoryOption.hiddenPreviewShowTitle,
@@ -99,6 +96,127 @@ class NotificationService {
         );
   }
 
+  /// Get user's snooze configuration
+  static Future<Map<String, dynamic>> _getSnoozeConfig() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final useCustom = prefs.getBool('snooze_use_custom') ?? false;
+      final customMinutes = prefs.getInt('snooze_custom_minutes') ?? 15;
+
+      if (useCustom) {
+        // Smart second option based on custom duration
+        String secondLabel;
+        Duration secondDuration;
+
+        if (customMinutes <= 30) {
+          // If custom is 30min or less, offer 1 hour
+          secondLabel = '⏰ 1hour';
+          secondDuration = const Duration(hours: 1);
+        } else if (customMinutes <= 60) {
+          // If custom is 31-60min, offer 2 hours
+          secondLabel = '⏰ 2hours';
+          secondDuration = const Duration(hours: 2);
+        } else {
+          // If custom is over 60min, offer half the custom duration as shorter option
+          final halfCustom = (customMinutes / 2).round();
+          secondLabel = '⏰ ${halfCustom}min';
+          secondDuration = Duration(minutes: halfCustom);
+        }
+
+        return {
+          'useCustom': true,
+          'actions': [
+            {
+              'id': snoozeAction1Id,
+              'label': '⏰ ${customMinutes}min',
+              'duration': Duration(minutes: customMinutes)
+            },
+            {
+              'id': snoozeAction2Id,
+              'label': secondLabel,
+              'duration': secondDuration
+            },
+          ],
+        };
+      } else {
+        return {
+          'useCustom': false,
+          'actions': [
+            {
+              'id': snoozeAction1Id,
+              'label': '⏰ 10min',
+              'duration': Duration(minutes: 10)
+            },
+            {
+              'id': snoozeAction2Id,
+              'label': '⏰ 1hour',
+              'duration': Duration(hours: 1)
+            },
+          ],
+        };
+      }
+    } catch (e) {
+      debugPrint('❌ Error getting snooze config: $e');
+      // Fallback to default
+      return {
+        'useCustom': false,
+        'actions': [
+          {
+            'id': snoozeAction1Id,
+            'label': '⏰ 10min',
+            'duration': Duration(minutes: 10)
+          },
+          {
+            'id': snoozeAction2Id,
+            'label': '⏰ 1hour',
+            'duration': Duration(hours: 1)
+          },
+        ],
+      };
+    }
+  }
+
+  // Build dynamic Android notification actions based on user preferences
+  static Future<List<AndroidNotificationAction>>
+      _buildAndroidNotificationActions() async {
+    final snoozeConfig = await _getSnoozeConfig();
+    final snoozeActions =
+        (snoozeConfig['actions'] as List<Map<String, dynamic>>)
+            .map((action) => AndroidNotificationAction(
+                  action['id'] as String,
+                  action['label'] as String,
+                  showsUserInterface: false,
+                  cancelNotification: true,
+                ))
+            .toList();
+
+    return [
+      AndroidNotificationAction(
+        completeActionId,
+        '✓ Complete',
+        showsUserInterface: false,
+        cancelNotification: true,
+      ),
+      ...snoozeActions,
+    ];
+  }
+
+  static Future<Duration> _getSnoozeDurationForAction(String actionId) async {
+    final snoozeConfig = await _getSnoozeConfig();
+    final actions = snoozeConfig['actions'] as List<Map<String, dynamic>>;
+
+    for (final action in actions) {
+      if (action['id'] == actionId) {
+        return action['duration'] as Duration;
+      }
+    }
+
+    // Fallback to 10 minutes if action not found
+    debugPrint(
+        '⚠️ Unknown snooze action ID: $actionId, defaulting to 10 minutes');
+    return const Duration(minutes: 10);
+  }
+
   static void _onNotificationTapped(NotificationResponse response) {
     debugPrint(
         'Notification tapped: ${response.payload}, Action: ${response.actionId}');
@@ -146,15 +264,11 @@ class NotificationService {
           debugPrint('✅ Calling Complete action');
           await _handleCompleteAction(reminderId, timeSlotId);
           break;
-        case snooze10ActionId:
-          debugPrint('⏰ Calling Snooze 10min action');
-          await _handleSnoozeAction(
-              reminderId, timeSlotId, const Duration(minutes: 10));
-          break;
-        case snooze1hActionId:
-          debugPrint('⏰ Calling Snooze 1hour action');
-          await _handleSnoozeAction(
-              reminderId, timeSlotId, const Duration(hours: 1));
+        case snoozeAction1Id:
+        case snoozeAction2Id:
+          debugPrint('⏰ Calling dynamic snooze action: $actionId');
+          final snoozeDuration = await _getSnoozeDurationForAction(actionId!);
+          await _handleSnoozeAction(reminderId, timeSlotId, snoozeDuration);
           break;
         default:
           debugPrint('👆 Regular notification tap for reminder: $reminderId');
@@ -388,7 +502,7 @@ class NotificationService {
         _generateTimeSlotNotificationId(reminder.id, timeSlot.id);
 
     // Create Android notification with action buttons
-    const AndroidNotificationDetails androidDetails =
+    final AndroidNotificationDetails androidDetails =
         AndroidNotificationDetails(
       'reminder_channel',
       'Reminders',
@@ -397,27 +511,8 @@ class NotificationService {
       priority: Priority.high,
       showWhen: true,
       icon: '@mipmap/ic_launcher',
-      styleInformation: BigTextStyleInformation(''),
-      actions: <AndroidNotificationAction>[
-        AndroidNotificationAction(
-          completeActionId,
-          '✓ Complete',
-          showsUserInterface: false,
-          cancelNotification: true,
-        ),
-        AndroidNotificationAction(
-          snooze10ActionId,
-          '⏰ 10min',
-          showsUserInterface: false,
-          cancelNotification: true,
-        ),
-        AndroidNotificationAction(
-          snooze1hActionId,
-          '⏰ 1hour',
-          showsUserInterface: false,
-          cancelNotification: true,
-        ),
-      ],
+      styleInformation: const BigTextStyleInformation(''),
+      actions: await _buildAndroidNotificationActions(),
     );
 
     // Create iOS notification with category
@@ -428,7 +523,7 @@ class NotificationService {
       categoryIdentifier: 'reminder_category',
     );
 
-    const NotificationDetails notificationDetails = NotificationDetails(
+    final NotificationDetails notificationDetails = NotificationDetails(
       android: androidDetails,
       iOS: iosDetails,
       macOS: iosDetails,
@@ -470,7 +565,7 @@ class NotificationService {
       }
 
       // Create Android notification with action buttons
-      const AndroidNotificationDetails androidDetails =
+      final AndroidNotificationDetails androidDetails =
           AndroidNotificationDetails(
         'reminder_channel',
         'Reminders',
@@ -479,27 +574,8 @@ class NotificationService {
         priority: Priority.high,
         showWhen: true,
         icon: '@mipmap/ic_launcher',
-        styleInformation: BigTextStyleInformation(''),
-        actions: <AndroidNotificationAction>[
-          AndroidNotificationAction(
-            completeActionId,
-            '✓ Complete',
-            showsUserInterface: false,
-            cancelNotification: true,
-          ),
-          AndroidNotificationAction(
-            snooze10ActionId,
-            '⏰ 10min',
-            showsUserInterface: false,
-            cancelNotification: true,
-          ),
-          AndroidNotificationAction(
-            snooze1hActionId,
-            '⏰ 1hour',
-            showsUserInterface: false,
-            cancelNotification: true,
-          ),
-        ],
+        styleInformation: const BigTextStyleInformation(''),
+        actions: await _buildAndroidNotificationActions(),
       );
 
       // Create iOS notification with category
@@ -510,7 +586,7 @@ class NotificationService {
         categoryIdentifier: 'reminder_category',
       );
 
-      const NotificationDetails notificationDetails = NotificationDetails(
+      final NotificationDetails notificationDetails = NotificationDetails(
         android: androidDetails,
         iOS: iosDetails,
         macOS: iosDetails,
@@ -654,33 +730,14 @@ class NotificationService {
     required String body,
     String? payload,
   }) async {
-    const AndroidNotificationDetails androidDetails =
+    final AndroidNotificationDetails androidDetails =
         AndroidNotificationDetails(
       'immediate_channel',
       'Immediate Notifications',
       channelDescription: 'Immediate notifications for testing',
       importance: Importance.high,
       priority: Priority.high,
-      actions: <AndroidNotificationAction>[
-        AndroidNotificationAction(
-          completeActionId,
-          '✓ Complete',
-          showsUserInterface: false,
-          cancelNotification: true,
-        ),
-        AndroidNotificationAction(
-          snooze10ActionId,
-          '⏰ 10min',
-          showsUserInterface: false,
-          cancelNotification: true,
-        ),
-        AndroidNotificationAction(
-          snooze1hActionId,
-          '⏰ 1hour',
-          showsUserInterface: false,
-          cancelNotification: true,
-        ),
-      ],
+      actions: await _buildAndroidNotificationActions(),
     );
 
     const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
@@ -690,7 +747,7 @@ class NotificationService {
       categoryIdentifier: 'reminder_category',
     );
 
-    const NotificationDetails notificationDetails = NotificationDetails(
+    final NotificationDetails notificationDetails = NotificationDetails(
       android: androidDetails,
       iOS: iosDetails,
       macOS: iosDetails,
