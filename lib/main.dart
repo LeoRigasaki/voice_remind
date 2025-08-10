@@ -12,6 +12,7 @@ import 'screens/main_navigation.dart';
 import 'services/ai_reminder_service.dart';
 import 'services/voice_service.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'dart:async';
 
 // Global notification plugin instance
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
@@ -168,6 +169,11 @@ class _VoiceRemindAppState extends State<VoiceRemindApp>
   ThemeMode _themeMode = ThemeMode.system;
   late final GlobalKey<NavigatorState> _navigatorKey;
 
+  // Enhanced lifecycle management
+  AppLifecycleState? _lastLifecycleState;
+  Timer? _backgroundUpdateChecker;
+  bool _isAppInBackground = false;
+
   @override
   void initState() {
     super.initState();
@@ -179,6 +185,9 @@ class _VoiceRemindAppState extends State<VoiceRemindApp>
 
     // Perform auto update check
     _performAutoUpdateCheck();
+
+    // Start enhanced background update monitoring
+    _startBackgroundUpdateMonitoring();
   }
 
   void _setupThemeListener() {
@@ -193,6 +202,25 @@ class _VoiceRemindAppState extends State<VoiceRemindApp>
         });
       }
     });
+  }
+
+  void _startBackgroundUpdateMonitoring() {
+    // Start a more aggressive checker when app is in foreground
+    _backgroundUpdateChecker = Timer.periodic(
+      const Duration(seconds: 1), // Check every second when app is active
+      (timer) async {
+        if (!_isAppInBackground) {
+          try {
+            final hasUpdates = await StorageService.checkForBackgroundUpdates();
+            if (hasUpdates) {
+              debugPrint('🔄 Background update detected via active monitoring');
+            }
+          } catch (e) {
+            debugPrint('❌ Error in background update monitoring: $e');
+          }
+        }
+      },
+    );
   }
 
   Future<void> _performAutoUpdateCheck() async {
@@ -226,6 +254,7 @@ class _VoiceRemindAppState extends State<VoiceRemindApp>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _backgroundUpdateChecker?.cancel();
     // Dispose services when app is closed
     StorageService.dispose();
     ThemeService.dispose();
@@ -235,17 +264,92 @@ class _VoiceRemindAppState extends State<VoiceRemindApp>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    // Handle app lifecycle changes
-    if (state == AppLifecycleState.resumed) {
-      // Refresh data when app comes back to foreground
-      StorageService.refreshData();
 
-      // Reinitialize AI service in case settings changed
-      _reinitializeAIOnResume();
+    debugPrint('🔄 App lifecycle changed: $_lastLifecycleState → $state');
 
-      // Check for updates when app comes to foreground
-      _performAutoUpdateCheck();
+    // Handle app lifecycle changes with enhanced detection
+    switch (state) {
+      case AppLifecycleState.resumed:
+        _handleAppResumed();
+        break;
+      case AppLifecycleState.paused:
+        _handleAppPaused();
+        break;
+      case AppLifecycleState.inactive:
+        _handleAppInactive();
+        break;
+      case AppLifecycleState.detached:
+        _handleAppDetached();
+        break;
+      case AppLifecycleState.hidden:
+        _handleAppHidden();
+        break;
     }
+
+    _lastLifecycleState = state;
+  }
+
+  void _handleAppResumed() async {
+    debugPrint('📱 App resumed - checking for updates');
+    _isAppInBackground = false;
+
+    // Multiple strategies to detect background updates
+    try {
+      // Strategy 1: Check for background updates
+      final hasBackgroundUpdates =
+          await StorageService.checkForBackgroundUpdates();
+
+      // Strategy 2: Force refresh if coming from background
+      if (_lastLifecycleState == AppLifecycleState.paused ||
+          _lastLifecycleState == AppLifecycleState.hidden) {
+        debugPrint('📱 Coming from background - forcing refresh');
+        await StorageService.forceRefreshFromBackgroundUpdate();
+      }
+
+      // Strategy 3: Double-check after a short delay (handles race conditions)
+      Timer(const Duration(milliseconds: 500), () async {
+        final hasDelayedUpdates =
+            await StorageService.checkForBackgroundUpdates();
+        if (hasDelayedUpdates) {
+          debugPrint('📱 Delayed background update detected');
+        }
+      });
+
+      if (hasBackgroundUpdates) {
+        debugPrint('✅ Background updates processed on app resume');
+      }
+    } catch (e) {
+      debugPrint('❌ Error handling app resume: $e');
+    }
+
+    // Refresh data when app comes back to foreground
+    StorageService.refreshData();
+
+    // Reinitialize AI service in case settings changed
+    _reinitializeAIOnResume();
+
+    // Check for updates when app comes to foreground
+    _performAutoUpdateCheck();
+  }
+
+  void _handleAppPaused() {
+    debugPrint('📱 App paused');
+    _isAppInBackground = true;
+  }
+
+  void _handleAppInactive() {
+    debugPrint('📱 App inactive');
+    // Don't set background flag for inactive state as it's transitional
+  }
+
+  void _handleAppDetached() {
+    debugPrint('📱 App detached');
+    _isAppInBackground = true;
+  }
+
+  void _handleAppHidden() {
+    debugPrint('📱 App hidden');
+    _isAppInBackground = true;
   }
 
   Future<void> _reinitializeAIOnResume() async {

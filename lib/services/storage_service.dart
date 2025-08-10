@@ -10,6 +10,12 @@ class StorageService {
   static SharedPreferences? _prefs;
   static const String _remindersKey = 'reminders';
 
+  // Background update detection
+  static const String _lastUpdateKey = 'last_background_update';
+  static const String _backgroundUpdateMarkerKey = 'background_update_marker';
+  static DateTime? _lastKnownUpdate;
+  static Timer? _backgroundUpdateChecker;
+
   // AI Configuration Keys
   static const String _geminiApiKeyKey = 'gemini_api_key';
   static const String _groqApiKeyKey = 'groq_api_key';
@@ -44,7 +50,32 @@ class StorageService {
     final initialReminders = await getReminders();
     _remindersController.add(initialReminders);
 
+    // Initialize background update tracking
+    _lastKnownUpdate = DateTime.fromMillisecondsSinceEpoch(
+        _prefs?.getInt(_lastUpdateKey) ?? 0);
+
+    // Start periodic background update checking
+    _startBackgroundUpdateChecker();
+
     debugPrint('✅ StorageService initialized with enhanced API persistence');
+  }
+
+  /// Start a timer to periodically check for background updates
+  static void _startBackgroundUpdateChecker() {
+    _backgroundUpdateChecker?.cancel();
+    _backgroundUpdateChecker = Timer.periodic(
+      const Duration(seconds: 2), // Check every 2 seconds when app is active
+      (timer) async {
+        try {
+          final hasUpdates = await checkForBackgroundUpdates();
+          if (hasUpdates) {
+            debugPrint('🔄 Background update detected via periodic check');
+          }
+        } catch (e) {
+          debugPrint('❌ Error in background update checker: $e');
+        }
+      },
+    );
   }
 
   static Future<void> _performEnhancedMigration() async {
@@ -169,6 +200,7 @@ class StorageService {
   }
 
   static void dispose() {
+    _backgroundUpdateChecker?.cancel();
     _remindersController.close();
   }
 
@@ -197,10 +229,109 @@ class StorageService {
       final String remindersJson = json.encode(remindersMapList);
       await _prefs?.setString(_remindersKey, remindersJson);
 
+      // Mark the time of this update for background change detection
+      await _markBackgroundUpdate();
+
       _remindersController.add(reminders);
     } catch (e) {
       debugPrint('❌ Error saving reminders: $e');
       rethrow;
+    }
+  }
+
+  /// Mark that a background update occurred with an enhanced marker system
+  static Future<void> _markBackgroundUpdate() async {
+    final now = DateTime.now();
+    final updateId =
+        '${now.millisecondsSinceEpoch}_${math.Random().nextInt(1000)}';
+
+    await _prefs?.setInt(_lastUpdateKey, now.millisecondsSinceEpoch);
+    await _prefs?.setString(_backgroundUpdateMarkerKey, updateId);
+
+    debugPrint('📱 Marked background update at: $now (ID: $updateId)');
+  }
+
+  /// Force mark a background update from notification actions
+  static Future<void> markNotificationUpdate() async {
+    try {
+      final now = DateTime.now();
+      final updateId =
+          'notification_${now.millisecondsSinceEpoch}_${math.Random().nextInt(1000)}';
+
+      // Create a new SharedPreferences instance for the background isolate
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_lastUpdateKey, now.millisecondsSinceEpoch);
+      await prefs.setString(_backgroundUpdateMarkerKey, updateId);
+
+      debugPrint('🔔 Marked notification update at: $now (ID: $updateId)');
+
+      // CRITICAL: Reload SharedPreferences to force cross-isolate synchronization
+      await prefs.reload();
+
+      // Force reload and emit fresh data immediately
+      final freshReminders = await getReminders();
+      _remindersController.add(freshReminders);
+      debugPrint(
+          '🔔 Forced stream update with ${freshReminders.length} reminders');
+    } catch (e) {
+      debugPrint('❌ Error marking notification update: $e');
+    }
+  }
+
+  /// Check if background updates occurred and refresh if needed
+  static Future<bool> checkForBackgroundUpdates() async {
+    try {
+      // CRITICAL: Reload SharedPreferences to get latest data from other isolates
+      await _prefs?.reload();
+
+      final lastUpdateTimestamp = _prefs?.getInt(_lastUpdateKey) ?? 0;
+      final lastUpdate =
+          DateTime.fromMillisecondsSinceEpoch(lastUpdateTimestamp);
+      final currentMarker = _prefs?.getString(_backgroundUpdateMarkerKey);
+
+      // If we have no known last update, consider this the first check
+      if (_lastKnownUpdate == null) {
+        _lastKnownUpdate = lastUpdate;
+        return false;
+      }
+
+      // Check if there was an update since we last knew about it
+      if (lastUpdate.isAfter(_lastKnownUpdate!)) {
+        debugPrint(
+            '🔄 Background update detected! Last known: $_lastKnownUpdate, Latest: $lastUpdate');
+        debugPrint('🔄 Update marker: $currentMarker');
+        _lastKnownUpdate = lastUpdate;
+
+        // Refresh the data and notify listeners
+        await refreshData();
+        return true;
+      }
+
+      return false;
+    } catch (e) {
+      debugPrint('❌ Error checking background updates: $e');
+      return false;
+    }
+  }
+
+  /// Force refresh data from storage and update stream
+  static Future<void> forceRefreshFromBackgroundUpdate() async {
+    try {
+      debugPrint('🔄 Force refreshing data due to suspected background update');
+
+      // Reload data directly from storage
+      final freshReminders = await getReminders();
+
+      // Force update the stream even if data appears the same
+      _remindersController.add(freshReminders);
+
+      // Update our last known timestamp
+      _lastKnownUpdate = DateTime.now();
+
+      debugPrint(
+          '🔄 Force refresh completed - ${freshReminders.length} reminders loaded');
+    } catch (e) {
+      debugPrint('❌ Error in force refresh: $e');
     }
   }
 
@@ -238,6 +369,92 @@ class StorageService {
   static Future<void> clearAllReminders() async {
     await _prefs?.remove(_remindersKey);
     _remindersController.add([]);
+  }
+
+  // =============================================================================
+  // NEW: Notification Action Helper Methods
+  // =============================================================================
+
+  /// Snooze a single-time reminder by the specified duration
+  static Future<void> snoozeReminder(
+      String reminderId, Duration snoozeDuration) async {
+    final reminder = await getReminderById(reminderId);
+    if (reminder == null) return;
+
+    final snoozeTime = DateTime.now().add(snoozeDuration);
+    final snoozedReminder = reminder.copyWith(scheduledTime: snoozeTime);
+
+    await updateReminder(snoozedReminder);
+    debugPrint(
+        '⏰ Snoozed reminder $reminderId for ${snoozeDuration.inMinutes} minutes');
+  }
+
+  /// Snooze a specific time slot by the specified duration
+  static Future<void> snoozeTimeSlot(
+      String reminderId, String timeSlotId, Duration snoozeDuration) async {
+    final reminder = await getReminderById(reminderId);
+    if (reminder == null || !reminder.hasMultipleTimes) return;
+
+    final timeSlot = reminder.timeSlots.firstWhere(
+      (slot) => slot.id == timeSlotId,
+      orElse: () => throw Exception('Time slot not found'),
+    );
+
+    final snoozeTime = DateTime.now().add(snoozeDuration);
+    final snoozedTimeSlot = timeSlot.copyWith(
+      time: TimeOfDay(hour: snoozeTime.hour, minute: snoozeTime.minute),
+    );
+
+    await updateTimeSlot(reminderId, timeSlotId, snoozedTimeSlot);
+    debugPrint(
+        '⏰ Snoozed time slot $timeSlotId for ${snoozeDuration.inMinutes} minutes');
+  }
+
+  /// Complete a reminder entirely (for single-time reminders)
+  static Future<void> completeReminder(String reminderId) async {
+    await updateReminderStatus(reminderId, ReminderStatus.completed);
+    debugPrint('✅ Completed reminder $reminderId');
+  }
+
+  /// Complete a specific time slot (for multi-time reminders)
+  static Future<void> completeTimeSlot(
+      String reminderId, String timeSlotId) async {
+    await updateTimeSlotStatus(
+        reminderId, timeSlotId, ReminderStatus.completed);
+    debugPrint('✅ Completed time slot $timeSlotId for reminder $reminderId');
+  }
+
+  /// Get reminder action summary (for debugging/logging)
+  static Future<Map<String, dynamic>> getReminderActionSummary(
+      String reminderId) async {
+    final reminder = await getReminderById(reminderId);
+    if (reminder == null) return {};
+
+    if (reminder.hasMultipleTimes) {
+      final completedSlots =
+          reminder.timeSlots.where((slot) => slot.isCompleted).length;
+      final totalSlots = reminder.timeSlots.length;
+      final pendingSlots = reminder.timeSlots
+          .where((slot) => slot.status == ReminderStatus.pending)
+          .length;
+
+      return {
+        'type': 'multi-time',
+        'completedSlots': completedSlots,
+        'totalSlots': totalSlots,
+        'pendingSlots': pendingSlots,
+        'progress': totalSlots > 0 ? completedSlots / totalSlots : 0.0,
+        'overallStatus': reminder.overallStatus.toString(),
+      };
+    } else {
+      return {
+        'type': 'single-time',
+        'status': reminder.status.toString(),
+        'isCompleted': reminder.isCompleted,
+        'isOverdue': reminder.isOverdue,
+        'scheduledTime': reminder.scheduledTime.toIso8601String(),
+      };
+    }
   }
 
   // =============================================================================
@@ -443,6 +660,8 @@ class StorageService {
   static Future<void> refreshData() async {
     final reminders = await getReminders();
     _remindersController.add(reminders);
+    debugPrint(
+        '🔄 Refreshed reminder data - ${reminders.length} reminders loaded');
   }
 
   static Future<List<Reminder>> getRemindersBySpace(String? spaceId) async {

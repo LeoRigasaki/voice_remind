@@ -1,3 +1,4 @@
+// [screens]/add_reminder_screen.dart
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'dart:async';
@@ -105,10 +106,13 @@ class _AddReminderScreenState extends State<AddReminderScreen> {
   }
 
   Future<void> _selectDate() async {
+    final now = DateTime.now();
+    final initialDate = _selectedDate.isBefore(now) ? now : _selectedDate;
+
     final date = await showDatePicker(
       context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime.now(),
+      initialDate: initialDate,
+      firstDate: now,
       lastDate: DateTime.now().add(const Duration(days: 365)),
       builder: (context, child) {
         return Theme(

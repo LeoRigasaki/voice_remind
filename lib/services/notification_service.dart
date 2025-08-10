@@ -3,27 +3,68 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import '../models/reminder.dart';
+import 'storage_service.dart';
 
+@pragma('vm:entry-point')
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
 
+  // Action IDs for notification buttons
+  static const String completeActionId = 'complete_action';
+  static const String snooze10ActionId = 'snooze_10m_action';
+  static const String snooze1hActionId = 'snooze_1h_action';
+
   static Future<void> initialize() async {
     // Initialize timezone database
     tz.initializeTimeZones();
+
     // Android initialization
     const AndroidInitializationSettings androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
 
-    // iOS initialization
-    const DarwinInitializationSettings iosSettings =
+    // iOS notification categories with actions
+    final DarwinNotificationAction completeAction =
+        DarwinNotificationAction.plain(
+      completeActionId,
+      '✓ Complete',
+    );
+
+    final DarwinNotificationAction snooze10Action =
+        DarwinNotificationAction.plain(
+      snooze10ActionId,
+      '⏰ 10min',
+    );
+
+    final DarwinNotificationAction snooze1hAction =
+        DarwinNotificationAction.plain(
+      snooze1hActionId,
+      '⏰ 1hour',
+    );
+
+    final DarwinNotificationCategory reminderCategory =
+        DarwinNotificationCategory(
+      'reminder_category',
+      actions: <DarwinNotificationAction>[
+        completeAction,
+        snooze10Action,
+        snooze1hAction,
+      ],
+      options: <DarwinNotificationCategoryOption>{
+        DarwinNotificationCategoryOption.hiddenPreviewShowTitle,
+      },
+    );
+
+    // iOS initialization with categories
+    final DarwinInitializationSettings iosSettings =
         DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
       requestSoundPermission: true,
+      notificationCategories: [reminderCategory],
     );
 
-    const InitializationSettings initSettings = InitializationSettings(
+    final InitializationSettings initSettings = InitializationSettings(
       android: androidSettings,
       iOS: iosSettings,
       macOS: iosSettings,
@@ -32,6 +73,8 @@ class NotificationService {
     await _notifications.initialize(
       initSettings,
       onDidReceiveNotificationResponse: _onNotificationTapped,
+      onDidReceiveBackgroundNotificationResponse:
+          _onBackgroundNotificationTapped,
     );
 
     // Request permissions
@@ -57,24 +100,245 @@ class NotificationService {
   }
 
   static void _onNotificationTapped(NotificationResponse response) {
-    debugPrint('Notification tapped: ${response.payload}');
-    // Handle notification tap - you can navigate to specific screens here
-    // Payload format: "reminderId:timeSlotId" for multi-time or just "reminderId" for single-time
+    debugPrint(
+        'Notification tapped: ${response.payload}, Action: ${response.actionId}');
+    _handleNotificationAction(response);
+  }
+
+  @pragma('vm:entry-point')
+  static void _onBackgroundNotificationTapped(NotificationResponse response) {
+    debugPrint('🌙 Background notification response received');
+    debugPrint('🌙 Action: ${response.actionId}');
+    debugPrint('🌙 Payload: ${response.payload}');
+    _handleNotificationAction(response);
+  }
+
+  /// Handle notification actions (Complete, Snooze, etc.)
+  @pragma('vm:entry-point')
+  static Future<void> _handleNotificationAction(
+      NotificationResponse response) async {
+    final payload = response.payload;
+    final actionId = response.actionId;
+
+    debugPrint('🔔 Processing notification action');
+    debugPrint('🔔 Action ID: $actionId');
+    debugPrint('🔔 Payload: $payload');
+
+    if (payload == null) {
+      debugPrint('⚠️ No payload found in notification response');
+      return;
+    }
+
+    try {
+      // Ensure StorageService is properly initialized for background operations
+      await _ensureStorageInitialized();
+
+      // Parse payload format: "reminderId:timeSlotId" or just "reminderId"
+      final parts = payload.split(':');
+      final reminderId = parts[0];
+      final timeSlotId = parts.length > 1 ? parts[1] : null;
+
+      debugPrint(
+          '🔔 Parsed - ReminderId: $reminderId, TimeSlotId: $timeSlotId');
+
+      switch (actionId) {
+        case completeActionId:
+          debugPrint('✅ Calling Complete action');
+          await _handleCompleteAction(reminderId, timeSlotId);
+          break;
+        case snooze10ActionId:
+          debugPrint('⏰ Calling Snooze 10min action');
+          await _handleSnoozeAction(
+              reminderId, timeSlotId, const Duration(minutes: 10));
+          break;
+        case snooze1hActionId:
+          debugPrint('⏰ Calling Snooze 1hour action');
+          await _handleSnoozeAction(
+              reminderId, timeSlotId, const Duration(hours: 1));
+          break;
+        default:
+          debugPrint('👆 Regular notification tap for reminder: $reminderId');
+          break;
+      }
+
+      // CRITICAL: Mark notification update for main isolate detection
+      await StorageService.markNotificationUpdate();
+
+      // Additional step: Force refresh the storage data immediately
+      await StorageService.refreshData();
+
+      debugPrint('🔔 Notification action completed successfully');
+    } catch (e) {
+      debugPrint('❌ Error handling notification action: $e');
+      debugPrint('❌ Stack trace: ${StackTrace.current}');
+    }
+  }
+
+  /// Ensure StorageService is properly initialized for background operations
+  @pragma('vm:entry-point')
+  static Future<void> _ensureStorageInitialized() async {
+    try {
+      debugPrint('📱 Initializing services for background operation');
+
+      // Initialize timezone database for background isolate
+      tz.initializeTimeZones();
+      debugPrint('📱 Timezone initialized for background isolate');
+
+      // Always reinitialize StorageService in background isolate to ensure fresh connection
+      await StorageService.initialize();
+
+      // Verify we can access data
+      final reminders = await StorageService.getReminders();
+      debugPrint(
+          '📱 Background StorageService initialized - found ${reminders.length} reminders');
+
+      // Debug: List all reminder IDs for verification
+      for (final reminder in reminders) {
+        debugPrint('📱 Available reminder: ${reminder.id} - ${reminder.title}');
+      }
+    } catch (e) {
+      debugPrint('❌ Failed to initialize services in background: $e');
+      rethrow;
+    }
+  }
+
+  /// Handle Complete action
+  @pragma('vm:entry-point')
+  static Future<void> _handleCompleteAction(
+      String reminderId, String? timeSlotId) async {
+    try {
+      debugPrint('✅ Starting complete action for reminder: $reminderId');
+
+      // Verify reminder exists before proceeding
+      final reminder = await StorageService.getReminderById(reminderId);
+      if (reminder == null) {
+        debugPrint('❌ Cannot complete - reminder not found: $reminderId');
+        return;
+      }
+      debugPrint('✅ Found reminder: ${reminder.title}');
+
+      // Cancel the notification first
+      final notificationId = timeSlotId != null
+          ? _generateTimeSlotNotificationId(reminderId, timeSlotId)
+          : reminderId.hashCode;
+      await _notifications.cancel(notificationId);
+      debugPrint('✅ Cancelled notification: $notificationId');
+
+      if (timeSlotId != null) {
+        // Multi-time reminder - complete specific time slot
+        await StorageService.updateTimeSlotStatus(
+            reminderId, timeSlotId, ReminderStatus.completed);
+        debugPrint('✅ Completed time slot $timeSlotId');
+      } else {
+        // Single-time reminder - complete entire reminder
+        await StorageService.updateReminderStatus(
+            reminderId, ReminderStatus.completed);
+        debugPrint('✅ Completed reminder $reminderId');
+      }
+
+      debugPrint('✅ Complete action finished successfully');
+    } catch (e) {
+      debugPrint('❌ Error completing reminder: $e');
+    }
+  }
+
+  /// Handle Snooze action
+  @pragma('vm:entry-point')
+  static Future<void> _handleSnoozeAction(
+      String reminderId, String? timeSlotId, Duration snoozeDuration) async {
+    try {
+      debugPrint('⏰ Starting snooze action for reminder: $reminderId');
+      debugPrint('⏰ Snooze duration: ${snoozeDuration.inMinutes} minutes');
+
+      // Verify reminder exists before proceeding
+      final reminder = await StorageService.getReminderById(reminderId);
+      if (reminder == null) {
+        debugPrint('❌ Cannot snooze - reminder not found: $reminderId');
+        return;
+      }
+      debugPrint('⏰ Found reminder: ${reminder.title}');
+
+      // Cancel current notification first
+      final currentNotificationId = timeSlotId != null
+          ? _generateTimeSlotNotificationId(reminderId, timeSlotId)
+          : reminderId.hashCode;
+      await _notifications.cancel(currentNotificationId);
+      debugPrint('⏰ Cancelled current notification: $currentNotificationId');
+
+      // Calculate new time
+      final snoozeTime = DateTime.now().add(snoozeDuration);
+      debugPrint('⏰ New snooze time: $snoozeTime');
+
+      if (timeSlotId != null && reminder.hasMultipleTimes) {
+        debugPrint('⏰ Processing multi-time reminder snooze');
+        // Multi-time reminder - snooze specific time slot
+        final timeSlot = reminder.timeSlots.firstWhere(
+          (slot) => slot.id == timeSlotId,
+          orElse: () => throw Exception('Time slot not found'),
+        );
+
+        // Create new time slot with snoozed time
+        final snoozedTimeSlot = timeSlot.copyWith(
+          time: TimeOfDay(hour: snoozeTime.hour, minute: snoozeTime.minute),
+        );
+
+        // Update the time slot
+        await StorageService.updateTimeSlot(
+            reminderId, timeSlotId, snoozedTimeSlot);
+        debugPrint('⏰ Updated time slot in storage');
+
+        // Schedule new notification for snoozed time
+        await _scheduleTimeSlotNotification(
+          reminder: reminder.copyWith(
+              timeSlots: reminder.timeSlots
+                  .map((slot) => slot.id == timeSlotId ? snoozedTimeSlot : slot)
+                  .toList()),
+          timeSlot: snoozedTimeSlot,
+          scheduledTime: snoozeTime,
+        );
+
+        debugPrint('⏰ Snoozed time slot for ${snoozeDuration.inMinutes}min');
+      } else {
+        debugPrint('⏰ Processing single-time reminder snooze');
+        // Single-time reminder - snooze entire reminder
+        final snoozedReminder = reminder.copyWith(scheduledTime: snoozeTime);
+        await StorageService.updateReminder(snoozedReminder);
+        debugPrint('⏰ Updated reminder in storage');
+
+        // Schedule new notification for snoozed time
+        await _scheduleSingleTimeReminder(snoozedReminder);
+        debugPrint('⏰ Scheduled new notification');
+
+        debugPrint('⏰ Snoozed reminder for ${snoozeDuration.inMinutes}min');
+      }
+
+      debugPrint('⏰ Snooze action completed successfully');
+    } catch (e) {
+      debugPrint('❌ Error snoozing reminder: $e');
+      debugPrint('❌ Error details: ${e.toString()}');
+    }
   }
 
   /// Schedule reminder notifications (handles both single and multi-time)
   static Future<void> scheduleReminder(Reminder reminder) async {
-    // Don't schedule if notification is disabled
-    if (!reminder.isNotificationEnabled) {
-      return;
-    }
+    try {
+      // Don't schedule if notification is disabled
+      if (!reminder.isNotificationEnabled) {
+        debugPrint(
+            '⚠️ Skipping notification scheduling - notifications disabled for ${reminder.id}');
+        return;
+      }
 
-    if (reminder.hasMultipleTimes) {
-      // Schedule notifications for each time slot
-      await _scheduleMultiTimeReminder(reminder);
-    } else {
-      // Schedule single notification (backward compatibility)
-      await _scheduleSingleTimeReminder(reminder);
+      if (reminder.hasMultipleTimes) {
+        // Schedule notifications for each time slot
+        await _scheduleMultiTimeReminder(reminder);
+      } else {
+        // Schedule single notification (backward compatibility)
+        await _scheduleSingleTimeReminder(reminder);
+      }
+    } catch (e) {
+      debugPrint('❌ Error scheduling reminder ${reminder.id}: $e');
+      // Don't rethrow - allow reminder saving to continue even if notification scheduling fails
     }
   }
 
@@ -123,6 +387,7 @@ class NotificationService {
     final notificationId =
         _generateTimeSlotNotificationId(reminder.id, timeSlot.id);
 
+    // Create Android notification with action buttons
     const AndroidNotificationDetails androidDetails =
         AndroidNotificationDetails(
       'reminder_channel',
@@ -133,12 +398,34 @@ class NotificationService {
       showWhen: true,
       icon: '@mipmap/ic_launcher',
       styleInformation: BigTextStyleInformation(''),
+      actions: <AndroidNotificationAction>[
+        AndroidNotificationAction(
+          completeActionId,
+          '✓ Complete',
+          showsUserInterface: false,
+          cancelNotification: true,
+        ),
+        AndroidNotificationAction(
+          snooze10ActionId,
+          '⏰ 10min',
+          showsUserInterface: false,
+          cancelNotification: true,
+        ),
+        AndroidNotificationAction(
+          snooze1hActionId,
+          '⏰ 1hour',
+          showsUserInterface: false,
+          cancelNotification: true,
+        ),
+      ],
     );
 
+    // Create iOS notification with category
     const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
       presentAlert: true,
       presentBadge: true,
       presentSound: true,
+      categoryIdentifier: 'reminder_category',
     );
 
     const NotificationDetails notificationDetails = NotificationDetails(
@@ -170,62 +457,105 @@ class NotificationService {
 
   /// Schedule notification for single-time reminder (backward compatibility)
   static Future<void> _scheduleSingleTimeReminder(Reminder reminder) async {
-    // Don't schedule if time has passed
-    if (reminder.scheduledTime.isBefore(DateTime.now())) {
-      return;
+    try {
+      final now = DateTime.now();
+
+      // For editing/updating reminders, be more lenient with past times
+      // Only skip if the time is more than 5 minutes in the past (to handle editing overdue reminders)
+      if (reminder.scheduledTime
+          .isBefore(now.subtract(const Duration(minutes: 5)))) {
+        debugPrint(
+            '⚠️ Skipping notification for reminder ${reminder.id} - time is ${reminder.scheduledTime}, which is too far in the past');
+        return;
+      }
+
+      // Create Android notification with action buttons
+      const AndroidNotificationDetails androidDetails =
+          AndroidNotificationDetails(
+        'reminder_channel',
+        'Reminders',
+        channelDescription: 'Notifications for scheduled reminders',
+        importance: Importance.high,
+        priority: Priority.high,
+        showWhen: true,
+        icon: '@mipmap/ic_launcher',
+        styleInformation: BigTextStyleInformation(''),
+        actions: <AndroidNotificationAction>[
+          AndroidNotificationAction(
+            completeActionId,
+            '✓ Complete',
+            showsUserInterface: false,
+            cancelNotification: true,
+          ),
+          AndroidNotificationAction(
+            snooze10ActionId,
+            '⏰ 10min',
+            showsUserInterface: false,
+            cancelNotification: true,
+          ),
+          AndroidNotificationAction(
+            snooze1hActionId,
+            '⏰ 1hour',
+            showsUserInterface: false,
+            cancelNotification: true,
+          ),
+        ],
+      );
+
+      // Create iOS notification with category
+      const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+        categoryIdentifier: 'reminder_category',
+      );
+
+      const NotificationDetails notificationDetails = NotificationDetails(
+        android: androidDetails,
+        iOS: iosDetails,
+        macOS: iosDetails,
+      );
+
+      await _notifications.zonedSchedule(
+        reminder.id.hashCode, // Use hashCode as unique int ID
+        reminder.title,
+        reminder.description ?? 'Reminder notification',
+        _convertToTZDateTime(reminder.scheduledTime),
+        notificationDetails,
+        payload: reminder.id,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        matchDateTimeComponents:
+            _getMatchDateTimeComponents(reminder.repeatType),
+      );
+
+      debugPrint('📅 Scheduled notification for ${reminder.title}');
+    } catch (e) {
+      debugPrint('❌ Error scheduling single-time reminder ${reminder.id}: $e');
+      // Don't rethrow - allow the save operation to continue
     }
-
-    const AndroidNotificationDetails androidDetails =
-        AndroidNotificationDetails(
-      'reminder_channel',
-      'Reminders',
-      channelDescription: 'Notifications for scheduled reminders',
-      importance: Importance.high,
-      priority: Priority.high,
-      showWhen: true,
-      icon: '@mipmap/ic_launcher',
-      styleInformation: BigTextStyleInformation(''),
-    );
-
-    const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
-      presentAlert: true,
-      presentBadge: true,
-      presentSound: true,
-    );
-
-    const NotificationDetails notificationDetails = NotificationDetails(
-      android: androidDetails,
-      iOS: iosDetails,
-      macOS: iosDetails,
-    );
-
-    await _notifications.zonedSchedule(
-      reminder.id.hashCode, // Use hashCode as unique int ID
-      reminder.title,
-      reminder.description ?? 'Reminder notification',
-      _convertToTZDateTime(reminder.scheduledTime),
-      notificationDetails,
-      payload: reminder.id,
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      matchDateTimeComponents: _getMatchDateTimeComponents(reminder.repeatType),
-    );
   }
 
   /// Cancel all notifications for a reminder
   static Future<void> cancelReminder(String reminderId) async {
-    // For single-time reminders, cancel using the reminder ID
-    await _notifications.cancel(reminderId.hashCode);
+    try {
+      // For single-time reminders, cancel using the reminder ID
+      await _notifications.cancel(reminderId.hashCode);
 
-    // For multi-time reminders, we need to cancel each time slot notification
-    // Since we don't have access to the reminder object here, we'll use a range approach
-    // This is a limitation - ideally we'd pass the reminder object or time slot IDs
+      // For multi-time reminders, we need to cancel each time slot notification
+      // Since we don't have access to the reminder object here, we'll use a range approach
+      // This is a limitation - ideally we'd pass the reminder object or time slot IDs
 
-    // Cancel potential multi-time notifications (using ID range)
-    for (int i = 0; i < 24; i++) {
-      // Max 24 time slots per day
-      final potentialId =
-          _generateTimeSlotNotificationId(reminderId, 'slot_$i');
-      await _notifications.cancel(potentialId);
+      // Cancel potential multi-time notifications (using ID range)
+      for (int i = 0; i < 24; i++) {
+        // Max 24 time slots per day
+        final potentialId =
+            _generateTimeSlotNotificationId(reminderId, 'slot_$i');
+        await _notifications.cancel(potentialId);
+      }
+    } catch (e) {
+      debugPrint(
+          '❌ Error cancelling notifications for reminder $reminderId: $e');
+      // Don't rethrow - allow the operation to continue
     }
   }
 
@@ -239,11 +569,17 @@ class NotificationService {
 
   /// Update notifications for a reminder (reschedule)
   static Future<void> updateReminderNotifications(Reminder reminder) async {
-    // Cancel existing notifications
-    await cancelReminder(reminder.id);
+    try {
+      // Cancel existing notifications first
+      await cancelReminder(reminder.id);
 
-    // Reschedule with updated information
-    await scheduleReminder(reminder);
+      // Reschedule with updated information
+      await scheduleReminder(reminder);
+    } catch (e) {
+      debugPrint(
+          '❌ Error updating notifications for reminder ${reminder.id}: $e');
+      // Don't rethrow - allow reminder update to continue even if notification update fails
+    }
   }
 
   /// Schedule notifications only for pending time slots
@@ -325,12 +661,33 @@ class NotificationService {
       channelDescription: 'Immediate notifications for testing',
       importance: Importance.high,
       priority: Priority.high,
+      actions: <AndroidNotificationAction>[
+        AndroidNotificationAction(
+          completeActionId,
+          '✓ Complete',
+          showsUserInterface: false,
+          cancelNotification: true,
+        ),
+        AndroidNotificationAction(
+          snooze10ActionId,
+          '⏰ 10min',
+          showsUserInterface: false,
+          cancelNotification: true,
+        ),
+        AndroidNotificationAction(
+          snooze1hActionId,
+          '⏰ 1hour',
+          showsUserInterface: false,
+          cancelNotification: true,
+        ),
+      ],
     );
 
     const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
       presentAlert: true,
       presentBadge: true,
       presentSound: true,
+      categoryIdentifier: 'reminder_category',
     );
 
     const NotificationDetails notificationDetails = NotificationDetails(

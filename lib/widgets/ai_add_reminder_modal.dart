@@ -324,10 +324,13 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
 
   // Manual form methods
   Future<void> _selectDate() async {
+    final now = DateTime.now();
+    final initialDate = _selectedDate.isBefore(now) ? now : _selectedDate;
+
     final date = await showDatePicker(
       context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime.now(),
+      initialDate: initialDate,
+      firstDate: now,
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
 
