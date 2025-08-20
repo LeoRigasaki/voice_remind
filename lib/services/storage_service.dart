@@ -31,6 +31,9 @@ class StorageService {
   static const String _defaultReminderTabKey = 'default_reminder_tab';
   static const String _snoozeUseCustomKey = 'snooze_use_custom';
   static const String _snoozeCustomMinutesKey = 'snooze_custom_minutes';
+  // Global Alarm Preference Keys
+  static const String _useAlarmInsteadOfNotificationKey =
+      'use_alarm_instead_of_notification';
   // Version tracking
   static const String _storageVersionKey = 'storage_version';
   static const String _apiConfigVersionKey = 'api_config_version';
@@ -68,15 +71,17 @@ class StorageService {
   static void _startBackgroundUpdateChecker() {
     _backgroundUpdateChecker?.cancel();
     _backgroundUpdateChecker = Timer.periodic(
-      const Duration(seconds: 2), // Check every 2 seconds when app is active
+      const Duration(milliseconds: 500), // More frequent checking
       (timer) async {
         try {
           final hasUpdates = await checkForBackgroundUpdates();
           if (hasUpdates) {
-            debugPrint('🔄 Background update detected via periodic check');
+            debugPrint('🔄 Background update detected via enhanced checker');
+            // Additional immediate refresh
+            await forceImmediateRefresh();
           }
         } catch (e) {
-          debugPrint('❌ Error in background update checker: $e');
+          debugPrint('⚠️ Error in enhanced background checker: $e');
         }
       },
     );
@@ -262,30 +267,36 @@ class StorageService {
       final updateId =
           'notification_${now.millisecondsSinceEpoch}_${math.Random().nextInt(1000)}';
 
-      // Create a new SharedPreferences instance for the background isolate
+      // Use fresh instance for background isolate
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_lastUpdateKey, now.millisecondsSinceEpoch);
       await prefs.setString(_backgroundUpdateMarkerKey, updateId);
 
-      debugPrint('🔔 Marked notification update at: $now (ID: $updateId)');
+      debugPrint('🔔 Marked notification update: $updateId');
 
-      // CRITICAL: Reload SharedPreferences to force cross-isolate synchronization
+      // CRITICAL: Multiple reload attempts for cross-isolate sync
+      await prefs.reload();
+      await Future.delayed(const Duration(milliseconds: 50));
       await prefs.reload();
 
-      // Force reload and emit fresh data immediately
-      final freshReminders = await getReminders();
-      _remindersController.add(freshReminders);
-      debugPrint(
-          '🔔 Forced stream update with ${freshReminders.length} reminders');
+      // Force stream update immediately
+      try {
+        final freshReminders = await getReminders();
+        _remindersController.add(freshReminders);
+        debugPrint(
+            '🔔 Forced immediate stream update: ${freshReminders.length} reminders');
+      } catch (e) {
+        debugPrint('⚠️ Error in immediate stream update: $e');
+      }
     } catch (e) {
-      debugPrint('❌ Error marking notification update: $e');
+      debugPrint('⚠️ Error marking notification update: $e');
     }
   }
 
   /// Check if background updates occurred and refresh if needed
   static Future<bool> checkForBackgroundUpdates() async {
     try {
-      // CRITICAL: Reload SharedPreferences to get latest data from other isolates
+      // CRITICAL: Force reload before checking
       await _prefs?.reload();
 
       final lastUpdateTimestamp = _prefs?.getInt(_lastUpdateKey) ?? 0;
@@ -293,27 +304,30 @@ class StorageService {
           DateTime.fromMillisecondsSinceEpoch(lastUpdateTimestamp);
       final currentMarker = _prefs?.getString(_backgroundUpdateMarkerKey);
 
-      // If we have no known last update, consider this the first check
       if (_lastKnownUpdate == null) {
         _lastKnownUpdate = lastUpdate;
         return false;
       }
 
-      // Check if there was an update since we last knew about it
-      if (lastUpdate.isAfter(_lastKnownUpdate!)) {
-        debugPrint(
-            '🔄 Background update detected! Last known: $_lastKnownUpdate, Latest: $lastUpdate');
-        debugPrint('🔄 Update marker: $currentMarker');
+      // Enhanced detection with marker validation
+      final hasTimeUpdate = lastUpdate.isAfter(_lastKnownUpdate!);
+      final hasNewMarker = currentMarker != null;
+
+      if (hasTimeUpdate || hasNewMarker) {
+        debugPrint('🔄 Background update detected!');
+        debugPrint('🔄 Time: $_lastKnownUpdate → $lastUpdate');
+        debugPrint('🔄 Marker: $currentMarker');
+
         _lastKnownUpdate = lastUpdate;
 
-        // Refresh the data and notify listeners
+        // IMMEDIATE refresh and notify
         await refreshData();
         return true;
       }
 
       return false;
     } catch (e) {
-      debugPrint('❌ Error checking background updates: $e');
+      debugPrint('⚠️ Error checking background updates: $e');
       return false;
     }
   }
@@ -352,6 +366,13 @@ class StorageService {
     if (index != -1) {
       reminders[index] = updatedReminder;
       await saveReminders(reminders);
+
+      // FORCE immediate update notification
+      await _markBackgroundUpdate();
+
+      debugPrint('✅ Updated reminder: ${updatedReminder.id}');
+    } else {
+      debugPrint('⚠️ Reminder not found for update: ${updatedReminder.id}');
     }
   }
 
@@ -451,7 +472,7 @@ class StorageService {
 
     await updateReminder(snoozedReminder);
     debugPrint(
-        '⏰ Snoozed reminder $reminderId for ${snoozeDuration.inMinutes} minutes');
+        'Snoozed reminder $reminderId for ${snoozeDuration.inMinutes} minutes');
   }
 
   /// Snooze a specific time slot by the specified duration
@@ -472,7 +493,7 @@ class StorageService {
 
     await updateTimeSlot(reminderId, timeSlotId, snoozedTimeSlot);
     debugPrint(
-        '⏰ Snoozed time slot $timeSlotId for ${snoozeDuration.inMinutes} minutes');
+        'Snoozed time slot $timeSlotId for ${snoozeDuration.inMinutes} minutes');
   }
 
   /// Complete a reminder entirely (for single-time reminders)
@@ -674,6 +695,8 @@ class StorageService {
       String reminderId, ReminderStatus newStatus) async {
     final Reminder? reminder = await getReminderById(reminderId);
     if (reminder != null) {
+      Reminder updatedReminder;
+
       if (reminder.hasMultipleTimes) {
         final updatedTimeSlots = reminder.timeSlots.map((slot) {
           if (slot.status == ReminderStatus.pending) {
@@ -686,12 +709,44 @@ class StorageService {
           return slot;
         }).toList();
 
-        final updatedReminder = reminder.copyWith(timeSlots: updatedTimeSlots);
-        await updateReminder(updatedReminder);
+        updatedReminder = reminder.copyWith(timeSlots: updatedTimeSlots);
       } else {
-        final Reminder updatedReminder = reminder.copyWith(status: newStatus);
-        await updateReminder(updatedReminder);
+        updatedReminder = reminder.copyWith(
+          status: newStatus,
+          completedAt:
+              newStatus == ReminderStatus.completed ? DateTime.now() : null,
+        );
       }
+
+      await updateReminder(updatedReminder);
+
+      // TRIPLE notification for critical status updates
+      await markNotificationUpdate();
+      await Future.delayed(const Duration(milliseconds: 100));
+      await markNotificationUpdate();
+
+      debugPrint('✅ Updated reminder status: $reminderId → $newStatus');
+    }
+  }
+
+  static Future<void> forceImmediateRefresh() async {
+    try {
+      // Force SharedPreferences reload
+      await _prefs?.reload();
+
+      // Get fresh data directly from storage
+      final reminders = await getReminders();
+
+      // Force stream update
+      _remindersController.add(reminders);
+
+      // Update tracking
+      _lastKnownUpdate = DateTime.now();
+
+      debugPrint(
+          '🔄 Force immediate refresh completed: ${reminders.length} reminders');
+    } catch (e) {
+      debugPrint('⚠️ Error in force immediate refresh: $e');
     }
   }
 
@@ -1075,6 +1130,44 @@ class StorageService {
       'description': useCustom
           ? 'Custom: $customMinutes minutes'
           : 'Default: 10min, 1hour',
+    };
+  }
+
+  // =============================================================================
+  // Global Alarm Preference Methods
+  // =============================================================================
+
+  /// Set whether to use alarms instead of notifications globally
+  static Future<void> setUseAlarmInsteadOfNotification(bool useAlarm) async {
+    try {
+      await _prefs?.setBool(_useAlarmInsteadOfNotificationKey, useAlarm);
+      debugPrint('💾 Saved global alarm preference: $useAlarm');
+    } catch (e) {
+      debugPrint('❌ Error saving alarm preference: $e');
+      rethrow;
+    }
+  }
+
+  /// Get whether to use alarms instead of notifications globally
+  static Future<bool> getUseAlarmInsteadOfNotification() async {
+    try {
+      return _prefs?.getBool(_useAlarmInsteadOfNotificationKey) ??
+          false; // Default to notifications
+    } catch (e) {
+      debugPrint('❌ Error getting alarm preference: $e');
+      return false; // Fallback to notifications
+    }
+  }
+
+  /// Get global alarm configuration summary
+  static Future<Map<String, dynamic>> getAlarmConfiguration() async {
+    final useAlarm = await getUseAlarmInsteadOfNotification();
+
+    return {
+      'useAlarm': useAlarm,
+      'description': useAlarm
+          ? 'Full-screen alarms (Samsung style)'
+          : 'Standard notifications',
     };
   }
 }

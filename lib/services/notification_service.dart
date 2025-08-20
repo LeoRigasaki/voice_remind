@@ -5,6 +5,7 @@ import 'package:timezone/timezone.dart' as tz;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/reminder.dart';
 import 'storage_service.dart';
+import '../services/alarm_service.dart';
 
 @pragma('vm:entry-point')
 class NotificationService {
@@ -28,7 +29,7 @@ class NotificationService {
     final DarwinNotificationAction completeAction =
         DarwinNotificationAction.plain(
       completeActionId,
-      '✓ Complete',
+      '✖️ Dismiss', // Changed from "Complete"
     );
 
     final snoozeConfig = await _getSnoozeConfig();
@@ -110,16 +111,16 @@ class NotificationService {
 
         if (customMinutes <= 30) {
           // If custom is 30min or less, offer 1 hour
-          secondLabel = '⏰ 1hour';
+          secondLabel = '1hour';
           secondDuration = const Duration(hours: 1);
         } else if (customMinutes <= 60) {
           // If custom is 31-60min, offer 2 hours
-          secondLabel = '⏰ 2hours';
+          secondLabel = '2hours';
           secondDuration = const Duration(hours: 2);
         } else {
           // If custom is over 60min, offer half the custom duration as shorter option
           final halfCustom = (customMinutes / 2).round();
-          secondLabel = '⏰ ${halfCustom}min';
+          secondLabel = '${halfCustom}min';
           secondDuration = Duration(minutes: halfCustom);
         }
 
@@ -128,7 +129,7 @@ class NotificationService {
           'actions': [
             {
               'id': snoozeAction1Id,
-              'label': '⏰ ${customMinutes}min',
+              'label': '${customMinutes}min',
               'duration': Duration(minutes: customMinutes)
             },
             {
@@ -144,12 +145,12 @@ class NotificationService {
           'actions': [
             {
               'id': snoozeAction1Id,
-              'label': '⏰ 10min',
+              'label': '10min',
               'duration': Duration(minutes: 10)
             },
             {
               'id': snoozeAction2Id,
-              'label': '⏰ 1hour',
+              'label': '1hour',
               'duration': Duration(hours: 1)
             },
           ],
@@ -163,12 +164,12 @@ class NotificationService {
         'actions': [
           {
             'id': snoozeAction1Id,
-            'label': '⏰ 10min',
+            'label': '10min',
             'duration': Duration(minutes: 10)
           },
           {
             'id': snoozeAction2Id,
-            'label': '⏰ 1hour',
+            'label': '1hour',
             'duration': Duration(hours: 1)
           },
         ],
@@ -191,9 +192,10 @@ class NotificationService {
             .toList();
 
     return [
+      // Use "Dismiss" instead of "Complete" for alarm notifications
       AndroidNotificationAction(
         completeActionId,
-        '✓ Complete',
+        '✖️ Dismiss', // Changed from "Complete"
         showsUserInterface: false,
         cancelNotification: true,
       ),
@@ -238,53 +240,48 @@ class NotificationService {
     final payload = response.payload;
     final actionId = response.actionId;
 
-    debugPrint('🔔 Processing notification action');
-    debugPrint('🔔 Action ID: $actionId');
-    debugPrint('🔔 Payload: $payload');
+    debugPrint('🔔 Processing notification action: $actionId');
 
-    if (payload == null) {
-      debugPrint('⚠️ No payload found in notification response');
-      return;
-    }
+    if (payload == null) return;
 
     try {
-      // Ensure StorageService is properly initialized for background operations
       await _ensureStorageInitialized();
 
-      // Parse payload format: "reminderId:timeSlotId" or just "reminderId"
       final parts = payload.split(':');
       final reminderId = parts[0];
       final timeSlotId = parts.length > 1 ? parts[1] : null;
 
-      debugPrint(
-          '🔔 Parsed - ReminderId: $reminderId, TimeSlotId: $timeSlotId');
-
       switch (actionId) {
         case completeActionId:
-          debugPrint('✅ Calling Complete action');
+          debugPrint('✖️ Processing dismiss action');
           await _handleCompleteAction(reminderId, timeSlotId);
           break;
         case snoozeAction1Id:
         case snoozeAction2Id:
-          debugPrint('⏰ Calling dynamic snooze action: $actionId');
+          debugPrint('⏰ Processing snooze action: $actionId');
           final snoozeDuration = await _getSnoozeDurationForAction(actionId!);
           await _handleSnoozeAction(reminderId, timeSlotId, snoozeDuration);
           break;
         default:
-          debugPrint('👆 Regular notification tap for reminder: $reminderId');
+          debugPrint('👆 Regular notification tap');
           break;
       }
 
-      // CRITICAL: Mark notification update for main isolate detection
-      await StorageService.markNotificationUpdate();
-
-      // Additional step: Force refresh the storage data immediately
-      await StorageService.refreshData();
-
       debugPrint('🔔 Notification action completed successfully');
     } catch (e) {
-      debugPrint('❌ Error handling notification action: $e');
-      debugPrint('❌ Stack trace: ${StackTrace.current}');
+      debugPrint('⚠️ Error handling notification action: $e');
+    }
+  }
+
+  @pragma('vm:entry-point')
+  static Future<void> _forceMainAppUpdate() async {
+    try {
+      await StorageService.markNotificationUpdate();
+      await Future.delayed(const Duration(milliseconds: 50));
+      await StorageService.forceImmediateRefresh();
+      debugPrint('🔄 Forced main app update complete');
+    } catch (e) {
+      debugPrint('⚠️ Error forcing main app update: $e');
     }
   }
 
@@ -321,38 +318,38 @@ class NotificationService {
   static Future<void> _handleCompleteAction(
       String reminderId, String? timeSlotId) async {
     try {
-      debugPrint('✅ Starting complete action for reminder: $reminderId');
+      debugPrint('✖️ Processing dismiss action for reminder: $reminderId');
 
-      // Verify reminder exists before proceeding
       final reminder = await StorageService.getReminderById(reminderId);
       if (reminder == null) {
-        debugPrint('❌ Cannot complete - reminder not found: $reminderId');
+        debugPrint('⚠️ Cannot dismiss - reminder not found: $reminderId');
         return;
       }
-      debugPrint('✅ Found reminder: ${reminder.title}');
 
       // Cancel the notification first
       final notificationId = timeSlotId != null
           ? _generateTimeSlotNotificationId(reminderId, timeSlotId)
           : reminderId.hashCode;
       await _notifications.cancel(notificationId);
-      debugPrint('✅ Cancelled notification: $notificationId');
 
       if (timeSlotId != null) {
         // Multi-time reminder - complete specific time slot
         await StorageService.updateTimeSlotStatus(
             reminderId, timeSlotId, ReminderStatus.completed);
-        debugPrint('✅ Completed time slot $timeSlotId');
+        debugPrint('✅ Dismissed/completed time slot $timeSlotId');
       } else {
         // Single-time reminder - complete entire reminder
         await StorageService.updateReminderStatus(
             reminderId, ReminderStatus.completed);
-        debugPrint('✅ Completed reminder $reminderId');
+        debugPrint('✅ Dismissed/completed reminder $reminderId');
       }
 
-      debugPrint('✅ Complete action finished successfully');
+      // CRITICAL: Force immediate update
+      await _forceMainAppUpdate();
+
+      debugPrint('✅ Dismiss action completed successfully');
     } catch (e) {
-      debugPrint('❌ Error completing reminder: $e');
+      debugPrint('⚠️ Error dismissing reminder: $e');
     }
   }
 
@@ -361,8 +358,8 @@ class NotificationService {
   static Future<void> _handleSnoozeAction(
       String reminderId, String? timeSlotId, Duration snoozeDuration) async {
     try {
-      debugPrint('⏰ Starting snooze action for reminder: $reminderId');
-      debugPrint('⏰ Snooze duration: ${snoozeDuration.inMinutes} minutes');
+      debugPrint('Starting snooze action for reminder: $reminderId');
+      debugPrint('Snooze duration: ${snoozeDuration.inMinutes} minutes');
 
       // Verify reminder exists before proceeding
       final reminder = await StorageService.getReminderById(reminderId);
@@ -370,21 +367,21 @@ class NotificationService {
         debugPrint('❌ Cannot snooze - reminder not found: $reminderId');
         return;
       }
-      debugPrint('⏰ Found reminder: ${reminder.title}');
+      debugPrint('Found reminder: ${reminder.title}');
 
       // Cancel current notification first
       final currentNotificationId = timeSlotId != null
           ? _generateTimeSlotNotificationId(reminderId, timeSlotId)
           : reminderId.hashCode;
       await _notifications.cancel(currentNotificationId);
-      debugPrint('⏰ Cancelled current notification: $currentNotificationId');
+      debugPrint('Cancelled current notification: $currentNotificationId');
 
       // Calculate new time
       final snoozeTime = DateTime.now().add(snoozeDuration);
-      debugPrint('⏰ New snooze time: $snoozeTime');
+      debugPrint('New snooze time: $snoozeTime');
 
       if (timeSlotId != null && reminder.hasMultipleTimes) {
-        debugPrint('⏰ Processing multi-time reminder snooze');
+        debugPrint('Processing multi-time reminder snooze');
         // Multi-time reminder - snooze specific time slot
         final timeSlot = reminder.timeSlots.firstWhere(
           (slot) => slot.id == timeSlotId,
@@ -399,7 +396,7 @@ class NotificationService {
         // Update the time slot
         await StorageService.updateTimeSlot(
             reminderId, timeSlotId, snoozedTimeSlot);
-        debugPrint('⏰ Updated time slot in storage');
+        debugPrint('Updated time slot in storage');
 
         // Schedule new notification for snoozed time
         await _scheduleTimeSlotNotification(
@@ -411,48 +408,61 @@ class NotificationService {
           scheduledTime: snoozeTime,
         );
 
-        debugPrint('⏰ Snoozed time slot for ${snoozeDuration.inMinutes}min');
+        debugPrint('Snoozed time slot for ${snoozeDuration.inMinutes}min');
       } else {
-        debugPrint('⏰ Processing single-time reminder snooze');
+        debugPrint('Processing single-time reminder snooze');
         // Single-time reminder - snooze entire reminder
         final snoozedReminder = reminder.copyWith(scheduledTime: snoozeTime);
         await StorageService.updateReminder(snoozedReminder);
-        debugPrint('⏰ Updated reminder in storage');
+        debugPrint('Updated reminder in storage');
 
         // Schedule new notification for snoozed time
         await _scheduleSingleTimeReminder(snoozedReminder);
-        debugPrint('⏰ Scheduled new notification');
+        debugPrint('Scheduled new notification');
 
-        debugPrint('⏰ Snoozed reminder for ${snoozeDuration.inMinutes}min');
+        debugPrint('Snoozed reminder for ${snoozeDuration.inMinutes}min');
       }
 
-      debugPrint('⏰ Snooze action completed successfully');
+      debugPrint('Snooze action completed successfully');
     } catch (e) {
       debugPrint('❌ Error snoozing reminder: $e');
       debugPrint('❌ Error details: ${e.toString()}');
     }
   }
 
-  /// Schedule reminder notifications (handles both single and multi-time)
+  /// Schedule reminder notifications or alarms based on user preference
   static Future<void> scheduleReminder(Reminder reminder) async {
     try {
-      // Don't schedule if notification is disabled
       if (!reminder.isNotificationEnabled) {
-        debugPrint(
-            '⚠️ Skipping notification scheduling - notifications disabled for ${reminder.id}');
+        debugPrint('⚠️ Skipping reminder scheduling - notifications disabled');
         return;
       }
 
-      if (reminder.hasMultipleTimes) {
-        // Schedule notifications for each time slot
-        await _scheduleMultiTimeReminder(reminder);
+      final useAlarm = await StorageService.getUseAlarmInsteadOfNotification();
+
+      if (useAlarm) {
+        debugPrint(
+            '⏰ User chose ALARM mode - ONLY scheduling alarm, NO notification');
+        if (reminder.hasMultipleTimes) {
+          await AlarmService.setMultiTimeAlarmReminder(reminder);
+        } else {
+          await AlarmService.setAlarmReminder(reminder);
+        }
+        // CRITICAL: Return here - don't schedule any notification
+        return;
       } else {
-        // Schedule single notification (backward compatibility)
-        await _scheduleSingleTimeReminder(reminder);
+        debugPrint(
+            '🔔 User chose NOTIFICATION mode - ONLY scheduling notification, NO alarm');
+        if (reminder.hasMultipleTimes) {
+          await _scheduleMultiTimeReminder(reminder);
+        } else {
+          await _scheduleSingleTimeReminder(reminder);
+        }
+        // CRITICAL: Return here - don't schedule any alarm
+        return;
       }
     } catch (e) {
-      debugPrint('❌ Error scheduling reminder ${reminder.id}: $e');
-      // Don't rethrow - allow reminder saving to continue even if notification scheduling fails
+      debugPrint('⚠️ Error scheduling reminder: $e');
     }
   }
 
@@ -611,27 +621,29 @@ class NotificationService {
     }
   }
 
-  /// Cancel all notifications for a reminder
+  /// Cancel all notifications/alarms for a reminder
   static Future<void> cancelReminder(String reminderId) async {
     try {
-      // For single-time reminders, cancel using the reminder ID
-      await _notifications.cancel(reminderId.hashCode);
+      final useAlarm = await StorageService.getUseAlarmInsteadOfNotification();
 
-      // For multi-time reminders, we need to cancel each time slot notification
-      // Since we don't have access to the reminder object here, we'll use a range approach
-      // This is a limitation - ideally we'd pass the reminder object or time slot IDs
+      if (useAlarm) {
+        debugPrint('⏰ Alarm mode - cancelling alarm ONLY');
+        await AlarmService.stopAlarm(reminderId);
+      } else {
+        debugPrint('🔔 Notification mode - cancelling notifications ONLY');
+        await _notifications.cancel(reminderId.hashCode);
 
-      // Cancel potential multi-time notifications (using ID range)
-      for (int i = 0; i < 24; i++) {
-        // Max 24 time slots per day
-        final potentialId =
-            _generateTimeSlotNotificationId(reminderId, 'slot_$i');
-        await _notifications.cancel(potentialId);
+        // Cancel multi-time notifications
+        for (int i = 0; i < 24; i++) {
+          final potentialId =
+              _generateTimeSlotNotificationId(reminderId, 'slot_$i');
+          await _notifications.cancel(potentialId);
+        }
       }
+
+      debugPrint('🗑️ Cancelled for: $reminderId');
     } catch (e) {
-      debugPrint(
-          '❌ Error cancelling notifications for reminder $reminderId: $e');
-      // Don't rethrow - allow the operation to continue
+      debugPrint('⚠️ Error cancelling reminder: $e');
     }
   }
 
@@ -643,17 +655,17 @@ class NotificationService {
     await _notifications.cancel(notificationId);
   }
 
-  /// Update notifications for a reminder (reschedule)
+  /// Update notifications/alarms for a reminder (reschedule)
   static Future<void> updateReminderNotifications(Reminder reminder) async {
     try {
-      // Cancel existing notifications first
+      // Cancel existing notifications/alarms first
       await cancelReminder(reminder.id);
 
-      // Reschedule with updated information
+      // Reschedule with updated information using the current mode
       await scheduleReminder(reminder);
     } catch (e) {
       debugPrint(
-          '❌ Error updating notifications for reminder ${reminder.id}: $e');
+          '❌ Error updating notifications/alarms for reminder ${reminder.id}: $e');
       // Don't rethrow - allow reminder update to continue even if notification update fails
     }
   }

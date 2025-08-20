@@ -40,6 +40,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _snoozeUseCustom = false;
   int _snoozeCustomMinutes = 15;
 
+  bool _useAlarmInsteadOfNotification = false;
+
   @override
   void initState() {
     super.initState();
@@ -62,6 +64,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _loadAISettings(),
       _loadDefaultTabSettings(),
       _loadSnoozeSettings(),
+      _loadAlarmSettings(),
     ]);
   }
 
@@ -129,6 +132,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _loadAlarmSettings() async {
+    try {
+      final useAlarm = await StorageService.getUseAlarmInsteadOfNotification();
+      if (mounted) {
+        setState(() {
+          _useAlarmInsteadOfNotification = useAlarm;
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to load alarm settings: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -184,6 +200,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: 'Notifications',
             subtitle: 'Reminder and alert settings',
             onTap: () => _showComingSoonSnackBar('Notifications'),
+          ),
+
+          const SizedBox(height: 8),
+
+          // Alarm Mode
+          _buildCleanSettingTile(
+            icon: Icons.alarm,
+            title: 'Alarm Mode',
+            subtitle: _getAlarmModeStatusText(),
+            onTap: () => _navigateToAlarmSettings(),
           ),
 
           const SizedBox(height: 8),
@@ -303,6 +329,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  String _getAlarmModeStatusText() {
+    if (_useAlarmInsteadOfNotification) {
+      return 'Full-screen alarms enabled (always shows alarm screen)';
+    } else {
+      return 'Notifications enabled (shows notification with dismiss/snooze)';
+    }
+  }
+
   // Navigation methods
   void _navigateToAISettings() {
     Navigator.of(context).push(
@@ -412,6 +446,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
             setState(() {
               _snoozeUseCustom = useCustom;
               _snoozeCustomMinutes = customMinutes;
+            });
+          },
+        ),
+      ),
+    );
+  }
+
+  void _navigateToAlarmSettings() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => _AlarmSettingsPage(
+          useAlarm: _useAlarmInsteadOfNotification,
+          onAlarmChanged: (useAlarm) {
+            setState(() {
+              _useAlarmInsteadOfNotification = useAlarm;
             });
           },
         ),
@@ -2221,5 +2270,250 @@ class _SnoozeSettingsPageState extends State<_SnoozeSettingsPage> {
         ),
       ),
     );
+  }
+}
+
+class _AlarmSettingsPage extends StatefulWidget {
+  final bool useAlarm;
+  final Function(bool) onAlarmChanged;
+
+  const _AlarmSettingsPage({
+    required this.useAlarm,
+    required this.onAlarmChanged,
+  });
+
+  @override
+  State<_AlarmSettingsPage> createState() => _AlarmSettingsPageState();
+}
+
+class _AlarmSettingsPageState extends State<_AlarmSettingsPage> {
+  late bool _useAlarm;
+
+  @override
+  void initState() {
+    super.initState();
+    _useAlarm = widget.useAlarm;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Alarm Mode'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        children: [
+          Text(
+            'Reminder Display Mode',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w500,
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.7),
+                ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Choose how reminders should appear when they trigger. Alarm mode shows full-screen alarms, Notification mode shows dismissible notifications.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.7),
+                ),
+          ),
+          const SizedBox(height: 24),
+
+          // Notification option
+          _buildAlarmOptionTile(
+            icon: Icons.notifications_outlined,
+            title: 'Notifications',
+            subtitle: 'Standard notification banner with quick actions',
+            value: false,
+            description:
+                'Standard notification experience with dismiss and snooze buttons in the notification panel.',
+          ),
+
+          const SizedBox(height: 8),
+
+          // Alarm option
+          _buildAlarmOptionTile(
+            icon: Icons.alarm,
+            title: 'Full-Screen Alarms',
+            subtitle: 'Samsung-style full-screen alarms with custom sounds',
+            value: true,
+            description:
+                'Full-screen alarm experience that always shows the alarm screen when reminders trigger.',
+          ),
+
+          const SizedBox(height: 32),
+
+          // Additional info card
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color:
+                  Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: Theme.of(context)
+                    .colorScheme
+                    .primary
+                    .withValues(alpha: 0.3),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      color: Theme.of(context).colorScheme.primary,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'About Full-Screen Alarms',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  '• Uses your device\'s default alarm sound automatically\n'
+                  '• Always shows full-screen alarm interface\n'
+                  '• Works when phone is locked or app is closed\n'
+                  '• Dismiss action marks reminder as complete',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withValues(alpha: 0.8),
+                        height: 1.4,
+                      ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAlarmOptionTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool value,
+    required String description,
+  }) {
+    final isSelected = _useAlarm == value;
+
+    return Card(
+      elevation: isSelected ? 2 : 0,
+      color: isSelected
+          ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.1)
+          : null,
+      child: ListTile(
+        contentPadding: const EdgeInsets.all(16),
+        leading: Icon(
+          icon,
+          size: 28,
+          color: isSelected
+              ? Theme.of(context).colorScheme.primary
+              : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+        ),
+        title: Text(
+          title,
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            color: isSelected
+                ? Theme.of(context).colorScheme.primary
+                : Theme.of(context).colorScheme.onSurface,
+          ),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 4),
+            Text(
+              subtitle,
+              style: TextStyle(
+                fontWeight: FontWeight.w500,
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.8),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              description,
+              style: TextStyle(
+                fontSize: 13,
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.6),
+                height: 1.3,
+              ),
+            ),
+          ],
+        ),
+        trailing: Radio<bool>(
+          value: value,
+          groupValue: _useAlarm,
+          onChanged: (bool? newValue) {
+            if (newValue != null) {
+              _updateAlarmMode(newValue);
+            }
+          },
+        ),
+        onTap: () => _updateAlarmMode(value),
+      ),
+    );
+  }
+
+  Future<void> _updateAlarmMode(bool useAlarm) async {
+    setState(() {
+      _useAlarm = useAlarm;
+    });
+
+    try {
+      await StorageService.setUseAlarmInsteadOfNotification(useAlarm);
+      widget.onAlarmChanged(useAlarm);
+
+      HapticFeedback.lightImpact();
+
+      if (mounted) {
+        final mode = useAlarm ? 'Full-screen alarms' : 'Notifications';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Reminder mode set to $mode'),
+            behavior: SnackBarBehavior.floating,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to save preference: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        );
+      }
+    }
   }
 }

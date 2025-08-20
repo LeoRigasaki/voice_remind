@@ -296,7 +296,7 @@ class Reminder {
     bool? isNotificationEnabled,
     String? spaceId,
     List<TimeSlot>? timeSlots,
-    bool? isMultiTime,
+    bool? isMultiTime, DateTime? completedAt,
   }) {
     return Reminder(
       id: id,

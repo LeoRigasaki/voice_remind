@@ -302,7 +302,7 @@ class VoiceService {
     // Restart session every 20 seconds to avoid Android timeout
     _sessionRestartTimer = Timer(const Duration(seconds: 20), () async {
       if (_currentState == VoiceState.recording && !_userRequestedStop) {
-        debugPrint('⏰ Scheduled restart to avoid Android timeout...');
+        debugPrint('Scheduled restart to avoid Android timeout...');
 
         try {
           await _speechToText.stop();
@@ -598,7 +598,7 @@ ALWAYS create at least one reminder, even if the speech is unclear. Return valid
     // Handle common Android errors more intelligently
     if (errorString.contains('error_speech_timeout') ||
         errorString.contains('error_no_match')) {
-      debugPrint('⏰ Timeout/no match error detected');
+      debugPrint('Timeout/no match error detected');
 
       // If we have valid speech, don't treat as fatal error
       if (_hasValidSpeech && _cumulativeTranscription.trim().isNotEmpty) {
