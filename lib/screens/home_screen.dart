@@ -851,6 +851,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 child: IconButton(
                   icon: Icon(
                     Icons.notification_add_outlined,
+                    
                     size: 20,
                     color: Theme.of(context).colorScheme.onSurface,
                   ),

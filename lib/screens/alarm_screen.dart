@@ -9,12 +9,14 @@ import '../services/storage_service.dart';
 
 class AlarmScreen extends StatefulWidget {
   final Reminder reminder;
+  final String? timeSlotId;
   final VoidCallback? onDismissed;
   final VoidCallback? onSnoozed;
 
   const AlarmScreen({
     super.key,
     required this.reminder,
+    this.timeSlotId,
     this.onDismissed,
     this.onSnoozed,
   });
@@ -33,23 +35,24 @@ class _AlarmScreenState extends State<AlarmScreen>
   static bool _isAnyAlarmScreenActive = false;
 
   Timer? _currentTimeTimer;
-  Timer? _autoSnoozeTimer; // Auto-snooze timer
+  Timer? _autoSnoozeTimer;
   DateTime _currentTime = DateTime.now();
   bool _isDismissing = false;
   bool _isSnoozing = false;
   bool _systemUISetup = false;
-  bool _isAutoSnoozed = false; // Track if auto-snoozed
+  bool _isAutoSnoozed = false;
 
   int _snoozeMinutes = 10;
-  int _remainingSeconds = 30; // Countdown for auto-snooze
+  int _remainingSeconds = 30;
+
+  TimeSlot? _activeTimeSlot;
 
   @override
   void initState() {
     super.initState();
 
-    // Simple duplicate prevention
     if (_isAnyAlarmScreenActive) {
-      debugPrint('⚠️ Another alarm screen is active - closing this one');
+      debugPrint('Another alarm screen is active - closing this one');
       Future.delayed(Duration.zero, () {
         if (mounted) {
           SystemNavigator.pop();
@@ -58,15 +61,27 @@ class _AlarmScreenState extends State<AlarmScreen>
       return;
     }
 
-    // Mark as active
     _isAnyAlarmScreenActive = true;
 
     _setupAnimations();
     _startCurrentTimeTimer();
     _loadDefaultSnooze();
     _startAutoSnoozeTimer();
+    _loadActiveTimeSlot();
 
-    debugPrint('🖥️ Alarm screen activated for: ${widget.reminder.title}');
+    debugPrint('Alarm screen activated for: ${widget.reminder.title}');
+  }
+
+  void _loadActiveTimeSlot() {
+    if (widget.timeSlotId != null && widget.reminder.hasMultipleTimes) {
+      try {
+        _activeTimeSlot = widget.reminder.timeSlots.firstWhere(
+          (slot) => slot.id == widget.timeSlotId,
+        );
+      } catch (e) {
+        debugPrint('Time slot not found: ${widget.timeSlotId}');
+      }
+    }
   }
 
   @override
@@ -111,11 +126,11 @@ class _AlarmScreenState extends State<AlarmScreen>
 
   void _setupSystemUI() {
     SystemChrome.setSystemUIOverlayStyle(
-      SystemUiOverlayStyle(
+      const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
         statusBarBrightness: Brightness.dark,
         statusBarIconBrightness: Brightness.light,
-        systemNavigationBarColor: const Color(0xFF000000),
+        systemNavigationBarColor: Color(0xFF000000),
         systemNavigationBarIconBrightness: Brightness.light,
       ),
     );
@@ -136,7 +151,6 @@ class _AlarmScreenState extends State<AlarmScreen>
     );
   }
 
-  // Auto-snooze timer implementation
   void _startAutoSnoozeTimer() {
     _autoSnoozeTimer = Timer.periodic(
       const Duration(seconds: 1),
@@ -164,22 +178,24 @@ class _AlarmScreenState extends State<AlarmScreen>
     });
 
     try {
-      debugPrint('⏰ Auto-snoozing alarm after 30 seconds');
+      debugPrint('Auto-snoozing alarm after 30 seconds');
 
       await AlarmService.snoozeAlarm(
-          widget.reminder.id, const Duration(minutes: 10));
+        widget.reminder.id,
+        const Duration(minutes: 10),
+        timeSlotId: widget.timeSlotId,
+      );
 
-      // Clear tracking
       _isAnyAlarmScreenActive = false;
 
       widget.onSnoozed?.call();
 
       if (mounted) {
-        debugPrint('🖥️ Auto-snooze completed - closing alarm screen');
+        debugPrint('Auto-snooze completed - closing alarm screen');
         SystemNavigator.pop();
       }
     } catch (e) {
-      debugPrint('⚠️ Error auto-snoozing alarm: $e');
+      debugPrint('Error auto-snoozing alarm: $e');
     }
   }
 
@@ -196,13 +212,11 @@ class _AlarmScreenState extends State<AlarmScreen>
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
-      // Prevent back button from opening main app
       onWillPop: () async {
-        // Instead of going back, dismiss the alarm
         if (!_isDismissing && !_isSnoozing) {
           _handleDismiss();
         }
-        return false; // Prevent default back behavior
+        return false;
       },
       child: Scaffold(
         body: Container(
@@ -225,13 +239,13 @@ class _AlarmScreenState extends State<AlarmScreen>
   }
 
   BoxDecoration _buildGradientBackground() {
-    return BoxDecoration(
+    return const BoxDecoration(
       gradient: LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [
-          const Color(0xFF000000),
-          const Color(0xFF1A1A1A),
+          Color(0xFF000000),
+          Color(0xFF1A1A1A),
         ],
       ),
     );
@@ -259,7 +273,6 @@ class _AlarmScreenState extends State<AlarmScreen>
                   fontWeight: FontWeight.bold,
                 ),
           ),
-          // Auto-snooze countdown
           if (!_isDismissing && !_isSnoozing && !_isAutoSnoozed) ...[
             const SizedBox(height: 16),
             Container(
@@ -312,10 +325,29 @@ class _AlarmScreenState extends State<AlarmScreen>
                   fontWeight: FontWeight.bold,
                 ),
           ),
-          if (widget.reminder.description?.isNotEmpty == true) ...[
+          if (_activeTimeSlot != null) ...[
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.blue.withOpacity(0.5)),
+              ),
+              child: Text(
+                'Time Slot: ${_activeTimeSlot!.formattedTime}',
+                style: const TextStyle(
+                  color: Colors.blue,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+          ],
+          if (_getDisplayDescription().isNotEmpty) ...[
             const SizedBox(height: 16),
             Text(
-              widget.reminder.description!,
+              _getDisplayDescription(),
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     color: Colors.white.withOpacity(0.7),
@@ -325,7 +357,7 @@ class _AlarmScreenState extends State<AlarmScreen>
           ],
           const SizedBox(height: 24),
           Text(
-            'Scheduled for ${DateFormat('h:mm a').format(widget.reminder.scheduledTime)}',
+            _getScheduledTimeText(),
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                   color: Colors.white.withOpacity(0.7),
                   fontWeight: FontWeight.w500,
@@ -334,6 +366,20 @@ class _AlarmScreenState extends State<AlarmScreen>
         ],
       ),
     );
+  }
+
+  String _getDisplayDescription() {
+    if (_activeTimeSlot?.description?.isNotEmpty == true) {
+      return _activeTimeSlot!.description!;
+    }
+    return widget.reminder.description ?? '';
+  }
+
+  String _getScheduledTimeText() {
+    if (_activeTimeSlot != null) {
+      return 'Scheduled for ${_activeTimeSlot!.formattedTime}';
+    }
+    return 'Scheduled for ${DateFormat('h:mm a').format(widget.reminder.scheduledTime)}';
   }
 
   Widget _buildActionButtons() {
@@ -427,19 +473,22 @@ class _AlarmScreenState extends State<AlarmScreen>
     try {
       HapticFeedback.mediumImpact();
 
-      await AlarmService.snoozeAlarm(widget.reminder.id, duration);
+      await AlarmService.snoozeAlarm(
+        widget.reminder.id,
+        duration,
+        timeSlotId: widget.timeSlotId,
+      );
 
-      // Clear tracking
       _isAnyAlarmScreenActive = false;
 
       widget.onSnoozed?.call();
 
       if (mounted) {
-        debugPrint('🖥️ Snooze completed - closing alarm screen');
+        debugPrint('Snooze completed - closing alarm screen');
         SystemNavigator.pop();
       }
     } catch (e) {
-      debugPrint('⚠️ Error snoozing alarm: $e');
+      debugPrint('Error snoozing alarm: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -463,19 +512,21 @@ class _AlarmScreenState extends State<AlarmScreen>
     try {
       HapticFeedback.mediumImpact();
 
-      await AlarmService.dismissAlarm(widget.reminder.id);
+      await AlarmService.dismissAlarm(
+        widget.reminder.id,
+        timeSlotId: widget.timeSlotId,
+      );
 
-      // Clear tracking
       _isAnyAlarmScreenActive = false;
 
       widget.onDismissed?.call();
 
       if (mounted) {
-        debugPrint('🖥️ Dismiss completed - closing alarm screen');
+        debugPrint('Dismiss completed - closing alarm screen');
         SystemNavigator.pop();
       }
     } catch (e) {
-      debugPrint('⚠️ Error dismissing alarm: $e');
+      debugPrint('Error dismissing alarm: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -498,13 +549,11 @@ class _AlarmScreenState extends State<AlarmScreen>
     _currentTimeTimer?.cancel();
     _autoSnoozeTimer?.cancel();
 
-    // Clear tracking
     _isAnyAlarmScreenActive = false;
 
-    // Restore system UI
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
-    debugPrint('🖥️ Alarm screen disposed');
+    debugPrint('Alarm screen disposed');
 
     super.dispose();
   }

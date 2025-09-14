@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:io';
+import 'dart:io' show Platform, File, Directory;
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
@@ -62,23 +62,56 @@ class UpdateService {
         final publishedAt = latestRelease['published_at']?.toString() ?? '';
         final isPrerelease = latestRelease['prerelease'] ?? false;
 
-        // **NEW: Find APK download URL**
+        // **NEW: Find architecture-specific APK download URL**
         String? apkDownloadUrl;
         final assets = latestRelease['assets'] as List<dynamic>? ?? [];
 
+        // Get device architecture
+        String deviceArchitecture = await _getDeviceArchitecture();
+        if (kDebugMode) {
+          print('Device architecture: $deviceArchitecture');
+        }
+        String? architectureSpecificApk;
+        String? universalApk;
+        String? fallbackApk;
+
         for (final asset in assets) {
-          final assetName = asset['name']?.toString() ?? '';
-          if (assetName.toLowerCase().endsWith('.apk')) {
-            apkDownloadUrl = asset['browser_download_url']?.toString();
-            break;
+          final assetName = asset['name']?.toString().toLowerCase() ?? '';
+
+          if (assetName.endsWith('.apk')) {
+            final downloadUrl = asset['browser_download_url']?.toString();
+
+            // Check for architecture-specific APK
+            if (assetName.contains(deviceArchitecture)) {
+              architectureSpecificApk = downloadUrl;
+              if (kDebugMode) {
+                print('Found architecture-specific APK: $assetName');
+              }
+            }
+            // Check for universal APK
+            else if (assetName.contains('universal')) {
+              universalApk = downloadUrl;
+              if (kDebugMode) {
+                print('Found universal APK: $assetName');
+              }
+            }
+            // Keep first APK as fallback
+            else if (fallbackApk == null) {
+              fallbackApk = downloadUrl;
+              if (kDebugMode) {
+                print('Found fallback APK: $assetName');
+              }
+            }
           }
         }
 
+        // Select the best APK in priority order
+        apkDownloadUrl = architectureSpecificApk ?? universalApk ?? fallbackApk;
+
         if (kDebugMode) {
-          print('Current version: $currentVersion');
-          print('Latest version: $latestVersion');
-          print('Is prerelease: $isPrerelease');
-          print('APK download URL: $apkDownloadUrl');
+          print('Selected APK download URL: $apkDownloadUrl');
+          print(
+              'Selection reason: ${architectureSpecificApk != null ? 'Architecture-specific' : universalApk != null ? 'Universal' : 'Fallback'}');
         }
 
         // Store last check time
@@ -446,6 +479,61 @@ class UpdateService {
   // Open GitHub releases page
   static String getReleasesUrl() {
     return '$_githubRepoUrl/releases';
+  }
+
+  /// Get the device's CPU architecture
+  static Future<String> _getDeviceArchitecture() async {
+    try {
+      if (Platform.isAndroid) {
+        // Use DeviceInfoPlugin to get detailed architecture info
+        final deviceInfo = DeviceInfoPlugin();
+        final androidInfo = await deviceInfo.androidInfo;
+
+        // Get supported ABIs (Application Binary Interfaces)
+        final supportedAbis = androidInfo.supportedAbis;
+
+        if (kDebugMode) {
+          print('Supported ABIs: $supportedAbis');
+        }
+
+        // Return the primary (preferred) architecture
+        // Modern devices typically support multiple architectures
+        if (supportedAbis.isNotEmpty) {
+          final primaryAbi = supportedAbis.first;
+
+          // Map Android ABI names to our APK naming convention
+          switch (primaryAbi) {
+            case 'arm64-v8a':
+              return 'arm64-v8a';
+            case 'armeabi-v7a':
+              return 'armeabi-v7a';
+            case 'x86_64':
+              return 'x86_64';
+            case 'x86':
+              return 'x86'; // Fallback, though we don't build for this
+            default:
+              // For unknown architectures, prefer 64-bit if available
+              if (supportedAbis.contains('arm64-v8a')) {
+                return 'arm64-v8a';
+              } else if (supportedAbis.contains('armeabi-v7a')) {
+                return 'armeabi-v7a';
+              } else if (supportedAbis.contains('x86_64')) {
+                return 'x86_64';
+              }
+              return 'arm64-v8a'; // Default to most common modern architecture
+          }
+        }
+      }
+
+      // Default fallback for non-Android or if detection fails
+      return 'arm64-v8a';
+    } catch (e) {
+      if (kDebugMode) {
+        print('Architecture detection failed: $e');
+      }
+      // Safe default - most modern Android devices are arm64-v8a
+      return 'arm64-v8a';
+    }
   }
 }
 

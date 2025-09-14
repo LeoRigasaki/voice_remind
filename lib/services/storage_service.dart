@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../models/reminder.dart';
 
 class StorageService {
@@ -695,8 +696,15 @@ class StorageService {
       String reminderId, ReminderStatus newStatus) async {
     final Reminder? reminder = await getReminderById(reminderId);
     if (reminder != null) {
-      Reminder updatedReminder;
+      // Handle repeat reminders when completed
+      if (newStatus == ReminderStatus.completed &&
+          reminder.repeatType != RepeatType.none) {
+        await _updateToNextOccurrence(reminder);
+        return; // Don't do regular status update for repeating reminders
+      }
 
+      // Regular status update for non-repeating reminders
+      Reminder updatedReminder;
       if (reminder.hasMultipleTimes) {
         final updatedTimeSlots = reminder.timeSlots.map((slot) {
           if (slot.status == ReminderStatus.pending) {
@@ -726,6 +734,68 @@ class StorageService {
       await markNotificationUpdate();
 
       debugPrint('✅ Updated reminder status: $reminderId → $newStatus');
+    }
+  }
+
+  /// Update a repeating reminder to its next occurrence
+  static Future<void> _updateToNextOccurrence(Reminder originalReminder) async {
+    try {
+      DateTime nextScheduledTime;
+
+      switch (originalReminder.repeatType) {
+        case RepeatType.daily:
+          nextScheduledTime =
+              originalReminder.scheduledTime.add(const Duration(days: 1));
+          break;
+        case RepeatType.weekly:
+          nextScheduledTime =
+              originalReminder.scheduledTime.add(const Duration(days: 7));
+          break;
+        case RepeatType.monthly:
+          final originalDate = originalReminder.scheduledTime;
+          nextScheduledTime = DateTime(
+            originalDate.year,
+            originalDate.month + 1,
+            originalDate.day,
+            originalDate.hour,
+            originalDate.minute,
+          );
+          break;
+        case RepeatType.none:
+          return; // No repeat
+      }
+
+      // Update the existing reminder to next occurrence
+      final updatedReminder = originalReminder.copyWith(
+        scheduledTime: nextScheduledTime,
+        status: ReminderStatus.pending, // Reset to pending
+        completedAt: null, // Clear completion time
+        timeSlots: originalReminder.hasMultipleTimes
+            ? originalReminder.timeSlots
+                .map((slot) => slot.copyWith(
+                      status:
+                          ReminderStatus.pending, // Reset all slots to pending
+                      completedAt: null, // Clear completion time
+                    ))
+                .toList()
+            : originalReminder.timeSlots,
+        updatedAt: DateTime.now(), // Update the modified time
+      );
+
+      // Update the existing reminder
+      await updateReminder(updatedReminder);
+
+      // Schedule notification for the updated reminder
+      if (updatedReminder.isNotificationEnabled) {
+        // await NotificationService.scheduleReminder(updatedReminder);
+      }
+
+      debugPrint(
+          '🔄 Updated ${originalReminder.repeatType.name} reminder to next occurrence');
+      debugPrint(
+          '📅 Next scheduled: ${DateFormat('MMM dd, yyyy • h:mm a').format(nextScheduledTime)}');
+    } catch (e) {
+      debugPrint('❌ Error updating to next occurrence: $e');
     }
   }
 
