@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:alarm/alarm.dart';
 import '../models/reminder.dart';
 import '../services/storage_service.dart';
+import '../services/notification_service.dart';
 import '../services/default_sound_service.dart';
 
 class AlarmService {
@@ -38,6 +39,7 @@ class AlarmService {
       debugPrint('Alarm plugin initialized');
 
       _setupAlarmListener();
+      setupAppLifecycleListener();
       await _cleanupOrphanedAlarms();
 
       _isInitialized = true;
@@ -46,6 +48,12 @@ class AlarmService {
       debugPrint('Alarm Service initialization failed: $e');
       rethrow;
     }
+  }
+
+  static void setupAppLifecycleListener() {
+    // Enhanced app lifecycle detection for better mixed mode decisions
+    WidgetsBinding.instance.addObserver(_AppLifecycleObserver());
+    debugPrint('🔄 Enhanced app lifecycle listener set up');
   }
 
   static void updateAppState({bool? isInForeground, bool? isScreenOn}) {
@@ -94,10 +102,37 @@ class AlarmService {
 
       final shouldShowFullScreen = _shouldShowFullScreenAlarm();
 
+      // 🚨 MIXED MODE COLLISION DETECTION
       if (shouldShowFullScreen) {
+        // Show full-screen alarm - cancel the mixed mode notification
+        debugPrint(
+            '🔥 MIXED MODE: Showing full-screen alarm, canceling notification');
+
+        final notificationId = alarmContext.timeSlotId != null
+            ? NotificationService.generateTimeSlotNotificationId(
+                alarmContext.reminder.id, alarmContext.timeSlotId!)
+            : alarmContext.reminder.id.hashCode;
+
+        try {
+          await NotificationService.cancelNotification(notificationId);
+          debugPrint('✅ Canceled notification ID: $notificationId');
+        } catch (e) {
+          debugPrint('⚠️ Error canceling notification: $e');
+        }
+
         _isFullScreenAlarmShowing = true;
         _currentFullScreenAlarmId = alarmContext.reminder.id;
         _currentTimeSlotId = alarmContext.timeSlotId;
+      } else {
+        // Show notification - stop this alarm and let notification handle it
+        debugPrint(
+            '📱 MIXED MODE: Other app active, stopping alarm, letting notification show');
+
+        await Alarm.stop(alarmSettings.id);
+        _activeAlarms.remove(alarmSettings.id);
+
+        // Don't emit alarm event since notification will handle it
+        return;
       }
 
       debugPrint(
@@ -155,7 +190,17 @@ class AlarmService {
   }
 
   static bool _shouldShowFullScreenAlarm() {
-    return _isAppInForeground && _isScreenOn;
+    // Show full-screen alarm when:
+    // 1. VoiceRemind is in foreground (user actively using app)
+    // 2. Phone is idle/locked (screen off, regardless of app state)
+    //
+    // Show notification when:
+    // - Other apps are active (screen on but VoiceRemind not in foreground)
+
+    final showFullScreen = _isAppInForeground || !_isScreenOn;
+    debugPrint(
+        '🔍 App state check: foreground=$_isAppInForeground, screenOn=$_isScreenOn, showFullScreen=$showFullScreen');
+    return showFullScreen;
   }
 
   static Future<void> setAlarmReminder(Reminder reminder) async {
@@ -308,6 +353,21 @@ class AlarmService {
           'Stopped alarm for reminder: $reminderId${timeSlotId != null ? ', TimeSlot: $timeSlotId' : ''}');
     } catch (e) {
       debugPrint('Error stopping alarm: $e');
+    }
+  }
+
+  static Future<void> cancelMixedModeNotification(String reminderId,
+      {String? timeSlotId}) async {
+    try {
+      final notificationId = timeSlotId != null
+          ? NotificationService.generateTimeSlotNotificationId(
+              reminderId, timeSlotId)
+          : reminderId.hashCode;
+
+      await NotificationService.cancelNotification(notificationId);
+      debugPrint('🔕 Canceled mixed mode notification: $notificationId');
+    } catch (e) {
+      debugPrint('⚠️ Error canceling mixed mode notification: $e');
     }
   }
 
@@ -577,4 +637,43 @@ class AlarmEvent {
     this.shouldShowFullScreen = false,
     this.timeSlotId,
   }) : timestamp = timestamp ?? DateTime.now();
+}
+
+class _AppLifecycleObserver with WidgetsBindingObserver {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    debugPrint('🔄 App lifecycle changed: $state');
+
+    switch (state) {
+      case AppLifecycleState.resumed:
+        // VoiceRemind is active
+        AlarmService.updateAppState(isInForeground: true);
+        break;
+      case AppLifecycleState.inactive:
+        // App is transitioning or partially obscured
+        AlarmService.updateAppState(isInForeground: false);
+        break;
+      case AppLifecycleState.paused:
+        // Other apps are active or phone is backgrounded
+        AlarmService.updateAppState(isInForeground: false);
+        break;
+      case AppLifecycleState.detached:
+        // App is being terminated
+        AlarmService.updateAppState(isInForeground: false);
+        break;
+      case AppLifecycleState.hidden:
+        // TODO: Handle this case.
+        throw UnimplementedError();
+    }
+  }
+
+  @override
+  void didChangeMetrics() {
+    // Detect screen on/off state changes
+    final window = WidgetsBinding.instance.window;
+    final isScreenOn =
+        window.physicalSize.width > 0 && window.physicalSize.height > 0;
+    AlarmService.updateAppState(isScreenOn: isScreenOn);
+    debugPrint('📱 Screen state changed: $isScreenOn');
+  }
 }

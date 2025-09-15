@@ -8,6 +8,7 @@ import '../services/update_service.dart';
 import '../services/ai_reminder_service.dart';
 import '../services/storage_service.dart';
 import '../widgets/update_dialog.dart';
+import '../services/notification_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   final bool isFromNavbar;
@@ -331,7 +332,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   String _getAlarmModeStatusText() {
     if (_useAlarmInsteadOfNotification) {
-      return 'Full-screen alarms enabled (always shows alarm screen)';
+      return 'Mixed mode: Full-screen when idle, notifications when busy with other apps';
     } else {
       return 'Notifications enabled (shows notification with dismiss/snooze)';
     }
@@ -2222,10 +2223,17 @@ class _SnoozeSettingsPageState extends State<_SnoozeSettingsPage> {
 
       widget.onSnoozeChanged(_useCustom, _customMinutes.round());
 
+      // Refresh iOS notification categories when snooze settings change
+      try {
+        await NotificationService.refreshNotificationCategories();
+        debugPrint('Refreshed notification categories after snooze change');
+      } catch (e) {
+        debugPrint('Error refreshing notification categories: $e');
+      }
+
       HapticFeedback.lightImpact();
     } catch (e) {
       debugPrint('Failed to save snooze settings: $e');
-      // No SnackBar shown - just log the error
     }
   }
 
@@ -2299,7 +2307,7 @@ class _AlarmSettingsPageState extends State<_AlarmSettingsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Alarm Mode'),
+        title: const Text('Reminder Display Mode'),
       ),
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -2316,7 +2324,7 @@ class _AlarmSettingsPageState extends State<_AlarmSettingsPage> {
           ),
           const SizedBox(height: 16),
           Text(
-            'Choose how reminders should appear when they trigger. Alarm mode shows full-screen alarms, Notification mode shows dismissible notifications.',
+            'Choose how reminders should appear when they trigger. Mixed mode intelligently switches between full-screen alarms and notifications based on your activity.',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: Theme.of(context)
                       .colorScheme
@@ -2329,8 +2337,8 @@ class _AlarmSettingsPageState extends State<_AlarmSettingsPage> {
           // Notification option
           _buildAlarmOptionTile(
             icon: Icons.notifications_outlined,
-            title: 'Notifications',
-            subtitle: 'Standard notification banner with quick actions',
+            title: 'Notifications Only',
+            subtitle: 'Always show notification banner with quick actions',
             value: false,
             description:
                 'Standard notification experience with dismiss and snooze buttons in the notification panel.',
@@ -2338,19 +2346,20 @@ class _AlarmSettingsPageState extends State<_AlarmSettingsPage> {
 
           const SizedBox(height: 8),
 
-          // Alarm option
+          // Mixed mode option (previously called "Alarm")
           _buildAlarmOptionTile(
             icon: Icons.alarm,
-            title: 'Full-Screen Alarms',
-            subtitle: 'Samsung-style full-screen alarms with custom sounds',
+            title: 'Mixed Mode (Recommended)',
+            subtitle:
+                'Smart switching: alarms when idle, notifications when busy',
             value: true,
             description:
-                'Full-screen alarm experience that always shows the alarm screen when reminders trigger.',
+                'Shows full-screen alarm when phone is idle/locked, but shows notification with alarm sound when you\'re using other apps.',
           ),
 
           const SizedBox(height: 32),
 
-          // Additional info card
+          // Updated info card
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
@@ -2376,7 +2385,7 @@ class _AlarmSettingsPageState extends State<_AlarmSettingsPage> {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      'About Full-Screen Alarms',
+                      'About Mixed Mode',
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
                         color: Theme.of(context).colorScheme.primary,
@@ -2386,9 +2395,10 @@ class _AlarmSettingsPageState extends State<_AlarmSettingsPage> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  '• Uses your device\'s default alarm sound automatically\n'
-                  '• Always shows full-screen alarm interface\n'
-                  '• Works when phone is locked or app is closed\n'
+                  '• Full-screen alarm when phone is idle or locked\n'
+                  '• Notification with alarm sound when using other apps\n'
+                  '• Full-screen alarm when VoiceRemind is active\n'
+                  '• Uses device\'s default alarm sound automatically\n'
                   '• Dismiss action marks reminder as complete',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context)

@@ -20,6 +20,7 @@ class NotificationService {
   static Future<void> initialize() async {
     tz.initializeTimeZones();
 
+    // Create notification channels for both regular and mixed mode
     const AndroidInitializationSettings androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
 
@@ -72,6 +73,49 @@ class NotificationService {
     );
 
     await _requestPermissions();
+
+    // Create notification channels for mixed mode
+    await _createNotificationChannels();
+  }
+
+  static Future<void> _createNotificationChannels() async {
+    try {
+      final androidPlugin =
+          _notifications.resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>();
+
+      if (androidPlugin != null) {
+        // Regular reminder channel
+        const reminderChannel = AndroidNotificationChannel(
+          'reminder_channel',
+          'Reminders',
+          description: 'Notifications for scheduled reminders',
+          importance: Importance.high,
+          playSound: true,
+          enableVibration: true,
+        );
+
+        // Mixed mode channel with alarm sound
+        const mixedModeChannel = AndroidNotificationChannel(
+          'mixed_mode_channel',
+          'Mixed Mode Alarms',
+          description: 'Alarm-sound notifications for mixed mode',
+          importance: Importance.high,
+          playSound: true,
+          enableVibration: true,
+          enableLights: true,
+          sound: RawResourceAndroidNotificationSound('alarm'),
+        );
+
+        await androidPlugin.createNotificationChannel(reminderChannel);
+        await androidPlugin.createNotificationChannel(mixedModeChannel);
+
+        debugPrint(
+            '✅ Created notification channels for regular and mixed mode');
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error creating notification channels: $e');
+    }
   }
 
   static Future<void> _requestPermissions() async {
@@ -186,6 +230,48 @@ class NotificationService {
       ),
       ...snoozeActions,
     ];
+  }
+
+  static Future<void> refreshNotificationCategories() async {
+    debugPrint(
+        'Refreshing iOS notification categories for settings changes...');
+
+    try {
+      final snoozeConfig = await _getSnoozeConfig();
+      final completeAction =
+          DarwinNotificationAction.plain(completeActionId, '✖️ Dismiss');
+      final snoozeActions =
+          (snoozeConfig['actions'] as List<Map<String, dynamic>>)
+              .map((action) => DarwinNotificationAction.plain(
+                    action['id'] as String,
+                    action['label'] as String,
+                  ))
+              .toList();
+
+      final reminderCategory = DarwinNotificationCategory(
+        'reminder_category',
+        actions: <DarwinNotificationAction>[completeAction, ...snoozeActions],
+        options: <DarwinNotificationCategoryOption>{
+          DarwinNotificationCategoryOption.hiddenPreviewShowTitle,
+        },
+      );
+
+      // Reinitialize with updated categories
+      final iosSettings = DarwinInitializationSettings(
+        requestAlertPermission: false, // Don't re-request permissions
+        requestBadgePermission: false,
+        requestSoundPermission: false,
+        notificationCategories: [reminderCategory],
+      );
+
+      final initSettings =
+          InitializationSettings(iOS: iosSettings, macOS: iosSettings);
+      await _notifications.initialize(initSettings);
+
+      debugPrint('iOS notification categories refreshed successfully');
+    } catch (e) {
+      debugPrint('Error refreshing iOS notification categories: $e');
+    }
   }
 
   static Future<Duration> _getSnoozeDurationForAction(String actionId) async {
@@ -303,7 +389,7 @@ class NotificationService {
       }
 
       final notificationId = timeSlotId != null
-          ? _generateTimeSlotNotificationId(reminderId, timeSlotId)
+          ? generateTimeSlotNotificationId(reminderId, timeSlotId)
           : reminderId.hashCode;
       await _notifications.cancel(notificationId);
 
@@ -340,7 +426,7 @@ class NotificationService {
       debugPrint('Found reminder: ${reminder.title}');
 
       final currentNotificationId = timeSlotId != null
-          ? _generateTimeSlotNotificationId(reminderId, timeSlotId)
+          ? generateTimeSlotNotificationId(reminderId, timeSlotId)
           : reminderId.hashCode;
       await _notifications.cancel(currentNotificationId);
       debugPrint('Cancelled current notification: $currentNotificationId');
@@ -403,12 +489,24 @@ class NotificationService {
       final useAlarm = await StorageService.getUseAlarmInsteadOfNotification();
 
       if (useAlarm) {
-        debugPrint('User chose ALARM mode - scheduling alarm only');
+        debugPrint(
+            'User chose MIXED MODE - scheduling both alarm and notification');
+
+        // Schedule alarm for full-screen when app inactive/phone locked
         if (reminder.hasMultipleTimes) {
           await AlarmService.setMultiTimeAlarmReminder(reminder);
         } else {
           await AlarmService.setAlarmReminder(reminder);
         }
+
+        // Schedule notification for when other apps are active
+        if (reminder.hasMultipleTimes) {
+          await _scheduleMixedModeMultiTimeReminder(reminder);
+        } else {
+          await _scheduleMixedModeNotification(reminder: reminder);
+        }
+
+        debugPrint('Mixed mode scheduling completed for: ${reminder.title}');
         return;
       } else {
         debugPrint(
@@ -478,7 +576,7 @@ class NotificationService {
     required DateTime scheduledTime,
   }) async {
     final notificationId =
-        _generateTimeSlotNotificationId(reminder.id, timeSlot.id);
+        generateTimeSlotNotificationId(reminder.id, timeSlot.id);
 
     final AndroidNotificationDetails androidDetails =
         AndroidNotificationDetails(
@@ -583,6 +681,117 @@ class NotificationService {
     }
   }
 
+  static Future<void> _scheduleMixedModeNotification({
+    required Reminder reminder,
+    TimeSlot? timeSlot,
+    DateTime? scheduledTime,
+  }) async {
+    try {
+      final now = DateTime.now();
+      final finalScheduledTime = scheduledTime ?? reminder.scheduledTime;
+
+      if (finalScheduledTime
+          .isBefore(now.subtract(const Duration(minutes: 5)))) {
+        debugPrint('Skipping mixed mode notification - time too far in past');
+        return;
+      }
+
+      final notificationId = timeSlot != null
+          ? generateTimeSlotNotificationId(reminder.id, timeSlot.id)
+          : reminder.id.hashCode;
+
+      // Use ALARM sound instead of notification sound for mixed mode
+      final AndroidNotificationDetails androidDetails =
+          AndroidNotificationDetails(
+        'mixed_mode_channel', // Different channel for mixed mode
+        'Mixed Mode Alarms',
+        channelDescription: 'Alarm-sound notifications for mixed mode',
+        importance: Importance.high,
+        priority: Priority.high,
+        showWhen: true,
+        icon: '@mipmap/ic_launcher',
+        styleInformation: const BigTextStyleInformation(''),
+        actions: await _buildAndroidNotificationActions(),
+        // Use alarm sound instead of default notification sound
+        sound: const RawResourceAndroidNotificationSound('alarm'),
+        enableVibration: true,
+        enableLights: true,
+      );
+
+      const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+        categoryIdentifier: 'reminder_category',
+      );
+
+      final NotificationDetails notificationDetails = NotificationDetails(
+        android: androidDetails,
+        iOS: iosDetails,
+        macOS: iosDetails,
+      );
+
+      final title = reminder.title;
+      final body = timeSlot != null
+          ? (timeSlot.description?.isNotEmpty == true
+              ? '${timeSlot.formattedTime} - ${timeSlot.description}'
+              : '${timeSlot.formattedTime} reminder')
+          : (reminder.description ?? 'Mixed mode alarm reminder');
+
+      final payload =
+          timeSlot != null ? '${reminder.id}:${timeSlot.id}' : reminder.id;
+
+      await _notifications.zonedSchedule(
+        notificationId,
+        title,
+        body,
+        _convertToTZDateTime(finalScheduledTime),
+        notificationDetails,
+        payload: payload,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        matchDateTimeComponents:
+            _getMatchDateTimeComponents(reminder.repeatType),
+      );
+
+      debugPrint(
+          'Scheduled mixed mode notification: ID $notificationId, Time: $finalScheduledTime');
+    } catch (e) {
+      debugPrint('Error scheduling mixed mode notification: $e');
+    }
+  }
+
+  static Future<void> _scheduleMixedModeMultiTimeReminder(
+      Reminder reminder) async {
+    debugPrint('Scheduling mixed mode multi-time reminder: ${reminder.title}');
+
+    for (final timeSlot in reminder.timeSlots) {
+      if (timeSlot.status != ReminderStatus.pending) continue;
+
+      final now = DateTime.now();
+      DateTime notificationTime = DateTime(
+        reminder.scheduledTime.year,
+        reminder.scheduledTime.month,
+        reminder.scheduledTime.day,
+        timeSlot.time.hour,
+        timeSlot.time.minute,
+      );
+
+      if (notificationTime.isBefore(now)) {
+        if (reminder.repeatType == RepeatType.daily) {
+          notificationTime = notificationTime.add(const Duration(days: 1));
+        } else {
+          continue;
+        }
+      }
+
+      await _scheduleMixedModeNotification(
+        reminder: reminder,
+        timeSlot: timeSlot,
+        scheduledTime: notificationTime,
+      );
+    }
+  }
+
   static Future<void> cancelReminder(String reminderId) async {
     try {
       final useAlarm = await StorageService.getUseAlarmInsteadOfNotification();
@@ -605,7 +814,7 @@ class NotificationService {
         if (reminder != null && reminder.hasMultipleTimes) {
           for (final timeSlot in reminder.timeSlots) {
             final notificationId =
-                _generateTimeSlotNotificationId(reminderId, timeSlot.id);
+                generateTimeSlotNotificationId(reminderId, timeSlot.id);
             await _notifications.cancel(notificationId);
           }
         }
@@ -620,8 +829,21 @@ class NotificationService {
   static Future<void> cancelTimeSlotNotification(
       String reminderId, String timeSlotId) async {
     final notificationId =
-        _generateTimeSlotNotificationId(reminderId, timeSlotId);
+        generateTimeSlotNotificationId(reminderId, timeSlotId);
     await _notifications.cancel(notificationId);
+  }
+
+  static Future<void> cancelNotification(int notificationId) async {
+    try {
+      await _notifications.cancel(notificationId);
+      debugPrint('🔕 Canceled notification ID: $notificationId');
+    } catch (e) {
+      debugPrint('⚠️ Error canceling notification ID $notificationId: $e');
+    }
+  }
+
+  static Future<bool> isMixedModeEnabled() async {
+    return await StorageService.getUseAlarmInsteadOfNotification();
   }
 
   static Future<void> updateReminderNotifications(Reminder reminder) async {
@@ -665,7 +887,7 @@ class NotificationService {
     }
   }
 
-  static int _generateTimeSlotNotificationId(
+  static int generateTimeSlotNotificationId(
       String reminderId, String timeSlotId) {
     final combined = '$reminderId:$timeSlotId';
     return combined.hashCode.abs();
