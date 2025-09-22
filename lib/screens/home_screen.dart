@@ -1,3 +1,4 @@
+// lib/screens/home_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
@@ -6,7 +7,6 @@ import '../models/reminder.dart';
 import '../services/storage_service.dart';
 import '../services/notification_service.dart';
 import 'add_reminder_screen.dart';
-import 'settings_screen.dart';
 import 'filtered_reminders_screen.dart';
 import '../models/space.dart';
 import '../services/spaces_service.dart';
@@ -76,15 +76,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     });
   }
 
-  // Navigate to settings screen
-  void _openSettings() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => const SettingsScreen(),
-      ),
-    );
-  }
-
   @override
   void dispose() {
     _fabAnimationController.dispose();
@@ -141,7 +132,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   // Enhanced selection mode functions with haptic feedback
   void _enterSelectionMode(String reminderId) {
-    HapticFeedback.mediumImpact(); // Stronger feedback for selection mode
+    HapticFeedback.mediumImpact();
     setState(() {
       _isSelectionMode = true;
       _selectedReminders.add(reminderId);
@@ -176,7 +167,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void _selectAll() {
     HapticFeedback.mediumImpact();
     setState(() {
-      // Get currently displayed reminders (respecting search/filter)
       List<Reminder> displayReminders;
       if (_searchQuery.isNotEmpty) {
         displayReminders = _reminders.where((reminder) {
@@ -204,7 +194,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   bool get _isAllSelected {
-    // Get currently displayed reminders
     List<Reminder> displayReminders;
     if (_searchQuery.isNotEmpty) {
       displayReminders = _reminders.where((reminder) {
@@ -358,7 +347,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
               if (spaces.isNotEmpty) ...[
                 const Divider(),
-                // Existing spaces
                 ConstrainedBox(
                   constraints: BoxConstraints(
                     maxHeight: MediaQuery.of(context).size.height * 0.4,
@@ -395,7 +383,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             return Text(
                                 '$count reminder${count == 1 ? '' : 's'}');
                           },
-                        ), // TODO: Get actual count
+                        ),
                         onTap: () async {
                           Navigator.of(context).pop();
                           await _assignRemindersToSpace(reminderIds, space.id);
@@ -414,7 +402,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-// Quick space creation dialog
   void _showQuickSpaceCreation(List<String> reminderIds) {
     final controller = TextEditingController();
 
@@ -450,7 +437,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-// Create new space and assign reminders
   Future<void> _createSpaceAndAssign(
       List<String> reminderIds, String spaceName) async {
     try {
@@ -458,7 +444,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       const availableColors = SpaceColors.presetColors;
       const availableIcons = SpaceIcons.presetIcons;
 
-      // Use next available color and icon
       final colorIndex = spaces.length % availableColors.length;
       final iconIndex = spaces.length % availableIcons.length;
 
@@ -509,7 +494,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
-// Assign reminders to space
   Future<void> _assignRemindersToSpace(
       List<String> reminderIds, String spaceId) async {
     try {
@@ -550,11 +534,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     if (result == true && mounted) {
       await _refreshReminders();
-      // Reminder updated successfully - silent success
     }
   }
 
-  // Direct delete without confirmation
   Future<void> _deleteReminder(Reminder reminder) async {
     try {
       await StorageService.deleteReminder(reminder.id);
@@ -564,9 +546,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
+  //Proper app bar alignment and spacing
   Widget _buildAppBar() {
     return SliverAppBar(
-      expandedHeight: _isSelectionMode ? 140 : 120,
+      expandedHeight: 90, // Fixed height for consistent spacing
       floating: true,
       snap: true,
       elevation: 0,
@@ -574,304 +557,221 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       surfaceTintColor: Colors.transparent,
       flexibleSpace: FlexibleSpaceBar(
         titlePadding: const EdgeInsets.only(left: 20, bottom: 16),
-        title: _isSelectionMode
-            ? Row(
-                children: [
-                  Text(
-                    '${_selectedReminders.length} selected',
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                          fontWeight: FontWeight.w400,
-                          letterSpacing: -0.8,
-                          color: const Color(0xFFFF453A),
-                        ),
-                  ),
-                ],
-              )
-            : Text(
-                'VoiceRemind',
-                style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                      fontWeight: FontWeight.w300,
-                      letterSpacing: -1.2,
-                    ),
+        title: Text(
+          'VoiceRemind',
+          style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                fontWeight: FontWeight.w300,
+                letterSpacing: -1.2,
               ),
+        ),
         expandedTitleScale: 1.0,
       ),
-      actions: _isSelectionMode
-          ? [
-              // Select All button - responsive (ADD THIS FIRST)
-              Container(
-                margin: const EdgeInsets.only(right: 4),
-                decoration: BoxDecoration(
-                  color: Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: const Color(0xFF007AFF).withValues(alpha: 0.3),
-                    width: 0.5,
-                  ),
-                ),
-                child: IconButton(
-                  icon: Icon(
-                    _isAllSelected
-                        ? Icons.deselect
-                        : (_isPartiallySelected
-                            ? Icons.checklist
-                            : Icons.select_all),
-                    size: 20,
-                  ),
-                  onPressed: _isAllSelected ? _deselectAll : _selectAll,
-                  tooltip: _isAllSelected ? 'Deselect All' : 'Select All',
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    foregroundColor: const Color(0xFF007AFF),
-                  ),
-                ),
-              ),
+      // Clean search icon with monochrome theme
+      actions: [
+        Container(
+          margin: const EdgeInsets.only(right: 16, bottom: 16),
+          decoration: BoxDecoration(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color:
+                  Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
+              width: 0.5,
+            ),
+          ),
+          child: IconButton(
+            icon: Icon(
+              Icons.search,
+              size: 20,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
+            onPressed: _openSearch,
+            tooltip: 'Search',
+            style: IconButton.styleFrom(
+              backgroundColor: Colors.transparent,
+              foregroundColor: Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 
-              // Your existing Complete Selected button
-              Container(
-                margin: const EdgeInsets.only(right: 4),
-                decoration: BoxDecoration(
-                  color: Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: const Color(0xFF28A745).withValues(alpha: 0.3),
-                    width: 0.5,
-                  ),
-                ),
-                child: IconButton(
-                  icon: const Icon(Icons.check_circle_outline, size: 20),
-                  onPressed: _bulkComplete,
-                  tooltip: 'Complete Selected',
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    foregroundColor: const Color(0xFF28A745),
-                  ),
-                ),
-              ),
+  Widget _buildStickyActionsHeader() {
+    final headerHeight = _isSelectionMode ? 104.0 : 60.0; // Dynamic height
+    return SliverPersistentHeader(
+      pinned: true,
+      delegate: _StickyHeaderDelegate(
+        minHeight: headerHeight,
+        maxHeight: headerHeight,
+        child: Container(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Column(
+            children: [
+              // Always show filter row at the top
+              _buildNormalModeHeader(),
 
-              // Your existing Reopen Selected button
-              Container(
-                margin: const EdgeInsets.only(right: 4),
-                decoration: BoxDecoration(
-                  color: Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: const Color(0xFF007AFF).withValues(alpha: 0.3),
-                    width: 0.5,
-                  ),
-                ),
-                child: IconButton(
-                  icon: const Icon(Icons.refresh, size: 20),
-                  onPressed: _bulkUncomplete,
-                  tooltip: 'Reopen Selected',
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    foregroundColor: const Color(0xFF007AFF),
-                  ),
-                ),
-              ),
+              // Show selection actions below when in selection mode
+              if (_isSelectionMode) ...[
+                const SizedBox(height: 8),
+                _buildSelectionActionsRow(),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
-              // Your existing Delete Selected button
-              Container(
-                margin: const EdgeInsets.only(right: 4),
-                decoration: BoxDecoration(
-                  color: Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: const Color(0xFFDC3545).withValues(alpha: 0.3),
-                    width: 0.5,
-                  ),
-                ),
-                child: IconButton(
-                  icon: const Icon(Icons.delete_outline, size: 20),
-                  onPressed: _bulkDelete,
-                  tooltip: 'Delete Selected',
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    foregroundColor: const Color(0xFFDC3545),
-                  ),
-                ),
-              ),
-
-              // Your existing Add to Space button
-              Container(
-                margin: const EdgeInsets.only(right: 4),
-                decoration: BoxDecoration(
-                  color: Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: const Color(0xFF007AFF).withValues(alpha: 0.3),
-                    width: 0.5,
-                  ),
-                ),
-                child: IconButton(
-                  icon: const Icon(Icons.folder_outlined, size: 20),
-                  onPressed: () =>
-                      _showSpaceSelector(_selectedReminders.toList()),
-                  tooltip: 'Add to Space',
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    foregroundColor: const Color(0xFF007AFF),
-                  ),
-                ),
-              ),
-
-              // Your existing Cancel button
-              Container(
-                margin: const EdgeInsets.only(right: 16),
-                decoration: BoxDecoration(
-                  color: Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .outline
-                        .withValues(alpha: 0.1),
-                    width: 0.5,
-                  ),
-                ),
-                child: IconButton(
-                  icon: const Icon(Icons.close, size: 20),
-                  onPressed: _exitSelectionMode,
-                  tooltip: 'Cancel',
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    foregroundColor: Theme.of(context).colorScheme.onSurface,
-                  ),
-                ),
-              ),
-            ]
-          : [
-              Container(
-                margin: const EdgeInsets.only(right: 4),
-                decoration: BoxDecoration(
-                  color: Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .outline
-                        .withValues(alpha: 0.1),
-                    width: 0.5,
-                  ),
-                ),
-                child: IconButton(
-                  icon: Icon(
-                    Icons.search,
-                    size: 20,
-                    color: Theme.of(context).colorScheme.onSurface,
-                  ),
-                  onPressed: _openSearch,
-                  tooltip: 'Search',
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    foregroundColor: Theme.of(context).colorScheme.onSurface,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                ),
-              ),
-              Container(
-                margin: const EdgeInsets.only(right: 4),
-                decoration: BoxDecoration(
-                  color: Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .outline
-                        .withValues(alpha: 0.1),
-                    width: 0.5,
-                  ),
-                ),
-                child: IconButton(
-                  icon: RotationTransition(
-                    turns: _refreshAnimationController,
-                    child: Icon(
-                      Icons.refresh,
-                      size: 20,
+  Widget _buildSelectionActionsRow() {
+    return Row(
+      children: [
+        // Compact selection info
+        Expanded(
+          flex: 2,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Compact checkbox
+              GestureDetector(
+                onTap: _isAllSelected ? _deselectAll : _selectAll,
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: _isAllSelected
+                        ? Theme.of(context).colorScheme.onSurface
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
                       color: Theme.of(context).colorScheme.onSurface,
+                      width: 1.5,
                     ),
                   ),
-                  onPressed: _refreshReminders,
-                  tooltip: 'Refresh',
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    foregroundColor: Theme.of(context).colorScheme.onSurface,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
+                  child: _isAllSelected
+                      ? Icon(
+                          Icons.check,
+                          color: Theme.of(context).colorScheme.surface,
+                          size: 16,
+                        )
+                      : (_isPartiallySelected
+                          ? Icon(
+                              Icons.remove,
+                              color: Theme.of(context).colorScheme.onSurface,
+                              size: 16,
+                            )
+                          : null),
                 ),
               ),
-              Container(
-                margin: const EdgeInsets.only(right: 4),
-                decoration: BoxDecoration(
-                  color: Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .outline
-                        .withValues(alpha: 0.1),
-                    width: 0.5,
-                  ),
-                ),
-                child: IconButton(
-                  icon: Icon(
-                    Icons.settings_outlined,
-                    size: 20,
-                    color: Theme.of(context).colorScheme.onSurface,
-                  ),
-                  onPressed: _openSettings,
-                  tooltip: 'Settings',
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    foregroundColor: Theme.of(context).colorScheme.onSurface,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                ),
-              ),
-              Container(
-                margin: const EdgeInsets.only(right: 16),
-                decoration: BoxDecoration(
-                  color: Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .outline
-                        .withValues(alpha: 0.1),
-                    width: 0.5,
-                  ),
-                ),
-                child: IconButton(
-                  icon: Icon(
-                    Icons.notification_add_outlined,
-                    
-                    size: 20,
-                    color: Theme.of(context).colorScheme.onSurface,
-                  ),
-                  onPressed: () async {
-                    await NotificationService.showImmediateNotification(
-                      title: 'Test Notification',
-                      body: 'If you see this, notifications are working! 🎉',
-                    );
-                  },
-                  tooltip: 'Test Notification',
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    foregroundColor: Theme.of(context).colorScheme.onSurface,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
+              const SizedBox(width: 8),
+              // Compact text
+              Flexible(
+                child: Text(
+                  '${_selectedReminders.length} selected',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurface,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14, // Slightly smaller to fit better
+                      ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
+          ),
+        ),
+
+        // Compact action buttons - Scrollable to prevent overflow
+        Expanded(
+          flex: 3,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildCompactActionButton(
+                  icon: Icons.check_circle_outline,
+                  onTap: _bulkComplete,
+                  tooltip: 'Complete',
+                ),
+                const SizedBox(width: 6),
+                _buildCompactActionButton(
+                  icon: Icons.refresh,
+                  onTap: _bulkUncomplete,
+                  tooltip: 'Reopen',
+                ),
+                const SizedBox(width: 6),
+                _buildCompactActionButton(
+                  icon: Icons.delete_outline,
+                  onTap: _bulkDelete,
+                  tooltip: 'Delete',
+                ),
+                const SizedBox(width: 6),
+                _buildCompactActionButton(
+                  icon: Icons.folder_outlined,
+                  onTap: () => _showSpaceSelector(_selectedReminders.toList()),
+                  tooltip: 'Space',
+                ),
+                const SizedBox(width: 6),
+                _buildCompactActionButton(
+                  icon: Icons.close,
+                  onTap: _exitSelectionMode,
+                  tooltip: 'Cancel',
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNormalModeHeader() {
+    return Row(
+      children: [
+        // Active filter chip if needed
+        if (_filterState.hasActiveFilters) ...[
+          _buildActiveFilterChip(),
+          const SizedBox(width: 8),
+        ],
+
+        // Main filter button
+        Expanded(
+          child: _buildFilterButton(),
+        ),
+      ],
+    );
+  }
+
+  //Compact action button that fits on small screens
+  Widget _buildCompactActionButton({
+    required IconData icon,
+    required VoidCallback onTap,
+    required String tooltip,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 36, // Smaller than before to fit more buttons
+          height: 36,
+          decoration: BoxDecoration(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color:
+                  Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
+              width: 0.5,
+            ),
+          ),
+          child: Icon(
+            icon,
+            size: 18, // Slightly smaller icon
+            color: Theme.of(context).colorScheme.onSurface,
+          ),
+        ),
+      ),
     );
   }
 
@@ -914,13 +814,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final pending = reminders.where((r) => r.isPending).length;
     final overdue = reminders.where((r) => r.isOverdue).length;
 
-    // Calculate number of cards to determine responsiveness
     final cardCount = overdue > 0 ? 4 : 3;
     final screenWidth = MediaQuery.of(context).size.width;
 
     return SliverToBoxAdapter(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
         child: Row(
           children: [
             _buildResponsiveStatCard(
@@ -971,12 +870,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       {required bool isHighlight}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // Responsive calculations
-    final availableWidth = screenWidth - 32; // 16px padding on each side
-    final spacingWidth = (cardCount - 1) * 12; // 12px spacing between cards
+    final availableWidth = screenWidth - 32;
+    final spacingWidth = (cardCount - 1) * 12;
     final cardWidth = (availableWidth - spacingWidth) / cardCount;
 
-    // Auto-scale based on card width and content
     final responsivePadding = _getResponsivePadding(cardWidth);
     final titleFontSize = _getResponsiveTitleFontSize(cardWidth, title.length);
     final valueFontSize = _getResponsiveValueFontSize(cardWidth);
@@ -986,7 +883,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       child: Container(
         height: cardHeight,
         constraints: const BoxConstraints(
-          minWidth: 60, // Prevent cards from becoming too narrow
+          minWidth: 60,
           maxWidth: double.infinity,
         ),
         decoration: BoxDecoration(
@@ -994,7 +891,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
             color: isHighlight
-                ? const Color(0xFFFF3B30) // Nothing red for overdue
+                ? const Color(0xFFFF3B30)
                 : (isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE5E5E5)),
             width: 1,
           ),
@@ -1013,7 +910,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Auto-scaling title
                   SizedBox(
                     height: 16,
                     child: Align(
@@ -1037,11 +933,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       ),
                     ),
                   ),
-
-                  // Auto-scaling value
                   SizedBox(
-                    height: cardHeight -
-                        40, // Remaining space for value (minus padding and title)
+                    height: cardHeight - 40,
                     child: Align(
                       alignment: Alignment.centerRight,
                       child: FittedBox(
@@ -1051,7 +944,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           value,
                           style: TextStyle(
                             color: isHighlight
-                                ? const Color(0xFFFF3B30) // Red for overdue
+                                ? const Color(0xFFFF3B30)
                                 : (isDark ? Colors.white : Colors.black),
                             fontSize: valueFontSize,
                             fontWeight: FontWeight.w700,
@@ -1072,6 +965,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
+  // Clean monochrome filter button
   Widget _buildFilterButton() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final hasFilters = _filterState.hasActiveFilters;
@@ -1080,14 +974,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       height: 44,
       decoration: BoxDecoration(
         color: hasFilters
-            ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.1)
+            ? (isDark
+                ? Colors.white.withValues(alpha: 0.1)
+                : Colors.black.withValues(alpha: 0.05))
             : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: hasFilters
-              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)
-              : Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
-          width: hasFilters ? 1.0 : 0.5,
+          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
+          width: 0.5,
         ),
       ),
       child: Material(
@@ -1099,25 +993,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
               children: [
-                // Dynamic sort icon based on current sort
                 Icon(
                   SortOption.getIconForType(_filterState.sortOption.type),
                   size: 18,
-                  color: hasFilters
-                      ? Theme.of(context).colorScheme.primary
-                      : (isDark
-                          ? const Color(0xFF8E8E93)
-                          : const Color(0xFF6D6D70)),
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.7),
                 ),
                 const SizedBox(width: 8),
                 Text(
                   'Filter',
                   style: TextStyle(
-                    color: hasFilters
-                        ? Theme.of(context).colorScheme.primary
-                        : (isDark
-                            ? const Color(0xFF8E8E93)
-                            : const Color(0xFF6D6D70)),
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.7),
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
                     letterSpacing: 0.2,
@@ -1129,13 +1020,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary,
+                      color: Theme.of(context).colorScheme.onSurface,
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(
                       _getActiveFilterCount().toString(),
                       style: TextStyle(
-                        color: Theme.of(context).colorScheme.onPrimary,
+                        color: Theme.of(context).colorScheme.surface,
                         fontSize: 10,
                         fontWeight: FontWeight.w600,
                       ),
@@ -1144,11 +1035,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 Icon(
                   Icons.tune_outlined,
                   size: 16,
-                  color: hasFilters
-                      ? Theme.of(context).colorScheme.primary
-                      : (isDark
-                          ? const Color(0xFF8E8E93)
-                          : const Color(0xFF6D6D70)),
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.7),
                 ),
               ],
             ),
@@ -1162,10 +1052,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
+          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.3),
           width: 0.5,
         ),
       ),
@@ -1175,13 +1065,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           Icon(
             Icons.filter_alt_outlined,
             size: 14,
-            color: Theme.of(context).colorScheme.primary,
+            color: Theme.of(context).colorScheme.onSurface,
           ),
           const SizedBox(width: 4),
           Text(
             _getActiveFilterSummary(),
             style: TextStyle(
-              color: Theme.of(context).colorScheme.primary,
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 12,
               fontWeight: FontWeight.w500,
               letterSpacing: 0.2,
@@ -1193,7 +1083,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             child: Icon(
               Icons.close,
               size: 14,
-              color: Theme.of(context).colorScheme.primary,
+              color: Theme.of(context).colorScheme.onSurface,
             ),
           ),
         ],
@@ -1220,7 +1110,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     setState(() {
       _filterState = newState;
     });
-    // The StreamBuilder will automatically update with the new filters
   }
 
   void _clearAllFilters() {
@@ -1263,16 +1152,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return '${active.length} filters';
   }
 
-  // Responsive helper methods for auto-scaling
+  // Responsive helper methods
   double _getResponsivePadding(double cardWidth) {
-    if (cardWidth < 70) return 6.0; // Very narrow cards
-    if (cardWidth < 90) return 8.0; // Narrow cards
-    if (cardWidth < 120) return 10.0; // Normal cards
-    return 12.0; // Wide cards
+    if (cardWidth < 70) return 6.0;
+    if (cardWidth < 90) return 8.0;
+    if (cardWidth < 120) return 10.0;
+    return 12.0;
   }
 
   double _getResponsiveTitleFontSize(double cardWidth, int textLength) {
-    // Factor in both card width and text length
     final baseSize = cardWidth < 70
         ? 8.0
         : cardWidth < 90
@@ -1281,47 +1169,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ? 10.0
                 : 11.0;
 
-    // Adjust for longer text
     if (textLength > 6) {
-      // "PENDING", "OVERDUE"
       return baseSize - 1.0;
     }
     return baseSize;
   }
 
   double _getResponsiveValueFontSize(double cardWidth) {
-    if (cardWidth < 70) return 18.0; // Very narrow cards
-    if (cardWidth < 90) return 20.0; // Narrow cards
-    if (cardWidth < 120) return 22.0; // Normal cards
-    return 24.0; // Wide cards
+    if (cardWidth < 70) return 18.0;
+    if (cardWidth < 90) return 20.0;
+    if (cardWidth < 120) return 22.0;
+    return 24.0;
   }
 
   double _getResponsiveCardHeight(double screenWidth) {
-    if (screenWidth < 320) return 65.0; // Very small screens
-    if (screenWidth < 400) return 68.0; // Small screens
-    return 70.0; // Normal screens
-  }
-
-  Widget _buildQuickFilters() {
-    return SliverToBoxAdapter(
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(16, 20, 16, 8),
-        child: Row(
-          children: [
-            // Pinned quick filters (if any are active)
-            if (_filterState.hasActiveFilters) ...[
-              _buildActiveFilterChip(),
-              const SizedBox(width: 8),
-            ],
-
-            // Main Filter Button
-            Expanded(
-              child: _buildFilterButton(),
-            ),
-          ],
-        ),
-      ),
-    );
+    if (screenWidth < 320) return 65.0;
+    if (screenWidth < 400) return 68.0;
+    return 70.0;
   }
 
   Widget _buildRemindersList(List<Reminder> reminders) {
@@ -1339,7 +1203,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Nothing-style error icon
                 Container(
                   width: 80,
                   height: 80,
@@ -1353,7 +1216,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                   child: Stack(
                     children: [
-                      // Red accent corner
                       Positioned(
                         top: 0,
                         right: 0,
@@ -1369,7 +1231,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ),
                         ),
                       ),
-                      // Center icon
                       Center(
                         child: Icon(
                           Icons.error_outline,
@@ -1448,7 +1309,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Nothing-style geometric icon
                 Container(
                   width: 80,
                   height: 80,
@@ -1465,7 +1325,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                   child: Stack(
                     children: [
-                      // Dot pattern
                       Positioned(
                         top: 16,
                         left: 16,
@@ -1496,7 +1355,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ),
                         ),
                       ),
-                      // Center icon
                       Center(
                         child: Icon(
                           Icons.voice_over_off_outlined,
@@ -1553,10 +1411,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildReminderCard(Reminder reminder) {
-    // Get the current displayed reminders list
     List<Reminder> displayReminders;
     if (_searchQuery.isNotEmpty) {
-      // Legacy search mode
       displayReminders = _reminders.where((reminder) {
         final titleMatch =
             reminder.title.toLowerCase().contains(_searchQuery.toLowerCase());
@@ -1567,11 +1423,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         return titleMatch || descriptionMatch;
       }).toList();
     } else {
-      // Use new filter system
       displayReminders = _filterState.applyFilters(_reminders);
     }
 
-    // Find the correct index in the displayed list
     final index = displayReminders.indexOf(reminder);
 
     return ReminderCardWidget(
@@ -1579,8 +1433,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       searchQuery: _searchQuery,
       isSelectionMode: _isSelectionMode,
       isSelected: _selectedReminders.contains(reminder.id),
-      allReminders: displayReminders, // Use the filtered/displayed list
-      currentIndex: index >= 0 ? index : 0, // Use the index in displayed list
+      allReminders: displayReminders,
+      currentIndex: index >= 0 ? index : 0,
       onLongPress: () {
         if (!_isSelectionMode) {
           _enterSelectionMode(reminder.id);
@@ -1612,10 +1466,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   _isLoading = false;
                 }
 
-                // Apply filters using the new filter state
                 List<Reminder> displayReminders;
                 if (_searchQuery.isNotEmpty) {
-                  // Legacy search mode
                   displayReminders = _reminders.where((reminder) {
                     final titleMatch = reminder.title
                         .toLowerCase()
@@ -1627,15 +1479,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     return titleMatch || descriptionMatch;
                   }).toList();
                 } else {
-                  // Use new filter system
                   displayReminders = _filterState.applyFilters(_reminders);
                 }
 
                 return CustomScrollView(
                   slivers: [
                     _buildAppBar(),
-
-                    // Show search results summary when searching
+                    _buildStickyActionsHeader(),
                     if (_searchQuery.isNotEmpty)
                       SliverToBoxAdapter(
                         child: SearchResultsSummary(
@@ -1643,13 +1493,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           searchQuery: _searchQuery,
                         ),
                       ),
-
-                    // Show stats and filters only when not searching
                     if (!_isSearchMode) _buildStatsCards(_reminders),
-                    if (!_isSearchMode) _buildQuickFilters(),
-
                     _buildRemindersList(displayReminders),
-
                     const SliverToBoxAdapter(
                       child: SizedBox(height: 100),
                     ),
@@ -1659,7 +1504,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
           ),
 
-          // Search overlay (covers entire screen when active)
+          // Search overlay
           if (_isSearchMode)
             Container(
               color: Theme.of(context).scaffoldBackgroundColor,
@@ -1741,6 +1586,38 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 }
 
+// Custom delegate for sticky header
+class _StickyHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final double minHeight;
+  final double maxHeight;
+  final Widget child;
+
+  _StickyHeaderDelegate({
+    required this.minHeight,
+    required this.maxHeight,
+    required this.child,
+  });
+
+  @override
+  double get minExtent => minHeight;
+
+  @override
+  double get maxExtent => maxHeight;
+
+  @override
+  Widget build(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return SizedBox.expand(child: child);
+  }
+
+  @override
+  bool shouldRebuild(_StickyHeaderDelegate oldDelegate) {
+    return maxHeight != oldDelegate.maxHeight ||
+        minHeight != oldDelegate.minHeight ||
+        child != oldDelegate.child;
+  }
+}
+
 // Custom painter for circular countdown progress indicator
 class CircularCountdownPainter extends CustomPainter {
   final double progress;
@@ -1760,7 +1637,6 @@ class CircularCountdownPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = (size.width / 2) - (strokeWidth / 2);
 
-    // Background circle
     final backgroundPaint = Paint()
       ..color = backgroundColor
       ..strokeWidth = strokeWidth
@@ -1769,22 +1645,19 @@ class CircularCountdownPainter extends CustomPainter {
 
     canvas.drawCircle(center, radius, backgroundPaint);
 
-    // Progress arc
     final progressPaint = Paint()
       ..color = progressColor
       ..strokeWidth = strokeWidth
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
 
-    // Calculate sweep angle (progress from 0 to 2π)
     final sweepAngle = 2 * math.pi * progress;
 
-    // Draw arc starting from top (-π/2) and sweeping clockwise
     canvas.drawArc(
       Rect.fromCircle(center: center, radius: radius),
-      -math.pi / 2, // Start from top
-      sweepAngle, // Sweep angle
-      false, // Don't use center
+      -math.pi / 2,
+      sweepAngle,
+      false,
       progressPaint,
     );
   }

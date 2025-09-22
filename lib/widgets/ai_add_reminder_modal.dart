@@ -249,6 +249,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
     _tabController!.addListener(() {
       if (!_tabController!.indexIsChanging) {
         final newIndex = _tabController!.index;
+        final previousMode = _currentMode;
 
         // If user clicks AI tabs but no provider configured, show setup dialog
         if (!_aiServiceReady && newIndex > 0) {
@@ -258,6 +259,12 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
             _tabController!.animateTo(0);
           });
           return;
+        }
+
+        // Unfocus any active text fields when switching away from AI Text tab
+        if (previousMode == ReminderCreationMode.aiText && newIndex != 1) {
+          _aiInputController.clearComposing();
+          FocusScope.of(context).unfocus();
         }
 
         // Normal tab switching for configured users
@@ -1158,7 +1165,6 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
-    final bottomPadding = MediaQuery.of(context).viewInsets.bottom;
 
     return AnimatedBuilder(
       animation: _slideController,
@@ -1178,10 +1184,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                 _buildHeader(),
                 _buildTabBar(),
                 Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.only(bottom: bottomPadding),
-                    child: _buildTabContent(),
-                  ),
+                  child: _buildTabContent(),
                 ),
               ],
             ),
