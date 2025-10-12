@@ -650,21 +650,15 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
 
     return StatefulBuilder(
       builder: (context, setModalState) {
-        // IMPROVED RESPONSIVE CALCULATIONS
+        // FIXED RESPONSIVE CALCULATIONS
         final screenHeight = MediaQuery.of(context).size.height;
         final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
         final topPadding = MediaQuery.of(context).padding.top;
-        final bottomPadding = MediaQuery.of(context).padding.bottom;
 
-        // Calculate truly available height
-        final availableHeight = screenHeight - topPadding - bottomPadding;
-
-        // Use more generous height calculation
+// Calculate modal height that doesn't shrink
         final modalHeight = keyboardHeight > 0
-            ? availableHeight -
-                keyboardHeight -
-                20 // When keyboard is open, use remaining space
-            : availableHeight * 0.85; // When keyboard is closed, use 85%
+            ? screenHeight - topPadding - keyboardHeight - 40
+            : screenHeight * 0.85;
 
         return Container(
           height: modalHeight,
@@ -1965,6 +1959,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                     child: Row(
                       children: [
                         // Back button
+                        // Back button
                         Expanded(
                           child: OutlinedButton(
                             onPressed: () {
@@ -1979,7 +1974,13 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
-                            child: const Text('EDIT PROMPT'),
+                            child: const FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                'EDIT PROMPT',
+                                style: TextStyle(fontSize: 12),
+                              ),
+                            ),
                           ),
                         ),
 
@@ -2010,11 +2011,15 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                                     child: CircularProgressIndicator(
                                         strokeWidth: 2),
                                   )
-                                : Text(
-                                    'CREATE ${_selectedReminderIndices.length} REMINDER${_selectedReminderIndices.length == 1 ? '' : 'S'}',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      letterSpacing: 0.5,
+                                : FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Text(
+                                      'CREATE ${_selectedReminderIndices.length}',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        letterSpacing: 0.5,
+                                      ),
                                     ),
                                   ),
                           ),
@@ -2259,7 +2264,6 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
 
           const SizedBox(height: 4),
 
-          // Your existing mic control (press & hold) with updated functionality
           GestureDetector(
             onLongPressStart: (_) => _startListening(),
             onLongPressEnd: (_) => _stopListening(),
@@ -2305,29 +2309,32 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(_aiServiceReady ? Icons.mic : Icons.settings_outlined,
-                        size: 20,
-                        color: _aiServiceReady
-                            ? Colors.white
-                            : Theme.of(context)
-                                .colorScheme
-                                .onSurface
-                                .withValues(alpha: 0.5)),
+                    Icon(
+                      _aiServiceReady ? Icons.mic : Icons.settings_outlined,
+                      size: 20,
+                      color: _aiServiceReady
+                          ? Theme.of(context).colorScheme.onPrimary
+                          : Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withValues(alpha: 0.5),
+                    ),
                     const SizedBox(width: 10),
                     Text(
                       _aiServiceReady
                           ? 'PRESS & HOLD TO SPEAK'
                           : 'CONFIGURE AI FIRST',
-                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                            color: _aiServiceReady
-                                ? Colors.white
-                                : Theme.of(context)
-                                    .colorScheme
-                                    .onSurface
-                                    .withValues(alpha: 0.5),
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 1.0,
-                          ),
+                      style: TextStyle(
+                        color: _aiServiceReady
+                            ? Theme.of(context).colorScheme.onPrimary
+                            : Theme.of(context)
+                                .colorScheme
+                                .onSurface
+                                .withValues(alpha: 0.5),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.0,
+                      ),
                     ),
                   ],
                 ),
@@ -2527,6 +2534,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
             child: Row(
               children: [
                 // Try again button
+                // Try again button
                 Expanded(
                   child: OutlinedButton(
                     onPressed: () {
@@ -2538,7 +2546,10 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                       });
                       VoiceService.instance.resetState();
                     },
-                    child: const Text('TRY AGAIN'),
+                    child: const FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text('TRY AGAIN', style: TextStyle(fontSize: 12)),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -2569,11 +2580,15 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                             width: 20,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : Text(
-                            'CREATE ${_selectedReminderIndices.length} REMINDER${_selectedReminderIndices.length == 1 ? '' : 'S'}',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 0.5,
+                        : FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              'CREATE ${_selectedReminderIndices.length}',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.5,
+                              ),
                             ),
                           ),
                   ),

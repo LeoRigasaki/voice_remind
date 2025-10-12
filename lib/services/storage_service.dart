@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/notification_service.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/reminder.dart';
@@ -72,7 +73,7 @@ class StorageService {
   static void _startBackgroundUpdateChecker() {
     _backgroundUpdateChecker?.cancel();
     _backgroundUpdateChecker = Timer.periodic(
-      const Duration(milliseconds: 500), // More frequent checking
+      const Duration(seconds: 5), // More frequent checking
       (timer) async {
         try {
           final hasUpdates = await checkForBackgroundUpdates();
@@ -361,6 +362,9 @@ class StorageService {
   }
 
   static Future<void> updateReminder(Reminder updatedReminder) async {
+    debugPrint('💾 Updating reminder: ${updatedReminder.id}');
+    debugPrint('💾 New status: ${updatedReminder.status}');
+
     final List<Reminder> reminders = await getReminders();
     final int index = reminders.indexWhere((r) => r.id == updatedReminder.id);
 
@@ -371,6 +375,7 @@ class StorageService {
       // FORCE immediate update notification
       await _markBackgroundUpdate();
 
+      debugPrint('✅ Reminder updated in storage');
       debugPrint('✅ Updated reminder: ${updatedReminder.id}');
     } else {
       debugPrint('⚠️ Reminder not found for update: ${updatedReminder.id}');
@@ -573,8 +578,69 @@ class StorageService {
         return slot;
       }).toList();
 
-      final updatedReminder = reminder.copyWith(timeSlots: updatedTimeSlots);
-      await updateReminder(updatedReminder);
+      // CRITICAL FIX: Check if all slots completed for repeating reminders
+      final allCompleted = updatedTimeSlots
+          .every((slot) => slot.status == ReminderStatus.completed);
+
+      if (allCompleted && reminder.repeatType != RepeatType.none) {
+        debugPrint('🔄 All time slots completed for repeating reminder');
+        debugPrint('🔄 Resetting slots and rescheduling for next occurrence');
+
+        // Reset all slots to pending for next occurrence
+        final resetSlots = updatedTimeSlots.map((slot) {
+          return slot.copyWith(
+            status: ReminderStatus.pending,
+            completedAt: null,
+          );
+        }).toList();
+
+        // Calculate next occurrence
+        DateTime nextScheduledTime;
+        switch (reminder.repeatType) {
+          case RepeatType.daily:
+            nextScheduledTime =
+                reminder.scheduledTime.add(const Duration(days: 1));
+            break;
+          case RepeatType.weekly:
+            nextScheduledTime =
+                reminder.scheduledTime.add(const Duration(days: 7));
+            break;
+          case RepeatType.monthly:
+            final originalDate = reminder.scheduledTime;
+            nextScheduledTime = DateTime(
+              originalDate.year,
+              originalDate.month + 1,
+              originalDate.day,
+              originalDate.hour,
+              originalDate.minute,
+            );
+            break;
+          case RepeatType.none:
+            nextScheduledTime = reminder.scheduledTime;
+            break;
+        }
+
+        final updatedReminder = reminder.copyWith(
+          timeSlots: resetSlots,
+          scheduledTime: nextScheduledTime,
+          updatedAt: DateTime.now(),
+        );
+
+        await updateReminder(updatedReminder);
+        debugPrint('✅ Reminder rescheduled to: $nextScheduledTime');
+
+        // Reschedule notifications
+        // Import at top: import '../services/notification_service.dart';
+        if (updatedReminder.isNotificationEnabled) {
+          await NotificationService.scheduleReminder(updatedReminder);
+          debugPrint('✅ Notifications scheduled for next occurrence');
+        }
+      } else {
+        // Just update this slot normally
+        final updatedReminder = reminder.copyWith(timeSlots: updatedTimeSlots);
+        await updateReminder(updatedReminder);
+        debugPrint('✅ Time slot status updated');
+      }
     }
   }
 

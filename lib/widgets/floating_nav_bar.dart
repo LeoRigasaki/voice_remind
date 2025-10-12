@@ -273,7 +273,7 @@ class _FloatingNavBarState extends State<FloatingNavBar>
                   },
                   child: Icon(
                     isActive ? activeIcon : inactiveIcon,
-                    key: ValueKey('${tab.name}_${isActive}'),
+                    key: ValueKey('${tab.name}_$isActive'),
                     size: iconSize,
                     color: _getIconColor(isActive, isDark),
                   ),

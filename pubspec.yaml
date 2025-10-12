@@ -1,6 +1,6 @@
 name: voice_remind
 description: A beautiful voice-first reminder application
-version: 1.1.7+1
+version: 1.1.8+1
 
 environment:
   sdk: '>=3.5.0 <4.0.0'
@@ -11,7 +11,7 @@ dependencies:
 
   # UI & Material Design
   cupertino_icons: ^1.0.8
-
+  dynamic_color: ^1.7.0
   # Simple Local Storage - No Hive for now, just SharedPreferences
   shared_preferences: ^2.3.3
 
@@ -49,6 +49,8 @@ dependencies:
 
   # Alarm System (NEW)
   alarm: ^5.1.4
+  awesome_notifications: ^0.10.0+1
+  flutter_fgbg: ^0.7.1
   flutter_ringtone_player: ^4.0.0
 
 dev_dependencies:

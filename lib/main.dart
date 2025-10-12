@@ -1,7 +1,5 @@
 // [lib]/main.dart
 import 'package:flutter/material.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:alarm/alarm.dart';
 import 'dart:async';
 import 'services/notification_service.dart';
 import 'services/storage_service.dart';
@@ -11,16 +9,10 @@ import 'services/theme_service.dart';
 import 'services/update_service.dart';
 import 'widgets/update_dialog.dart';
 import 'screens/main_navigation.dart';
-import 'screens/alarm_screen.dart';
 import 'services/ai_reminder_service.dart';
 import 'services/voice_service.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'services/alarm_service.dart';
-import 'models/reminder.dart';
-
-// Global notification plugin instance
-final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-    FlutterLocalNotificationsPlugin();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -41,9 +33,20 @@ void main() async {
   // Initialize AI service with proper user key loading
   await _initializeAIService();
 
-  // Initialize notifications
+  // CRITICAL: Initialize NotificationService FIRST (includes action listeners)
   await NotificationService.initialize();
   debugPrint('✅ Notification service initialized');
+
+  // CRITICAL: Initialize notification action listeners
+  await NotificationService.initializeActionListeners();
+  debugPrint('✅ Notification action listeners initialized');
+
+  // Request full-screen intent permission for alarms (Android 10+)
+  await NotificationService.requestFullScreenPermission();
+  debugPrint('✅ Full-screen permission requested');
+
+  // Then initialize AlarmService (depends on NotificationService)
+  await _initializeAlarmService();
 
   // Initialize spaces service
   await SpacesService.initialize();
@@ -59,9 +62,6 @@ void main() async {
 
   // Initialize voice service
   await _initializeVoiceService();
-
-  // Initialize alarm service
-  await _initializeAlarmService();
 
   runApp(const VoiceRemindApp());
 }
@@ -153,9 +153,9 @@ Future<void> _initializeAIService() async {
 
 Future<void> _initializeAlarmService() async {
   try {
-    debugPrint('Initializing Alarm service...');
+    debugPrint('⏰ Initializing Alarm service with awesome_notifications...');
 
-    // Initialize alarm service
+    // Initialize alarm service (no more Alarm.init())
     await AlarmService.initialize();
     debugPrint('✅ Alarm service initialized successfully');
   } catch (e) {
@@ -195,17 +195,6 @@ class _VoiceRemindAppState extends State<VoiceRemindApp>
   Timer? _backgroundUpdateChecker;
   bool _isAppInBackground = false;
 
-  // Alarm stream subscription
-  static StreamSubscription<AlarmSettings>? _alarmSubscription;
-
-  // Track current alarm screen to prevent multiple instances
-  bool _isAlarmScreenShowing = false;
-  String? _currentAlarmScreenId;
-  Reminder? _backgroundAlarmReminder;
-
-  // FIXED: Add pending alarm tracking for background scenario
-  Reminder? _pendingAlarmReminder;
-
   @override
   void initState() {
     super.initState();
@@ -220,72 +209,6 @@ class _VoiceRemindAppState extends State<VoiceRemindApp>
 
     // Start enhanced background update monitoring
     _startBackgroundUpdateMonitoring();
-
-    // Setup alarm navigation listener
-    _setupAlarmNavigationListener();
-  }
-
-  void _setupAlarmNavigationListener() {
-    _alarmSubscription?.cancel();
-
-    _alarmSubscription = Alarm.ringStream.stream.listen((alarmSettings) {
-      debugPrint('🚨 Alarm ringing - showing full-screen alarm');
-      _handleAlarmRinging(alarmSettings);
-    });
-
-    debugPrint('✅ Alarm navigation listener setup complete');
-  }
-
-  Future<void> _handleAlarmRinging(AlarmSettings alarmSettings) async {
-    try {
-      if (_navigatorKey.currentContext == null) {
-        debugPrint('⚠️ Navigator context not available for alarm navigation');
-        return;
-      }
-
-      // Find the corresponding reminder
-      final reminders = await StorageService.getReminders();
-      Reminder? reminder;
-      for (final r in reminders) {
-        final expectedAlarmId = r.id.hashCode.abs();
-        if (expectedAlarmId == alarmSettings.id) {
-          reminder = r;
-          break;
-        }
-      }
-
-      reminder ??= Reminder(
-        id: alarmSettings.id.toString(),
-        title: alarmSettings.notificationSettings?.title ?? 'Alarm',
-        description:
-            alarmSettings.notificationSettings?.body ?? 'Alarm reminder',
-        scheduledTime: alarmSettings.dateTime,
-        status: ReminderStatus.pending,
-        isNotificationEnabled: true,
-      );
-
-      // SIMPLIFIED: If alarm is ringing, user chose alarm mode, so ALWAYS show alarm screen
-      debugPrint(
-          '🖥️ Alarm ringing - showing full-screen alarm for: ${reminder.title}');
-
-      final appState = WidgetsBinding.instance.lifecycleState;
-      final isAppInForeground = appState == AppLifecycleState.resumed;
-
-      if (isAppInForeground && !_isAlarmScreenShowing) {
-        // App is active - show alarm screen immediately
-        await _showAlarmScreen(reminder);
-      } else if (!isAppInForeground) {
-        // App is in background - store alarm to show on resume
-        debugPrint('🖥️ App in background - storing alarm to show on resume');
-        _backgroundAlarmReminder = reminder;
-        _isAlarmScreenShowing = true;
-        _currentAlarmScreenId = reminder.id;
-      } else {
-        debugPrint('⚠️ Alarm screen already showing, skipping duplicate');
-      }
-    } catch (e) {
-      debugPrint('⚠️ Error handling alarm ringing: $e');
-    }
   }
 
   /// Force refresh all reminder data when critical updates occur
@@ -308,57 +231,6 @@ class _VoiceRemindAppState extends State<VoiceRemindApp>
     }
   }
 
-  // Show alarm screen with proper tracking
-  Future<void> _showAlarmScreen(Reminder reminder) async {
-    try {
-      if (_navigatorKey.currentContext == null) return;
-
-      // Mark that alarm screen is showing
-      _isAlarmScreenShowing = true;
-      _currentAlarmScreenId = reminder.id;
-
-      debugPrint('🖥️ Showing full-screen alarm for: ${reminder.title}');
-
-      // Navigate to alarm screen WITHOUT adding to navigation stack
-      await Navigator.of(_navigatorKey.currentContext!).push(
-        PageRouteBuilder<void>(
-          pageBuilder: (context, animation, secondaryAnimation) => AlarmScreen(
-            reminder: reminder,
-            onDismissed: () {
-              debugPrint('✅ Alarm dismissed from UI');
-              _clearAlarmScreenTracking();
-              // Screen will close itself via SystemNavigator.pop()
-            },
-            onSnoozed: () {
-              debugPrint('Alarm snoozed from UI');
-              _clearAlarmScreenTracking();
-              // Screen will close itself via SystemNavigator.pop()
-            },
-          ),
-          // Make it a full-screen dialog that doesn't affect main navigation
-          fullscreenDialog: true,
-          // No transition animation for immediate display
-          transitionDuration: Duration.zero,
-          reverseTransitionDuration: Duration.zero,
-        ),
-      );
-
-      // Clear tracking when screen is popped
-      _clearAlarmScreenTracking();
-    } catch (e) {
-      debugPrint('❌ Error showing alarm screen: $e');
-      _clearAlarmScreenTracking();
-    }
-  }
-
-  // FIXED: Clear alarm screen tracking and pending alarm
-  void _clearAlarmScreenTracking() {
-    _isAlarmScreenShowing = false;
-    _currentAlarmScreenId = null;
-    _pendingAlarmReminder = null; // Also clear pending alarm
-    debugPrint('🖥️ Cleared alarm screen tracking');
-  }
-
   void _setupThemeListener() {
     // Set initial theme
     _themeMode = ThemeService.getThemeMode();
@@ -375,7 +247,7 @@ class _VoiceRemindAppState extends State<VoiceRemindApp>
 
   void _startBackgroundUpdateMonitoring() {
     _backgroundUpdateChecker = Timer.periodic(
-      const Duration(milliseconds: 500), // More frequent monitoring
+      const Duration(seconds: 5), // More frequent monitoring
       (timer) async {
         if (!_isAppInBackground) {
           try {
@@ -425,9 +297,6 @@ class _VoiceRemindAppState extends State<VoiceRemindApp>
     WidgetsBinding.instance.removeObserver(this);
     _backgroundUpdateChecker?.cancel();
 
-    // Cancel alarm subscription
-    _alarmSubscription?.cancel();
-
     // Dispose services when app is closed
     StorageService.dispose();
     ThemeService.dispose();
@@ -440,25 +309,21 @@ class _VoiceRemindAppState extends State<VoiceRemindApp>
 
     debugPrint('📱 App lifecycle: $_lastLifecycleState → $state');
 
-    // Update AlarmService with basic state info
+    // Handle app state changes
     switch (state) {
       case AppLifecycleState.resumed:
-        AlarmService.updateAppState(isInForeground: true);
         _handleAppResumed();
         break;
       case AppLifecycleState.paused:
-        AlarmService.updateAppState(isInForeground: false);
         _handleAppPaused();
         break;
       case AppLifecycleState.inactive:
         _handleAppInactive();
         break;
       case AppLifecycleState.detached:
-        AlarmService.updateAppState(isInForeground: false);
         _handleAppDetached();
         break;
       case AppLifecycleState.hidden:
-        AlarmService.updateAppState(isInForeground: false);
         _handleAppHidden();
         break;
     }
@@ -467,19 +332,10 @@ class _VoiceRemindAppState extends State<VoiceRemindApp>
   }
 
   void _handleAppResumed() async {
-    debugPrint('📱 App resumed - checking for background alarm');
+    debugPrint('📱 App resumed - refreshing data');
     _isAppInBackground = false;
 
-    // PRIORITY 1: Check for background alarm to show
-    if (_backgroundAlarmReminder != null) {
-      final alarmToShow = _backgroundAlarmReminder!;
-      _backgroundAlarmReminder = null;
-      debugPrint('🖥️ Showing stored background alarm: ${alarmToShow.title}');
-      await _showAlarmScreen(alarmToShow);
-      return; // Don't continue with normal resume logic
-    }
-
-    // PRIORITY 2: Enhanced background update detection
+    // Enhanced background update detection
     try {
       final hasBackgroundUpdates =
           await StorageService.checkForBackgroundUpdates();

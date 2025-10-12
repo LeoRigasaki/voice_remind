@@ -1,8 +1,6 @@
 // [lib/services]/alarm_service.dart
 import 'dart:async';
-import 'package:alarm/utils/alarm_set.dart';
 import 'package:flutter/material.dart';
-import 'package:alarm/alarm.dart';
 import '../models/reminder.dart';
 import '../services/storage_service.dart';
 import '../services/notification_service.dart';
@@ -26,20 +24,15 @@ class AlarmService {
   static String? _currentFullScreenAlarmId;
   static String? _currentTimeSlotId;
 
-  static bool _isAppInForeground = true;
-  static bool _isScreenOn = true;
-
   static Future<void> initialize() async {
     if (_isInitialized) return;
 
-    debugPrint('Initializing Alarm Service...');
+    debugPrint('Initializing Alarm Service with awesome_notifications...');
 
     try {
-      await Alarm.init();
-      debugPrint('Alarm plugin initialized');
+      // No more Alarm.init() - we're using awesome_notifications now
+      debugPrint('✅ Alarm service ready (using awesome_notifications)');
 
-      _setupAlarmListener();
-      setupAppLifecycleListener();
       await _cleanupOrphanedAlarms();
 
       _isInitialized = true;
@@ -50,201 +43,40 @@ class AlarmService {
     }
   }
 
-  static void setupAppLifecycleListener() {
-    // Enhanced app lifecycle detection for better mixed mode decisions
-    WidgetsBinding.instance.addObserver(_AppLifecycleObserver());
-    debugPrint('🔄 Enhanced app lifecycle listener set up');
-  }
-
-  static void updateAppState({bool? isInForeground, bool? isScreenOn}) {
-    if (isInForeground != null) {
-      _isAppInForeground = isInForeground;
-      debugPrint('App foreground state: $_isAppInForeground');
-    }
-    if (isScreenOn != null) {
-      _isScreenOn = isScreenOn;
-      debugPrint('Screen state: $_isScreenOn');
-    }
-  }
-
-  static void _setupAlarmListener() {
-    Alarm.ringing.listen((AlarmSet alarmSet) {
-      for (final alarmSettings in alarmSet.alarms) {
-        debugPrint('Alarm ringing: ${alarmSettings.id}');
-        _handleAlarmRinging(alarmSettings);
-      }
-    });
-  }
-
-  static void _handleAlarmRinging(AlarmSettings alarmSettings) async {
-    try {
-      var alarmContext = _activeAlarms[alarmSettings.id];
-
-      if (alarmContext == null) {
-        debugPrint('Alarm context not found, attempting to reconstruct...');
-        alarmContext = await _reconstructAlarmContext(alarmSettings.id);
-
-        if (alarmContext == null) {
-          debugPrint(
-              'Could not reconstruct alarm context for ID: ${alarmSettings.id}');
-          return;
-        }
-
-        _activeAlarms[alarmSettings.id] = alarmContext;
-      }
-
-      final useAlarm = await StorageService.getUseAlarmInsteadOfNotification();
-      if (!useAlarm) {
-        debugPrint('User switched to notifications - stopping alarm');
-        await Alarm.stop(alarmSettings.id);
-        return;
-      }
-
-      final shouldShowFullScreen = _shouldShowFullScreenAlarm();
-
-      // 🚨 MIXED MODE COLLISION DETECTION
-      if (shouldShowFullScreen) {
-        // Show full-screen alarm - cancel the mixed mode notification
-        debugPrint(
-            '🔥 MIXED MODE: Showing full-screen alarm, canceling notification');
-
-        final notificationId = alarmContext.timeSlotId != null
-            ? NotificationService.generateTimeSlotNotificationId(
-                alarmContext.reminder.id, alarmContext.timeSlotId!)
-            : alarmContext.reminder.id.hashCode;
-
-        try {
-          await NotificationService.cancelNotification(notificationId);
-          debugPrint('✅ Canceled notification ID: $notificationId');
-        } catch (e) {
-          debugPrint('⚠️ Error canceling notification: $e');
-        }
-
-        _isFullScreenAlarmShowing = true;
-        _currentFullScreenAlarmId = alarmContext.reminder.id;
-        _currentTimeSlotId = alarmContext.timeSlotId;
-      } else {
-        // Show notification - stop this alarm and let notification handle it
-        debugPrint(
-            '📱 MIXED MODE: Other app active, stopping alarm, letting notification show');
-
-        await Alarm.stop(alarmSettings.id);
-        _activeAlarms.remove(alarmSettings.id);
-
-        // Don't emit alarm event since notification will handle it
-        return;
-      }
-
-      debugPrint(
-          'Alarm context: ReminderId=${alarmContext.reminder.id}, TimeSlotId=${alarmContext.timeSlotId}');
-
-      final alarmEvent = AlarmEvent(
-        type: AlarmEventType.ringing,
-        reminder: alarmContext.reminder,
-        alarmSettings: alarmSettings,
-        shouldShowFullScreen: shouldShowFullScreen,
-        timeSlotId: alarmContext.timeSlotId,
-      );
-
-      _alarmEventController.add(alarmEvent);
-      debugPrint(
-          'Alarm event emitted: ${alarmContext.reminder.title} (TimeSlot: ${alarmContext.timeSlotId})');
-    } catch (e) {
-      debugPrint('Error handling alarm ringing: $e');
-    }
-  }
-
-  // NEW: Enhanced alarm context reconstruction
-  static Future<AlarmContext?> _reconstructAlarmContext(int alarmId) async {
-    try {
-      final allReminders = await StorageService.getReminders();
-
-      for (final reminder in allReminders) {
-        // Check single-time reminder
-        if (_generateAlarmId(reminder.id) == alarmId) {
-          debugPrint(
-              'Reconstructed single-time alarm context for: ${reminder.id}');
-          return AlarmContext(reminder: reminder, timeSlotId: null);
-        }
-
-        // Check multi-time reminder time slots
-        if (reminder.hasMultipleTimes) {
-          for (final timeSlot in reminder.timeSlots) {
-            final timeSlotAlarmId =
-                _generateTimeSlotAlarmId(reminder.id, timeSlot.id);
-            if (timeSlotAlarmId == alarmId) {
-              debugPrint(
-                  'Reconstructed multi-time alarm context for: ${reminder.id}, TimeSlot: ${timeSlot.id}');
-              return AlarmContext(reminder: reminder, timeSlotId: timeSlot.id);
-            }
-          }
-        }
-      }
-
-      debugPrint('No matching reminder found for alarm ID: $alarmId');
-      return null;
-    } catch (e) {
-      debugPrint('Error reconstructing alarm context: $e');
-      return null;
-    }
-  }
-
-  static bool _shouldShowFullScreenAlarm() {
-    // Show full-screen alarm when:
-    // 1. VoiceRemind is in foreground (user actively using app)
-    // 2. Phone is idle/locked (screen off, regardless of app state)
-    //
-    // Show notification when:
-    // - Other apps are active (screen on but VoiceRemind not in foreground)
-
-    final showFullScreen = _isAppInForeground || !_isScreenOn;
-    debugPrint(
-        '🔍 App state check: foreground=$_isAppInForeground, screenOn=$_isScreenOn, showFullScreen=$showFullScreen');
-    return showFullScreen;
-  }
-
   static Future<void> setAlarmReminder(Reminder reminder) async {
     try {
-      debugPrint('Setting alarm for reminder: ${reminder.title}');
-
       final useAlarm = await StorageService.getUseAlarmInsteadOfNotification();
-
       if (!useAlarm) {
-        debugPrint(
-            'User prefers notifications - delegating to NotificationService');
+        debugPrint('Alarm mode disabled, using notification only');
         return;
       }
 
-      final defaultSoundPath = await DefaultSoundService.getDefaultAlarmPath();
-      final alarmId = _generateAlarmId(reminder.id);
-      final shouldUseFullScreen = _shouldShowFullScreenAlarm();
+      debugPrint(
+          'Setting alarm for: ${reminder.title} at ${reminder.scheduledTime}');
 
-      final alarmSettings = AlarmSettings(
-        id: alarmId,
-        dateTime: reminder.scheduledTime,
-        assetAudioPath: defaultSoundPath,
-        loopAudio: true,
-        vibrate: true,
-        warningNotificationOnKill: false,
-        androidFullScreenIntent: shouldUseFullScreen,
-        volumeSettings: const VolumeSettings.fixed(),
-        notificationSettings: NotificationSettings(
-          title: reminder.title,
-          body: reminder.description ?? 'Alarm reminder',
-          stopButton: shouldUseFullScreen ? null : 'Dismiss',
-          icon: 'notification_icon',
-        ),
-      );
+      if (reminder.scheduledTime.isBefore(DateTime.now())) {
+        debugPrint('⚠️ Scheduled time is in the past, skipping alarm');
+        return;
+      }
 
-      await Alarm.set(alarmSettings: alarmSettings);
+      final alarmId = generateAlarmId(reminder.id);
+
+      // Store alarm context for later retrieval
       _activeAlarms[alarmId] = AlarmContext(
         reminder: reminder,
         timeSlotId: null,
       );
 
-      debugPrint('Alarm set for ${reminder.title} with ID: $alarmId');
+      // Schedule with awesome_notifications instead of alarm package
+      // This will be handled by notification_service now
+      await NotificationService.scheduleAlarmNotification(
+        reminder: reminder,
+        alarmId: alarmId,
+      );
+
+      debugPrint('✅ Alarm scheduled for ${reminder.title} with ID: $alarmId');
     } catch (e) {
-      debugPrint('Error setting alarm reminder: $e');
+      debugPrint('❌ Error setting alarm reminder: $e');
       rethrow;
     }
   }
@@ -292,36 +124,20 @@ class AlarmService {
       final useAlarm = await StorageService.getUseAlarmInsteadOfNotification();
       if (!useAlarm) return;
 
-      final defaultSoundPath = await DefaultSoundService.getDefaultAlarmPath();
-      final alarmId = _generateTimeSlotAlarmId(reminder.id, timeSlot.id);
-      final shouldUseFullScreen = _shouldShowFullScreenAlarm();
+      final alarmId = generateTimeSlotAlarmId(reminder.id, timeSlot.id);
 
-      final title = reminder.title;
-      final body = timeSlot.description?.isNotEmpty == true
-          ? '${timeSlot.formattedTime} - ${timeSlot.description}'
-          : '${timeSlot.formattedTime} reminder';
-
-      final alarmSettings = AlarmSettings(
-        id: alarmId,
-        dateTime: scheduledTime,
-        assetAudioPath: defaultSoundPath,
-        loopAudio: true,
-        vibrate: true,
-        warningNotificationOnKill: false,
-        androidFullScreenIntent: shouldUseFullScreen,
-        volumeSettings: const VolumeSettings.fixed(),
-        notificationSettings: NotificationSettings(
-          title: title,
-          body: body,
-          stopButton: shouldUseFullScreen ? null : 'Dismiss',
-          icon: 'notification_icon',
-        ),
-      );
-
-      await Alarm.set(alarmSettings: alarmSettings);
+      // Store alarm context
       _activeAlarms[alarmId] = AlarmContext(
         reminder: reminder,
         timeSlotId: timeSlot.id,
+      );
+
+      // Schedule with awesome_notifications
+      await NotificationService.scheduleAlarmNotification(
+        reminder: reminder,
+        alarmId: alarmId,
+        customTime: scheduledTime,
+        timeSlot: timeSlot,
       );
 
       debugPrint(
@@ -335,10 +151,19 @@ class AlarmService {
   static Future<void> stopAlarm(String reminderId, {String? timeSlotId}) async {
     try {
       final alarmId = timeSlotId != null
-          ? _generateTimeSlotAlarmId(reminderId, timeSlotId)
-          : _generateAlarmId(reminderId);
+          ? generateTimeSlotAlarmId(reminderId, timeSlotId)
+          : generateAlarmId(reminderId);
 
-      await Alarm.stop(alarmId);
+      debugPrint('Stopping alarm ID: $alarmId');
+
+      // Stop sound if playing
+      if (DefaultSoundService.isPlaying) {
+        await DefaultSoundService.stop();
+      }
+
+      // Cancel awesome_notifications notification
+      await NotificationService.cancelNotification(alarmId);
+
       _activeAlarms.remove(alarmId);
 
       if (_currentFullScreenAlarmId == reminderId &&
@@ -346,13 +171,11 @@ class AlarmService {
         _isFullScreenAlarmShowing = false;
         _currentFullScreenAlarmId = null;
         _currentTimeSlotId = null;
-        debugPrint('Cleared full-screen alarm tracking');
       }
 
-      debugPrint(
-          'Stopped alarm for reminder: $reminderId${timeSlotId != null ? ', TimeSlot: $timeSlotId' : ''}');
+      debugPrint('✅ Alarm stopped: $alarmId');
     } catch (e) {
-      debugPrint('Error stopping alarm: $e');
+      debugPrint('❌ Error stopping alarm: $e');
     }
   }
 
@@ -365,7 +188,7 @@ class AlarmService {
           : reminderId.hashCode;
 
       await NotificationService.cancelNotification(notificationId);
-      debugPrint('🔕 Canceled mixed mode notification: $notificationId');
+      debugPrint('📕 Canceled mixed mode notification: $notificationId');
     } catch (e) {
       debugPrint('⚠️ Error canceling mixed mode notification: $e');
     }
@@ -375,143 +198,249 @@ class AlarmService {
       {String? timeSlotId}) async {
     try {
       debugPrint(
-          '🟡 SNOOZE DEBUG: Input reminderId=$reminderId, timeSlotId=$timeSlotId');
+          'Snoozing alarm: $reminderId for ${snoozeDuration.inMinutes} minutes');
 
-      // Check if reminderId is actually an alarm ID (numeric) vs UUID
-      bool isAlarmId = int.tryParse(reminderId) != null;
-      String actualReminderId = reminderId;
-      String? actualTimeSlotId = timeSlotId;
-
-      if (isAlarmId) {
-        debugPrint(
-            '🔍 Input appears to be alarm ID, searching for actual reminder...');
-        // Find the actual reminder from active alarms
-        final alarmIdInt = int.parse(reminderId);
-        final alarmContext = _activeAlarms[alarmIdInt];
-
-        if (alarmContext != null) {
-          actualReminderId = alarmContext.reminder.id;
-          actualTimeSlotId = alarmContext.timeSlotId;
-          debugPrint(
-              '🎯 Found actual reminder: $actualReminderId, timeSlot: $actualTimeSlotId');
-        } else {
-          debugPrint('❌ No alarm context found for alarm ID: $alarmIdInt');
-          return;
-        }
+      // Stop current alarm sound
+      if (DefaultSoundService.isPlaying) {
+        await DefaultSoundService.stop();
       }
 
-      debugPrint(
-          '🟡 SNOOZE: Processing reminderId=$actualReminderId${actualTimeSlotId != null ? ', TimeSlot: $actualTimeSlotId' : ''} by ${snoozeDuration.inMinutes} minutes');
+      final alarmId = timeSlotId != null
+          ? generateTimeSlotAlarmId(reminderId, timeSlotId)
+          : generateAlarmId(reminderId);
 
-      final reminder = await StorageService.getReminderById(actualReminderId);
-      if (reminder == null) {
-        debugPrint('Reminder not found for snooze: $actualReminderId');
-        return;
-      }
+      // Cancel current notification
+      await NotificationService.cancelNotification(alarmId);
 
-      await stopAlarm(actualReminderId, timeSlotId: actualTimeSlotId);
+      // Get reminder and reschedule
+      final reminders = await StorageService.getReminders();
+      final reminder = reminders.firstWhere((r) => r.id == reminderId);
 
-      final snoozeTime = DateTime.now().add(snoozeDuration);
+      final newScheduledTime = DateTime.now().add(snoozeDuration);
 
-      if (actualTimeSlotId != null && reminder.hasMultipleTimes) {
-        final timeSlot = reminder.timeSlots.firstWhere(
-          (slot) => slot.id == actualTimeSlotId,
-          orElse: () => throw Exception('Time slot not found'),
+      if (timeSlotId != null && reminder.hasMultipleTimes) {
+        // Handle multi-time snooze
+        final timeSlot =
+            reminder.timeSlots.firstWhere((ts) => ts.id == timeSlotId);
+        await NotificationService.scheduleAlarmNotification(
+          reminder: reminder,
+          alarmId: alarmId,
+          customTime: newScheduledTime,
+          timeSlot: timeSlot,
         );
-
-        final snoozedTimeSlot = timeSlot.copyWith(
-          time: TimeOfDay(hour: snoozeTime.hour, minute: snoozeTime.minute),
-        );
-
-        await StorageService.updateTimeSlot(
-            actualReminderId, actualTimeSlotId, snoozedTimeSlot);
-        await _setTimeSlotAlarm(reminder, snoozedTimeSlot, snoozeTime);
-
-        debugPrint('Snoozed time slot $actualTimeSlotId until $snoozeTime');
       } else {
-        final snoozedReminder = reminder.copyWith(scheduledTime: snoozeTime);
-        await StorageService.updateReminder(snoozedReminder);
-        await setAlarmReminder(snoozedReminder);
-
-        debugPrint('Snoozed single reminder until $snoozeTime');
+        // Handle single-time snooze
+        await NotificationService.scheduleAlarmNotification(
+          reminder: reminder,
+          alarmId: alarmId,
+          customTime: newScheduledTime,
+        );
       }
 
-      if (_currentFullScreenAlarmId == actualReminderId &&
-          _currentTimeSlotId == actualTimeSlotId) {
-        _isFullScreenAlarmShowing = false;
-        _currentFullScreenAlarmId = null;
-        _currentTimeSlotId = null;
-        debugPrint('Cleared full-screen alarm tracking after snooze');
-      }
+      _isFullScreenAlarmShowing = false;
+      _currentFullScreenAlarmId = null;
+      _currentTimeSlotId = null;
 
-      await StorageService.markNotificationUpdate();
-      await StorageService.refreshData();
-
-      debugPrint('Alarm snoozed until $snoozeTime');
+      debugPrint('✅ Alarm snoozed successfully');
     } catch (e) {
-      debugPrint('Error snoozing alarm: $e');
+      debugPrint('❌ Error snoozing alarm: $e');
     }
   }
 
   static Future<void> dismissAlarm(String reminderId,
       {String? timeSlotId}) async {
     try {
-      debugPrint(
-          '🔴 DISMISS DEBUG: Input reminderId=$reminderId, timeSlotId=$timeSlotId');
+      debugPrint('✅ dismissAlarm called: $reminderId, timeSlot: $timeSlotId');
 
-      // Check if reminderId is actually an alarm ID (numeric) vs UUID
-      bool isAlarmId = int.tryParse(reminderId) != null;
-      String actualReminderId = reminderId;
-      String? actualTimeSlotId = timeSlotId;
+      // Stop sound
+      if (DefaultSoundService.isPlaying) {
+        await DefaultSoundService.stop();
+        debugPrint('🔇 Sound stopped in dismissAlarm');
+      }
 
-      if (isAlarmId) {
-        debugPrint(
-            '🔍 Input appears to be alarm ID, searching for actual reminder...');
-        // Find the actual reminder from active alarms
-        final alarmIdInt = int.parse(reminderId);
-        final alarmContext = _activeAlarms[alarmIdInt];
+      // Stop alarm
+      await stopAlarm(reminderId, timeSlotId: timeSlotId);
 
-        if (alarmContext != null) {
-          actualReminderId = alarmContext.reminder.id;
-          actualTimeSlotId = alarmContext.timeSlotId;
-          debugPrint(
-              '🎯 Found actual reminder: $actualReminderId, timeSlot: $actualTimeSlotId');
+      // Get the reminder from storage
+      final reminders = await StorageService.getReminders();
+      final reminderIndex = reminders.indexWhere((r) => r.id == reminderId);
+
+      if (reminderIndex == -1) {
+        debugPrint('⚠️ Reminder not found: $reminderId');
+        return;
+      }
+
+      final reminder = reminders[reminderIndex];
+      debugPrint('📋 Found reminder: ${reminder.title}');
+
+      // Check if this is a repeating reminder
+      if (reminder.repeatType != RepeatType.none) {
+        debugPrint('🔄 This is a repeating reminder: ${reminder.repeatType}');
+
+        // For repeating reminders, update to next occurrence instead of completing
+        if (timeSlotId != null && reminder.hasMultipleTimes) {
+          // Multi-time repeating reminder
+          debugPrint('📋 Marking time slot as completed: $timeSlotId');
+
+          final updatedSlots = reminder.timeSlots.map((slot) {
+            if (slot.id == timeSlotId) {
+              debugPrint('✅ Updating slot ${slot.id} to completed');
+              return slot.copyWith(status: ReminderStatus.completed);
+            }
+            return slot;
+          }).toList();
+
+          // Check if all slots are completed
+          final allCompleted = updatedSlots
+              .every((slot) => slot.status == ReminderStatus.completed);
+
+          if (allCompleted && reminder.repeatType != RepeatType.none) {
+            // Reset all slots for next occurrence
+            debugPrint('🔄 All slots completed, resetting for next occurrence');
+            final resetSlots = updatedSlots.map((slot) {
+              return slot.copyWith(
+                status: ReminderStatus.pending,
+                completedAt: null,
+              );
+            }).toList();
+
+            // Calculate next occurrence
+            final nextScheduledTime = _calculateNextOccurrence(
+              reminder.scheduledTime,
+              reminder.repeatType,
+            );
+
+            final updatedReminder = reminder.copyWith(
+              timeSlots: resetSlots,
+              scheduledTime: nextScheduledTime,
+              updatedAt: DateTime.now(),
+            );
+
+            await StorageService.updateReminder(updatedReminder);
+            debugPrint('✅ Repeating reminder reset for next occurrence');
+
+            // CRITICAL: Auto-reschedule the alarm/notification
+            await _rescheduleRepeatingReminder(updatedReminder);
+          } else {
+            // Just update this slot
+            final updatedReminder = reminder.copyWith(
+              timeSlots: updatedSlots,
+            );
+
+            await StorageService.updateReminder(updatedReminder);
+            debugPrint('✅ Time slot marked as completed and saved');
+          }
         } else {
-          debugPrint('❌ No alarm context found for alarm ID: $alarmIdInt');
-          return;
+          // Single-time repeating reminder
+          debugPrint('📋 Updating to next occurrence for repeating reminder');
+
+          final nextScheduledTime = _calculateNextOccurrence(
+            reminder.scheduledTime,
+            reminder.repeatType,
+          );
+
+          final updatedReminder = reminder.copyWith(
+            scheduledTime: nextScheduledTime,
+            status: ReminderStatus.pending,
+            completedAt: null,
+            updatedAt: DateTime.now(),
+          );
+
+          await StorageService.updateReminder(updatedReminder);
+          debugPrint('✅ Repeating reminder updated to next occurrence');
+
+          // CRITICAL: Auto-reschedule the alarm/notification
+          await _rescheduleRepeatingReminder(updatedReminder);
+        }
+      } else {
+        // Non-repeating reminder - mark as completed
+        if (timeSlotId != null && reminder.hasMultipleTimes) {
+          debugPrint('📋 Marking time slot as completed: $timeSlotId');
+
+          final updatedSlots = reminder.timeSlots.map((slot) {
+            if (slot.id == timeSlotId) {
+              debugPrint('✅ Updating slot ${slot.id} to completed');
+              return slot.copyWith(status: ReminderStatus.completed);
+            }
+            return slot;
+          }).toList();
+
+          final updatedReminder = reminder.copyWith(
+            timeSlots: updatedSlots,
+          );
+
+          await StorageService.updateReminder(updatedReminder);
+          debugPrint('✅ Time slot marked as completed and saved');
+        } else {
+          debugPrint('📋 Marking entire reminder as completed');
+
+          final updatedReminder = reminder.copyWith(
+            status: ReminderStatus.completed,
+          );
+
+          await StorageService.updateReminder(updatedReminder);
+          debugPrint('✅ Reminder marked as completed and saved');
         }
       }
 
-      debugPrint(
-          '🔴 DISMISS: Processing reminderId=$actualReminderId, timeSlotId=$actualTimeSlotId');
+      _isFullScreenAlarmShowing = false;
+      _currentFullScreenAlarmId = null;
+      _currentTimeSlotId = null;
 
-      await stopAlarm(actualReminderId, timeSlotId: actualTimeSlotId);
+      debugPrint('✅ Alarm dismissed successfully');
+    } catch (e, stackTrace) {
+      debugPrint('❌ Error dismissing alarm: $e');
+      debugPrint('Stack trace: $stackTrace');
+    }
+  }
 
-      if (actualTimeSlotId != null) {
-        await StorageService.updateTimeSlotStatus(
-            actualReminderId, actualTimeSlotId, ReminderStatus.completed);
-        debugPrint('✅ Marked time slot $actualTimeSlotId as complete');
+  /// Calculate next occurrence for repeating reminders
+  static DateTime _calculateNextOccurrence(
+      DateTime currentTime, RepeatType repeatType) {
+    switch (repeatType) {
+      case RepeatType.daily:
+        return currentTime.add(const Duration(days: 1));
+      case RepeatType.weekly:
+        return currentTime.add(const Duration(days: 7));
+      case RepeatType.monthly:
+        return DateTime(
+          currentTime.year,
+          currentTime.month + 1,
+          currentTime.day,
+          currentTime.hour,
+          currentTime.minute,
+        );
+      case RepeatType.none:
+        return currentTime;
+    }
+  }
+
+  /// Automatically reschedule a repeating reminder after it's been dismissed
+  static Future<void> _rescheduleRepeatingReminder(Reminder reminder) async {
+    try {
+      debugPrint('🔄 Auto-rescheduling repeating reminder: ${reminder.title}');
+      debugPrint('   Repeat type: ${reminder.repeatType}');
+      debugPrint('   Next scheduled time: ${reminder.scheduledTime}');
+
+      // Check if alarm mode is enabled
+      final useAlarm = await StorageService.getUseAlarmInsteadOfNotification();
+
+      if (useAlarm) {
+        // Schedule as alarm (Mixed Mode)
+        if (reminder.hasMultipleTimes) {
+          await setMultiTimeAlarmReminder(reminder);
+        } else {
+          await setAlarmReminder(reminder);
+        }
       } else {
-        await StorageService.updateReminderStatus(
-            actualReminderId, ReminderStatus.completed);
-        debugPrint('✅ Marked reminder $actualReminderId as complete');
+        // Schedule as notification
+        await NotificationService.scheduleReminder(reminder);
       }
-
-      if (_currentFullScreenAlarmId == actualReminderId &&
-          _currentTimeSlotId == actualTimeSlotId) {
-        _isFullScreenAlarmShowing = false;
-        _currentFullScreenAlarmId = null;
-        _currentTimeSlotId = null;
-        debugPrint('Cleared full-screen alarm tracking after dismiss');
-      }
-
-      await StorageService.markNotificationUpdate();
-      await StorageService.refreshData();
 
       debugPrint(
-          '✅ Alarm dismissed and ${actualTimeSlotId != null ? 'time slot' : 'reminder'} completed');
+          '✅ Auto-rescheduled repeating reminder for: ${reminder.scheduledTime}');
     } catch (e) {
-      debugPrint('Error dismissing alarm: $e');
+      debugPrint('❌ Error auto-rescheduling repeating reminder: $e');
     }
   }
 
@@ -556,11 +485,11 @@ class AlarmService {
     }
   }
 
-  static int _generateAlarmId(String reminderId) {
+  static int generateAlarmId(String reminderId) {
     return reminderId.hashCode.abs();
   }
 
-  static int _generateTimeSlotAlarmId(String reminderId, String timeSlotId) {
+  static int generateTimeSlotAlarmId(String reminderId, String timeSlotId) {
     return '$reminderId:$timeSlotId'.hashCode.abs();
   }
 
@@ -624,7 +553,6 @@ enum AlarmEventType {
 class AlarmEvent {
   final AlarmEventType type;
   final Reminder reminder;
-  final AlarmSettings? alarmSettings;
   final DateTime timestamp;
   final bool shouldShowFullScreen;
   final String? timeSlotId;
@@ -632,48 +560,8 @@ class AlarmEvent {
   AlarmEvent({
     required this.type,
     required this.reminder,
-    this.alarmSettings,
     DateTime? timestamp,
     this.shouldShowFullScreen = false,
     this.timeSlotId,
   }) : timestamp = timestamp ?? DateTime.now();
-}
-
-class _AppLifecycleObserver with WidgetsBindingObserver {
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    debugPrint('🔄 App lifecycle changed: $state');
-
-    switch (state) {
-      case AppLifecycleState.resumed:
-        // VoiceRemind is active
-        AlarmService.updateAppState(isInForeground: true);
-        break;
-      case AppLifecycleState.inactive:
-        // App is transitioning or partially obscured
-        AlarmService.updateAppState(isInForeground: false);
-        break;
-      case AppLifecycleState.paused:
-        // Other apps are active or phone is backgrounded
-        AlarmService.updateAppState(isInForeground: false);
-        break;
-      case AppLifecycleState.detached:
-        // App is being terminated
-        AlarmService.updateAppState(isInForeground: false);
-        break;
-      case AppLifecycleState.hidden:
-        // TODO: Handle this case.
-        throw UnimplementedError();
-    }
-  }
-
-  @override
-  void didChangeMetrics() {
-    // Detect screen on/off state changes
-    final window = WidgetsBinding.instance.window;
-    final isScreenOn =
-        window.physicalSize.width > 0 && window.physicalSize.height > 0;
-    AlarmService.updateAppState(isScreenOn: isScreenOn);
-    debugPrint('📱 Screen state changed: $isScreenOn');
-  }
 }

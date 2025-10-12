@@ -6,6 +6,7 @@ import 'dart:async';
 import '../models/reminder.dart';
 import '../services/alarm_service.dart';
 import '../services/storage_service.dart';
+import '../services/default_sound_service.dart';
 
 class AlarmScreen extends StatefulWidget {
   final Reminder reminder;
@@ -211,13 +212,8 @@ class _AlarmScreenState extends State<AlarmScreen>
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async {
-        if (!_isDismissing && !_isSnoozing) {
-          _handleDismiss();
-        }
-        return false;
-      },
+    return PopScope(
+      canPop: false,
       child: Scaffold(
         body: Container(
           decoration: _buildGradientBackground(),
@@ -269,7 +265,7 @@ class _AlarmScreenState extends State<AlarmScreen>
           Text(
             DateFormat('EEEE, MMMM d').format(_currentTime),
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: Colors.white.withOpacity(0.7),
+                  color: Colors.white.withValues(alpha: 0.7),
                   fontWeight: FontWeight.bold,
                 ),
           ),
@@ -278,9 +274,9 @@ class _AlarmScreenState extends State<AlarmScreen>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
-                color: Colors.red.withOpacity(0.2),
+                color: Colors.red.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.red.withOpacity(0.5)),
+                border: Border.all(color: Colors.red.withValues(alpha: 0.5)),
               ),
               child: Text(
                 'Auto-snooze in ${_remainingSeconds}s',
@@ -330,9 +326,9 @@ class _AlarmScreenState extends State<AlarmScreen>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.2),
+                color: Colors.blue.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.blue.withOpacity(0.5)),
+                border: Border.all(color: Colors.blue.withValues(alpha: 0.5)),
               ),
               child: Text(
                 'Time Slot: ${_activeTimeSlot!.formattedTime}',
@@ -350,7 +346,7 @@ class _AlarmScreenState extends State<AlarmScreen>
               _getDisplayDescription(),
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: Colors.white.withOpacity(0.7),
+                    color: Colors.white.withValues(alpha: 0.7),
                     fontWeight: FontWeight.w500,
                   ),
             ),
@@ -359,7 +355,7 @@ class _AlarmScreenState extends State<AlarmScreen>
           Text(
             _getScheduledTimeText(),
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: Colors.white.withOpacity(0.7),
+                  color: Colors.white.withValues(alpha: 0.7),
                   fontWeight: FontWeight.w500,
                 ),
           ),
@@ -389,8 +385,29 @@ class _AlarmScreenState extends State<AlarmScreen>
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
           FloatingActionButton(
-            onPressed: _isDismissing || _isSnoozing ? null : _handleDismiss,
-            backgroundColor: Colors.white.withOpacity(0.2),
+            onPressed: _isDismissing || _isSnoozing
+                ? null
+                : () async {
+                    try {
+                      HapticFeedback.lightImpact();
+
+                      // Stop the alarm sound
+                      await DefaultSoundService.stop();
+
+                      // Dismiss the alarm
+                      await AlarmService.dismissAlarm(
+                        widget.reminder.id,
+                        timeSlotId: widget.timeSlotId,
+                      );
+
+                      if (mounted) {
+                        Navigator.of(context).pop();
+                      }
+                    } catch (e) {
+                      debugPrint('Error dismissing alarm: $e');
+                    }
+                  },
+            backgroundColor: Colors.white.withValues(alpha: 0.2),
             elevation: 0,
             shape: const CircleBorder(),
             child: _isDismissing
@@ -422,9 +439,29 @@ class _AlarmScreenState extends State<AlarmScreen>
                 child: TextButton(
                   onPressed: _isSnoozing || _isDismissing
                       ? null
-                      : () => _handleSnooze(Duration(minutes: _snoozeMinutes)),
+                      : () async {
+                          try {
+                            HapticFeedback.mediumImpact();
+
+                            // Stop the alarm sound
+                            await DefaultSoundService.stop();
+
+                            // Snooze the alarm
+                            await AlarmService.snoozeAlarm(
+                              widget.reminder.id,
+                              Duration(minutes: _snoozeMinutes),
+                              timeSlotId: widget.timeSlotId,
+                            );
+
+                            if (mounted) {
+                              Navigator.of(context).pop();
+                            }
+                          } catch (e) {
+                            debugPrint('Error snoozing alarm: $e');
+                          }
+                        },
                   style: TextButton.styleFrom(
-                    backgroundColor: Colors.white.withOpacity(0.1),
+                    backgroundColor: Colors.white.withValues(alpha: 0.1),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(30)),
                     padding: const EdgeInsets.symmetric(
@@ -465,85 +502,10 @@ class _AlarmScreenState extends State<AlarmScreen>
     );
   }
 
-  Future<void> _handleSnooze(Duration duration) async {
-    if (_isSnoozing || _isDismissing) return;
-
-    setState(() => _isSnoozing = true);
-
-    try {
-      HapticFeedback.mediumImpact();
-
-      await AlarmService.snoozeAlarm(
-        widget.reminder.id,
-        duration,
-        timeSlotId: widget.timeSlotId,
-      );
-
-      _isAnyAlarmScreenActive = false;
-
-      widget.onSnoozed?.call();
-
-      if (mounted) {
-        debugPrint('Snooze completed - closing alarm screen');
-        SystemNavigator.pop();
-      }
-    } catch (e) {
-      debugPrint('Error snoozing alarm: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to snooze alarm: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isSnoozing = false);
-      }
-    }
-  }
-
-  Future<void> _handleDismiss() async {
-    if (_isDismissing || _isSnoozing) return;
-
-    setState(() => _isDismissing = true);
-
-    try {
-      HapticFeedback.mediumImpact();
-
-      await AlarmService.dismissAlarm(
-        widget.reminder.id,
-        timeSlotId: widget.timeSlotId,
-      );
-
-      _isAnyAlarmScreenActive = false;
-
-      widget.onDismissed?.call();
-
-      if (mounted) {
-        debugPrint('Dismiss completed - closing alarm screen');
-        SystemNavigator.pop();
-      }
-    } catch (e) {
-      debugPrint('Error dismissing alarm: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to dismiss alarm: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isDismissing = false);
-      }
-    }
-  }
-
   @override
   void dispose() {
+    // Stop alarm sound when screen closes
+    DefaultSoundService.stop();
     _pulseController.dispose();
     _slideController.dispose();
     _currentTimeTimer?.cancel();
