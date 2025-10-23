@@ -47,36 +47,37 @@ class AlarmService {
     try {
       final useAlarm = await StorageService.getUseAlarmInsteadOfNotification();
       if (!useAlarm) {
-        debugPrint('Alarm mode disabled, using notification only');
+        debugPrint('⚠️ Alarm mode disabled in setAlarmReminder - returning');
         return;
       }
 
+      debugPrint('📅 Setting alarm: ${reminder.title}');
+      debugPrint('📅 Scheduled for: ${reminder.scheduledTime}');
       debugPrint(
-          'Setting alarm for: ${reminder.title} at ${reminder.scheduledTime}');
+          '📅 Time until alarm: ${reminder.scheduledTime.difference(DateTime.now())}');
 
       if (reminder.scheduledTime.isBefore(DateTime.now())) {
-        debugPrint('⚠️ Scheduled time is in the past, skipping alarm');
+        debugPrint('⚠️ Scheduled time is in the past - skipping');
+        debugPrint('   Scheduled: ${reminder.scheduledTime}');
+        debugPrint('   Now: ${DateTime.now()}');
         return;
       }
 
       final alarmId = generateAlarmId(reminder.id);
-
-      // Store alarm context for later retrieval
       _activeAlarms[alarmId] = AlarmContext(
         reminder: reminder,
         timeSlotId: null,
       );
 
-      // Schedule with awesome_notifications instead of alarm package
-      // This will be handled by notification_service now
       await NotificationService.scheduleAlarmNotification(
         reminder: reminder,
         alarmId: alarmId,
       );
 
-      debugPrint('✅ Alarm scheduled for ${reminder.title} with ID: $alarmId');
-    } catch (e) {
+      debugPrint('✅ Alarm scheduled successfully with ID: $alarmId');
+    } catch (e, stackTrace) {
       debugPrint('❌ Error setting alarm reminder: $e');
+      debugPrint('Stack trace: $stackTrace');
       rethrow;
     }
   }
@@ -266,7 +267,13 @@ class AlarmService {
       final reminderIndex = reminders.indexWhere((r) => r.id == reminderId);
 
       if (reminderIndex == -1) {
-        debugPrint('⚠️ Reminder not found: $reminderId');
+        debugPrint('⚠️ Ghost reminder detected: $reminderId no longer exists');
+        debugPrint('🧹 Cleaning up ghost alarm...');
+
+        // Stop the alarm completely (it already stopped sound above)
+        await stopAlarm(reminderId, timeSlotId: timeSlotId);
+
+        debugPrint('✅ Ghost alarm cleaned up');
         return;
       }
 
@@ -400,16 +407,31 @@ class AlarmService {
     switch (repeatType) {
       case RepeatType.daily:
         return currentTime.add(const Duration(days: 1));
+
       case RepeatType.weekly:
         return currentTime.add(const Duration(days: 7));
+
       case RepeatType.monthly:
+        // CRITICAL FIX: Handle month overflow (e.g., Jan 31 → Feb 28)
+        final nextMonth = currentTime.month + 1;
+        final nextYear =
+            nextMonth > 12 ? currentTime.year + 1 : currentTime.year;
+        final adjustedMonth = nextMonth > 12 ? 1 : nextMonth;
+
+        // Get last valid day of next month
+        final lastDayOfNextMonth = DateTime(nextYear, adjustedMonth + 1, 0).day;
+        final safeDay = currentTime.day > lastDayOfNextMonth
+            ? lastDayOfNextMonth
+            : currentTime.day;
+
         return DateTime(
-          currentTime.year,
-          currentTime.month + 1,
-          currentTime.day,
+          nextYear,
+          adjustedMonth,
+          safeDay,
           currentTime.hour,
           currentTime.minute,
         );
+
       case RepeatType.none:
         return currentTime;
     }
@@ -418,29 +440,73 @@ class AlarmService {
   /// Automatically reschedule a repeating reminder after it's been dismissed
   static Future<void> _rescheduleRepeatingReminder(Reminder reminder) async {
     try {
-      debugPrint('🔄 Auto-rescheduling repeating reminder: ${reminder.title}');
-      debugPrint('   Repeat type: ${reminder.repeatType}');
-      debugPrint('   Next scheduled time: ${reminder.scheduledTime}');
+      debugPrint('🔄 ========================================');
+      debugPrint('🔄 AUTO-RESCHEDULING REPEATING REMINDER');
+      debugPrint('🔄 Title: ${reminder.title}');
+      debugPrint('🔄 Repeat: ${reminder.repeatType}');
+      debugPrint('🔄 Next: ${reminder.scheduledTime}');
+      debugPrint('🔄 ========================================');
 
-      // Check if alarm mode is enabled
+      // CRITICAL: Cancel ALL existing notifications for this reminder first
+      await NotificationService.cancelReminder(reminder.id);
+      debugPrint('🧹 Cancelled all existing notifications');
+
+      // CRITICAL: Longer delay to ensure cancellation completes
+      await Future.delayed(const Duration(milliseconds: 250));
+      debugPrint('⏳ Waited for cancellation to complete');
+
+      // Check mode
       final useAlarm = await StorageService.getUseAlarmInsteadOfNotification();
+      debugPrint('🔔 Mode: ${useAlarm ? "MIXED MODE" : "NOTIFICATION MODE"}');
 
       if (useAlarm) {
-        // Schedule as alarm (Mixed Mode)
+        // MIXED MODE: Schedule alarm notification
         if (reminder.hasMultipleTimes) {
-          await setMultiTimeAlarmReminder(reminder);
+          // Multi-time reminder
+          for (final timeSlot in reminder.timeSlots) {
+            if (timeSlot.status != ReminderStatus.pending) continue;
+
+            DateTime notificationTime = DateTime(
+              reminder.scheduledTime.year,
+              reminder.scheduledTime.month,
+              reminder.scheduledTime.day,
+              timeSlot.time.hour,
+              timeSlot.time.minute,
+            );
+
+            final alarmId = generateTimeSlotAlarmId(reminder.id, timeSlot.id);
+            await NotificationService.scheduleAlarmNotification(
+              reminder: reminder,
+              alarmId: alarmId,
+              customTime: notificationTime,
+              timeSlot: timeSlot,
+            );
+            debugPrint(
+                '✅ Rescheduled multi-time alarm slot: ${timeSlot.formattedTime}');
+          }
         } else {
-          await setAlarmReminder(reminder);
+          // Single-time reminder
+          final alarmId = generateAlarmId(reminder.id);
+          await NotificationService.scheduleAlarmNotification(
+            reminder: reminder,
+            alarmId: alarmId,
+            customTime: reminder
+                .scheduledTime, // ← CRITICAL: Pass customTime explicitly
+          );
+          debugPrint('✅ Rescheduled single-time alarm');
         }
       } else {
-        // Schedule as notification
+        // NOTIFICATION MODE: Schedule regular notification
         await NotificationService.scheduleReminder(reminder);
+        debugPrint('✅ Rescheduled notification');
       }
 
-      debugPrint(
-          '✅ Auto-rescheduled repeating reminder for: ${reminder.scheduledTime}');
-    } catch (e) {
-      debugPrint('❌ Error auto-rescheduling repeating reminder: $e');
+      debugPrint('🔄 ========================================');
+      debugPrint('🔄 RESCHEDULE COMPLETED FOR: ${reminder.scheduledTime}');
+      debugPrint('🔄 ========================================');
+    } catch (e, stackTrace) {
+      debugPrint('❌ Error auto-rescheduling: $e');
+      debugPrint('Stack trace: $stackTrace');
     }
   }
 

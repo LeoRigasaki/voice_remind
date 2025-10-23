@@ -50,7 +50,7 @@ class NotificationService {
           ),
           // Alarm channel for full-screen alarms with LOUD ALARM sound
           NotificationChannel(
-            channelKey: 'alarm_channel',
+            channelKey: 'alarm_channel_v3',
             channelName: 'Alarms',
             channelDescription:
                 'Full-screen alarm notifications with loud sound',
@@ -58,7 +58,7 @@ class NotificationService {
             ledColor: Colors.red,
             importance: NotificationImportance.Max, // CRITICAL for full-screen
             channelShowBadge: true,
-            playSound: true,
+            playSound: false,
             enableVibration: true,
             criticalAlerts: true,
             locked: true,
@@ -166,6 +166,20 @@ class NotificationService {
       }
 
       debugPrint('📋 Processing action for reminder: $reminderId');
+
+      // SAFETY CHECK: Verify reminder still exists
+      final reminder = await StorageService.getReminderById(reminderId);
+      if (reminder == null) {
+        debugPrint(
+            '⚠️ Reminder $reminderId no longer exists - ignoring ghost notification');
+        // Stop any playing sound
+        if (DefaultSoundService.isPlaying) {
+          await DefaultSoundService.stop();
+        }
+        // Cancel this ghost notification
+        await cancelNotification(receivedAction.id ?? 0);
+        return;
+      }
       if (timeSlotId != null) {
         debugPrint('📋 Time slot: $timeSlotId');
       }
@@ -499,7 +513,7 @@ class NotificationService {
       await AwesomeNotifications().createNotification(
         content: NotificationContent(
           id: alarmId,
-          channelKey: 'alarm_channel',
+          channelKey: 'alarm_channel_v3',
           title: title,
           body: body,
           category: NotificationCategory.Alarm,
@@ -637,8 +651,7 @@ class NotificationService {
       await AwesomeNotifications().createNotification(
         content: NotificationContent(
           id: reminder.id.hashCode,
-          channelKey:
-              'reminder_channel', // Use reminder channel for Notification Mode
+          channelKey: 'reminder_channel',
           title: title,
           body: body,
           category: NotificationCategory.Reminder,
@@ -649,6 +662,7 @@ class NotificationService {
         schedule: NotificationCalendar.fromDate(
           date: reminder.scheduledTime,
           allowWhileIdle: true,
+          preciseAlarm: true, // ← ADD THIS LINE!
         ),
       );
 

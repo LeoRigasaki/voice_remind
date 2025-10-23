@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # VoiceRemind Release Script - Improved Version for macOS
-VERSION="v1.1.8"
+VERSION="v1.1.9"
 
 echo "🚀 Building VoiceRemind $VERSION..."
 

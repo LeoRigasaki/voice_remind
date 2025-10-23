@@ -1,5 +1,6 @@
 // [lib]/main.dart
 import 'package:flutter/material.dart';
+import 'package:voice_remind/models/reminder.dart';
 import 'dart:async';
 import 'services/notification_service.dart';
 import 'services/storage_service.dart';
@@ -63,7 +64,101 @@ void main() async {
   // Initialize voice service
   await _initializeVoiceService();
 
+  await _rescheduleAllPendingReminders();
+
   runApp(const VoiceRemindApp());
+}
+
+Future<void> _rescheduleAllPendingReminders() async {
+  try {
+    debugPrint('🔄 ========================================');
+    debugPrint('🔄 CHECKING FOR PENDING REMINDERS TO RESCHEDULE');
+    debugPrint('🔄 ========================================');
+
+    final reminders = await StorageService.getReminders();
+    final now = DateTime.now();
+
+    // CRITICAL FIX: Include ALL pending reminders, even if overdue
+    // For repeating reminders that became overdue, we need to reschedule them
+    final pendingReminders = reminders
+        .where(
+            (r) => r.status == ReminderStatus.pending && r.isNotificationEnabled
+            // Removed: r.scheduledTime.isAfter(now) - reschedule even overdue ones
+            )
+        .toList();
+
+    debugPrint('📋 Found ${pendingReminders.length} pending reminders');
+
+    if (pendingReminders.isEmpty) {
+      debugPrint('✅ No pending reminders to reschedule');
+      return;
+    }
+
+    int rescheduled = 0;
+    for (final reminder in pendingReminders) {
+      try {
+        // For overdue repeating reminders, calculate next occurrence
+        DateTime scheduleTime = reminder.scheduledTime;
+
+        if (scheduleTime.isBefore(now) &&
+            reminder.repeatType != RepeatType.none) {
+          debugPrint(
+              '⚠️ Reminder "${reminder.title}" is overdue, calculating next occurrence...');
+
+          // Keep adding repeat interval until we get a future date
+          while (scheduleTime.isBefore(now)) {
+            switch (reminder.repeatType) {
+              case RepeatType.daily:
+                scheduleTime = scheduleTime.add(const Duration(days: 1));
+                break;
+              case RepeatType.weekly:
+                scheduleTime = scheduleTime.add(const Duration(days: 7));
+                break;
+              case RepeatType.monthly:
+                scheduleTime = DateTime(
+                  scheduleTime.year,
+                  scheduleTime.month + 1,
+                  scheduleTime.day,
+                  scheduleTime.hour,
+                  scheduleTime.minute,
+                );
+                break;
+              case RepeatType.none:
+                break;
+            }
+          }
+
+          // Update the reminder with the new time
+          final updatedReminder = reminder.copyWith(
+            scheduledTime: scheduleTime,
+            updatedAt: DateTime.now(),
+          );
+
+          await StorageService.updateReminder(updatedReminder);
+          await NotificationService.scheduleReminder(updatedReminder);
+
+          debugPrint(
+              '✅ Rescheduled (overdue): ${reminder.title} @ $scheduleTime');
+        } else {
+          // Not overdue, just reschedule as-is
+          await NotificationService.scheduleReminder(reminder);
+          debugPrint(
+              '✅ Rescheduled: ${reminder.title} @ ${reminder.scheduledTime}');
+        }
+
+        rescheduled++;
+      } catch (e) {
+        debugPrint('❌ Failed to reschedule ${reminder.title}: $e');
+      }
+    }
+
+    debugPrint('🔄 ========================================');
+    debugPrint(
+        '🎉 RESCHEDULE COMPLETE: $rescheduled/${pendingReminders.length}');
+    debugPrint('🔄 ========================================');
+  } catch (e) {
+    debugPrint('❌ Error rescheduling reminders: $e');
+  }
 }
 
 Future<void> _initializeVoiceService() async {
