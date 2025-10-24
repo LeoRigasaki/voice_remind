@@ -14,6 +14,7 @@ import 'services/ai_reminder_service.dart';
 import 'services/voice_service.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'services/alarm_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -64,7 +65,8 @@ void main() async {
   // Initialize voice service
   await _initializeVoiceService();
 
-  await _rescheduleAllPendingReminders();
+  // Check if device was rebooted - reschedule all alarms if needed
+  await _handleBootReschedule();
 
   runApp(const VoiceRemindApp());
 }
@@ -95,6 +97,9 @@ Future<void> _rescheduleAllPendingReminders() async {
     }
 
     int rescheduled = 0;
+    int missedCount = 0;
+    final List<Reminder> missedRecurring = [];
+
     for (final reminder in pendingReminders) {
       try {
         // For overdue repeating reminders, calculate next occurrence
@@ -104,6 +109,9 @@ Future<void> _rescheduleAllPendingReminders() async {
             reminder.repeatType != RepeatType.none) {
           debugPrint(
               '⚠️ Reminder "${reminder.title}" is overdue, calculating next occurrence...');
+
+          missedRecurring.add(reminder);
+          missedCount++;
 
           // Keep adding repeat interval until we get a future date
           while (scheduleTime.isBefore(now)) {
@@ -138,7 +146,7 @@ Future<void> _rescheduleAllPendingReminders() async {
           await NotificationService.scheduleReminder(updatedReminder);
 
           debugPrint(
-              '✅ Rescheduled (overdue): ${reminder.title} @ $scheduleTime');
+              '✅ Rescheduled (missed recurring): ${reminder.title} @ $scheduleTime');
         } else {
           // Not overdue, just reschedule as-is
           await NotificationService.scheduleReminder(reminder);
@@ -155,9 +163,45 @@ Future<void> _rescheduleAllPendingReminders() async {
     debugPrint('🔄 ========================================');
     debugPrint(
         '🎉 RESCHEDULE COMPLETE: $rescheduled/${pendingReminders.length}');
+    if (missedCount > 0) {
+      debugPrint(
+          '⚠️ Missed recurring reminders: $missedCount (rescheduled for next occurrence)');
+    }
     debugPrint('🔄 ========================================');
   } catch (e) {
     debugPrint('❌ Error rescheduling reminders: $e');
+  }
+}
+
+/// Handles boot-time alarm rescheduling
+Future<void> _handleBootReschedule() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final needsBootReschedule = prefs.getBool('needs_boot_reschedule') ?? false;
+
+    if (needsBootReschedule) {
+      debugPrint('🔄 ========================================');
+      debugPrint('🔄 BOOT DETECTED - RESCHEDULING ALL ALARMS');
+      debugPrint('🔄 ========================================');
+
+      await _rescheduleAllPendingReminders();
+      await prefs.setBool('needs_boot_reschedule', false);
+
+      debugPrint('✅ Boot reschedule completed successfully');
+      debugPrint('🔄 ========================================');
+    } else {
+      debugPrint('📱 Normal app launch - checking for pending reminders');
+      await _rescheduleAllPendingReminders();
+    }
+  } catch (e, stackTrace) {
+    debugPrint('❌ Error in boot reschedule handler: $e');
+    debugPrint('Stack trace: $stackTrace');
+
+    try {
+      await _rescheduleAllPendingReminders();
+    } catch (fallbackError) {
+      debugPrint('❌ Fallback reschedule also failed: $fallbackError');
+    }
   }
 }
 
