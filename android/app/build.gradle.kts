@@ -54,4 +54,7 @@ flutter {
 dependencies {
     // Updated desugar_jdk_libs to version 2.1.4+ for flutter_local_notifications compatibility
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+
+    // WorkManager for reliable boot reschedule task
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
 }

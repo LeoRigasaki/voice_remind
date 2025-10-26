@@ -6,31 +6,36 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import java.util.concurrent.TimeUnit
 
 /**
- * BootReceiver - Handles device boot and reschedules all alarms
- * 
- * PLACEMENT: Create this NEW file at:
- * android/app/src/main/kotlin/com/example/voice_remind/BootReceiver.kt
- * 
- * This file should be in the SAME directory as MainActivity.kt
+ * BootReceiver - Handles device boot and schedules alarm rescheduling
+ *
+ * UPDATED: Now uses WorkManager for reliable app launch on Android 10+
+ *
+ * WHY THE CHANGE:
+ * Android 10+ restricts direct activity launches from BroadcastReceivers.
+ * WorkManager provides a reliable way to launch the app after boot,
+ * which then triggers the alarm rescheduling logic in Flutter.
  */
 class BootReceiver : BroadcastReceiver() {
-    
+
     companion object {
         private const val TAG = "VoiceRemind_BootReceiver"
         private const val PREFS_NAME = "FlutterSharedPreferences"
         private const val BOOT_FLAG_KEY = "flutter.needs_boot_reschedule"
     }
-    
+
     override fun onReceive(context: Context, intent: Intent) {
         val action = intent.action
-        
+
         Log.d(TAG, "========================================")
         Log.d(TAG, "📱 BOOT RECEIVER TRIGGERED")
         Log.d(TAG, "Action: $action")
         Log.d(TAG, "========================================")
-        
+
         // Check if this is a boot-related action
         when (action) {
             Intent.ACTION_BOOT_COMPLETED,
@@ -44,35 +49,29 @@ class BootReceiver : BroadcastReceiver() {
             }
         }
     }
-    
+
     private fun handleBootCompleted(context: Context) {
         try {
             // Set flag to indicate boot occurred
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             prefs.edit().putBoolean(BOOT_FLAG_KEY, true).apply()
-            
+
             Log.d(TAG, "✅ Boot flag set in SharedPreferences")
-            
-            // Launch app in background to trigger reschedule
-            val launchIntent = context.packageManager
-                .getLaunchIntentForPackage(context.packageName)
-            
-            if (launchIntent != null) {
-                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                launchIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                launchIntent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                launchIntent.putExtra("launched_from_boot", true)
-                
-                context.startActivity(launchIntent)
-                Log.d(TAG, "✅ App launched in background for reschedule")
-            } else {
-                Log.e(TAG, "❌ Could not create launch intent")
-            }
-            
+
+            // CRITICAL FIX: Use WorkManager instead of startActivity
+            // WorkManager is designed for reliable background tasks and
+            // bypasses Android 10+ restrictions on background activity starts
+            val bootWork = OneTimeWorkRequestBuilder<BootWorker>()
+                .setInitialDelay(5, TimeUnit.SECONDS)  // Small delay to ensure system is ready
+                .build()
+
+            WorkManager.getInstance(context).enqueue(bootWork)
+
+            Log.d(TAG, "✅ Boot worker scheduled via WorkManager")
             Log.d(TAG, "========================================")
             Log.d(TAG, "🔄 Boot handling completed")
             Log.d(TAG, "========================================")
-            
+
         } catch (e: Exception) {
             Log.e(TAG, "❌ Error handling boot: ${e.message}", e)
         }
