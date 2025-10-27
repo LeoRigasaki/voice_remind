@@ -1,20 +1,29 @@
+<!-- [android/app/src/main]/AndroidManifest.xml -->
+
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
 <!-- Add permissions for internet and network state -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     
-    <!-- Add permissions for exact alarms (Android 12+) -->
+    <!-- CRITICAL: Boot and Alarm Permissions -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    
+    <!-- Alarm Permissions (Android 12+) -->
+    <!-- USE_EXACT_ALARM: For alarm clock / calendar apps (no user permission needed) -->
+    <!-- SCHEDULE_EXACT_ALARM: For other apps (requires user permission on Android 13+) -->
+    <!-- Using USE_EXACT_ALARM since this is a reminder app -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" 
+                     android:maxSdkVersion="32" />
 
     <!-- Alarm System Permissions (ENHANCED) -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
 
@@ -27,71 +36,34 @@
                      android:maxSdkVersion="29" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" 
                      android:maxSdkVersion="32" />
-    
-    <!-- For Android 11+ (Required but restricted by Google Play) -->
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-
-    <!-- NEW: Enhanced permissions for better alarm coordination -->
-    <uses-permission android:name="android.permission.DISABLE_KEYGUARD" />
-    <uses-permission android:name="android.permission.TURN_SCREEN_ON" />
 
     <application
-        android:label="Voice Remind"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:requestLegacyExternalStorage="true">
+        android:label="VoiceRemind">
 
-        <!-- ENHANCED: MainActivity with better full-screen support -->
         <activity
             android:name=".MainActivity"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:exported="true"
+            android:hardwareAccelerated="true"
             android:launchMode="singleTop"
             android:taskAffinity=""
             android:theme="@style/LaunchTheme"
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
-            android:hardwareAccelerated="true"
-            android:windowSoftInputMode="adjustResize"
-            android:showWhenLocked="true"
             android:turnScreenOn="true"
-            android:showOnLockScreen="true"
-            android:excludeFromRecents="false"
-            android:allowEmbedded="true"
-            android:documentLaunchMode="intoExisting">
-            
+            android:showWhenLocked="true"
+            android:windowSoftInputMode="adjustResize">
+
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
             <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
-            </intent-filter>
-
-            <!-- NEW: Intent filter for alarm interactions -->
-            <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:scheme="voiceremind" />
+                <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
-        <!-- Required receivers for flutter_local_notifications -->
-        <receiver
-            android:exported="false"
-            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
-
-        <receiver
-            android:exported="false"
-            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED"/>
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
-                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
-                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
-            </intent-filter>
-        </receiver>
-
-        <!-- Required for notification action buttons -->
+    <!-- Required for notification action buttons -->
         <receiver
             android:exported="false"
             android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver" />
@@ -100,27 +72,53 @@
             android:exported="false"
             android:name="com.dexterous.flutterlocalnotifications.NotificationBroadcastReceiver" />
 
-        <!-- CUSTOM: VoiceRemind Boot Receiver for Alarm Rescheduling -->
+        <!-- ============================================ -->
+        <!-- CRITICAL: BOOT RECEIVER (UPDATED)           -->
+        <!-- ============================================ -->
+        <!-- This receiver triggers on device boot and reschedules ALL alarms -->
+        <!-- MUST be exported=true to receive system broadcasts -->
         <receiver 
             android:name=".BootReceiver"
             android:enabled="true"
-            android:exported="false"
+            android:exported="true"
             android:directBootAware="true">
             <intent-filter>
+                <!-- Standard boot completed -->
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <!-- Direct Boot mode (before user unlocks device) -->
                 <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <!-- Quick boot for some devices -->
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <!-- HTC devices -->
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
 
-        <!-- NEW: Enhanced alarm service for better coordination -->
+        <!-- ============================================ -->
+        <!-- NEW: ALARM BROADCAST RECEIVER                -->
+        <!-- ============================================ -->
+        <!-- This receiver handles alarm triggers from AlarmManager -->
+        <receiver
+            android:name=".AlarmBroadcastReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.voice_remind.ALARM_ACTION" />
+            </intent-filter>
+        </receiver>
+
+        <!-- ============================================ -->
+        <!-- REMOVE: BootWorker (NO LONGER NEEDED)       -->
+        <!-- ============================================ -->
+        <!-- The old WorkManager approach is replaced by direct AlarmManager rescheduling -->
+
+        <!-- Alarm service for better coordination -->
         <service
             android:name="com.gdelataillade.alarm.services.AlarmService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
 
-        <!-- NEW: Enhanced notification service for foreground alarms -->
+        <!-- Notification service for foreground alarms -->
         <service
             android:name="com.gdelataillade.alarm.services.NotificationOnKillService"
             android:exported="false" />
@@ -142,25 +140,6 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
-        
-        <!-- Required for URL launcher to open HTTPS URLs -->
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <category android:name="android.intent.category.BROWSABLE" />
-            <data android:scheme="https" />
-        </intent>
-        
-        <!-- Required for URL launcher to open HTTP URLs -->
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <category android:name="android.intent.category.BROWSABLE" />
-            <data android:scheme="http" />
-        </intent>
-
-        <!-- NEW: Query for alarm-related intents -->
-        <intent>
-            <action android:name="android.intent.action.SET_ALARM" />
-            <category android:name="android.intent.category.DEFAULT" />
-        </intent>
     </queries>
+
 </manifest>

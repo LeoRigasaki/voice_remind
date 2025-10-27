@@ -6,26 +6,20 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
-import java.util.concurrent.TimeUnit
 
 /**
- * BootReceiver - Handles device boot and schedules alarm rescheduling
+ * BootReceiver - Handles device boot and reschedules alarms DIRECTLY
  *
- * UPDATED: Now uses WorkManager for reliable app launch on Android 10+
- *
- * WHY THE CHANGE:
- * Android 10+ restricts direct activity launches from BroadcastReceivers.
- * WorkManager provides a reliable way to launch the app after boot,
- * which then triggers the alarm rescheduling logic in Flutter.
+ * UPDATED APPROACH (CRITICAL FIX):
+ * - NO LONGER launches the Flutter app (Android 10+ restrictions)
+ * - Reschedules alarms DIRECTLY using AlarmManager in native code
+ * - Reads reminder data from SharedPreferences
+ * - Works reliably even when app is not running
  */
 class BootReceiver : BroadcastReceiver() {
 
     companion object {
         private const val TAG = "VoiceRemind_BootReceiver"
-        private const val PREFS_NAME = "FlutterSharedPreferences"
-        private const val BOOT_FLAG_KEY = "flutter.needs_boot_reschedule"
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -52,24 +46,18 @@ class BootReceiver : BroadcastReceiver() {
 
     private fun handleBootCompleted(context: Context) {
         try {
-            // Set flag to indicate boot occurred
-            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            prefs.edit().putBoolean(BOOT_FLAG_KEY, true).apply()
+            Log.d(TAG, "🔄 Starting alarm rescheduling...")
 
-            Log.d(TAG, "✅ Boot flag set in SharedPreferences")
+            // CRITICAL FIX: Reschedule alarms DIRECTLY without launching app
+            // This bypasses Android 10+ background activity restrictions
+            AlarmRescheduler.rescheduleAllAlarms(context)
 
-            // CRITICAL FIX: Use WorkManager instead of startActivity
-            // WorkManager is designed for reliable background tasks and
-            // bypasses Android 10+ restrictions on background activity starts
-            val bootWork = OneTimeWorkRequestBuilder<BootWorker>()
-                .setInitialDelay(5, TimeUnit.SECONDS)  // Small delay to ensure system is ready
-                .build()
+            // Set flag for Flutter app (if/when user opens it)
+            val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            prefs.edit().putBoolean("flutter.boot_reschedule_completed", true).apply()
 
-            WorkManager.getInstance(context).enqueue(bootWork)
-
-            Log.d(TAG, "✅ Boot worker scheduled via WorkManager")
             Log.d(TAG, "========================================")
-            Log.d(TAG, "🔄 Boot handling completed")
+            Log.d(TAG, "✅ BOOT HANDLING COMPLETED")
             Log.d(TAG, "========================================")
 
         } catch (e: Exception) {

@@ -17,6 +17,32 @@ class NotificationService {
   static const String snoozeAction1Id = 'snooze_action_1';
   static const String snoozeAction2Id = 'snooze_action_2';
 
+  @pragma('vm:entry-point')
+  static Future<void> _initializeBackgroundServices() async {
+    try {
+      debugPrint('🔧 ========================================');
+      debugPrint('🔧 INITIALIZING BACKGROUND ISOLATE SERVICES');
+      debugPrint('🔧 ========================================');
+
+      //Ensure Flutter bindings are initialized
+      WidgetsFlutterBinding.ensureInitialized();
+      debugPrint('✅ Flutter bindings initialized');
+
+      //Initialize StorageService with fresh instance
+      await StorageService.initialize();
+      debugPrint('✅ StorageService initialized in background');
+
+      debugPrint('🔧 ========================================');
+      debugPrint('🔧 BACKGROUND SERVICES READY');
+      debugPrint('🔧 ========================================');
+    } catch (e, stackTrace) {
+      debugPrint('❌Failed to initialize background services');
+      debugPrint('❌ Error: $e');
+      debugPrint('❌ Stack trace: $stackTrace');
+      rethrow;
+    }
+  }
+
   static Future<void> initialize() async {
     if (_isInitialized) {
       debugPrint('⚠️ NotificationService already initialized');
@@ -69,10 +95,10 @@ class NotificationService {
         debug: true,
       );
 
-      // CRITICAL: Request permissions first
+      //Request permissions first
       await AwesomeNotifications().requestPermissionToSendNotifications();
 
-      // CRITICAL: Initialize action listeners AFTER permissions
+      //Initialize action listeners AFTER permissions
       await initializeActionListeners();
 
       // Set up foreground/background detection
@@ -90,7 +116,7 @@ class NotificationService {
     try {
       debugPrint('🎯 Setting up action listeners...');
 
-      // CRITICAL: Set up the listeners for notification actions
+      //Set up the listeners for notification actions
       await AwesomeNotifications().setListeners(
         onActionReceivedMethod: _onActionReceivedMethod,
         onNotificationCreatedMethod: _onNotificationCreatedMethod,
@@ -145,39 +171,26 @@ class NotificationService {
     debugPrint('🔔 Action Type: ${receivedAction.actionType}');
     debugPrint('🔔 Channel Key: ${receivedAction.channelKey}');
     debugPrint('🔔 NOTIFICATION ACTION RECEIVED!');
-    debugPrint('🔔 Button pressed: ${receivedAction.buttonKeyPressed}');
     debugPrint('🔔 Notification ID: ${receivedAction.id}');
+    debugPrint('🔔 Button pressed: ${receivedAction.buttonKeyPressed}');
     debugPrint('🔔 Payload: ${receivedAction.payload}');
     debugPrint('🔔 ========================================');
 
     try {
-      final payload = receivedAction.payload;
-      if (payload == null || payload.isEmpty) {
-        debugPrint('⚠️ No payload in notification action');
-        return;
-      }
+      // CRITICAL FIX: Initialize services in background isolate
+      // This ensures StorageService works when app is closed
+      debugPrint('🔧 Initializing background services...');
+      await _initializeBackgroundServices();
+      debugPrint('✅ Background services ready');
 
-      final reminderId = payload['reminder_id'];
-      final timeSlotId = payload['time_slot_id'];
+      // Extract reminder ID from payload
+      final reminderId = receivedAction.payload?['reminder_id'];
+      final timeSlotId = receivedAction.payload?['time_slot_id'];
 
-      if (reminderId == null) {
-        debugPrint('⚠️ No reminder ID in payload');
-        return;
-      }
-
-      debugPrint('📋 Processing action for reminder: $reminderId');
-
-      // SAFETY CHECK: Verify reminder still exists
-      final reminder = await StorageService.getReminderById(reminderId);
-      if (reminder == null) {
+      if (reminderId == null || reminderId.isEmpty) {
+        debugPrint('❌ No reminder ID in payload');
         debugPrint(
-            '⚠️ Reminder $reminderId no longer exists - ignoring ghost notification');
-        // Stop any playing sound
-        if (DefaultSoundService.isPlaying) {
-          await DefaultSoundService.stop();
-        }
-        // Cancel this ghost notification
-        await cancelNotification(receivedAction.id ?? 0);
+            '   Payload keys: ${receivedAction.payload?.keys.join(', ') ?? '0'}');
         return;
       }
       if (timeSlotId != null) {
@@ -285,7 +298,7 @@ class NotificationService {
       await AlarmService.dismissAlarm(reminderId, timeSlotId: timeSlotId);
       debugPrint('✅ Marked reminder as completed');
 
-      // CRITICAL: Notify storage of background update
+      //Notify storage of background update
       await StorageService.markNotificationUpdate();
 
       debugPrint('🚫 ========================================');
@@ -296,8 +309,6 @@ class NotificationService {
       debugPrint('Stack trace: $stackTrace');
     }
   }
-
-  // Replace the _handleSnoozeAction method in notification_service.dart
 
   static Future<void> _handleSnoozeAction(
       String reminderId, Duration snoozeDuration, String? timeSlotId) async {
@@ -413,7 +424,7 @@ class NotificationService {
         }
       }
 
-      // CRITICAL: Notify storage of background update
+      //Notify storage of background update
       await StorageService.markNotificationUpdate();
 
       debugPrint('💤 ========================================');
