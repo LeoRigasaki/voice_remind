@@ -1,21 +1,11 @@
-// [android/app/src/main/kotlin/com/example/voice_remind]/BootReceiver.kt
-
 package com.example.voice_remind
 
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.util.Log
 
-/**
- * BootReceiver - Handles device boot and reschedules alarms DIRECTLY
- *
- * UPDATED APPROACH (CRITICAL FIX):
- * - NO LONGER launches the Flutter app (Android 10+ restrictions)
- * - Reschedules alarms DIRECTLY using AlarmManager in native code
- * - Reads reminder data from SharedPreferences
- * - Works reliably even when app is not running
- */
 class BootReceiver : BroadcastReceiver() {
 
     companion object {
@@ -26,11 +16,10 @@ class BootReceiver : BroadcastReceiver() {
         val action = intent.action
 
         Log.d(TAG, "========================================")
-        Log.d(TAG, "📱 BOOT RECEIVER TRIGGERED")
+        Log.d(TAG, "ðŸ“± BOOT RECEIVER TRIGGERED")
         Log.d(TAG, "Action: $action")
         Log.d(TAG, "========================================")
 
-        // Check if this is a boot-related action
         when (action) {
             Intent.ACTION_BOOT_COMPLETED,
             Intent.ACTION_LOCKED_BOOT_COMPLETED,
@@ -39,29 +28,32 @@ class BootReceiver : BroadcastReceiver() {
                 handleBootCompleted(context)
             }
             else -> {
-                Log.w(TAG, "⚠️ Received unknown action: $action")
+                Log.w(TAG, "âš ï¸ Received unknown action: $action")
             }
         }
     }
 
     private fun handleBootCompleted(context: Context) {
         try {
-            Log.d(TAG, "🔄 Starting alarm rescheduling...")
-
-            // CRITICAL FIX: Reschedule alarms DIRECTLY without launching app
-            // This bypasses Android 10+ background activity restrictions
-            AlarmRescheduler.rescheduleAllAlarms(context)
-
-            // Set flag for Flutter app (if/when user opens it)
-            val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-            prefs.edit().putBoolean("flutter.boot_reschedule_completed", true).apply()
-
+            Log.d(TAG, "ðŸ”„ Boot completed - starting reschedule service")
+            
+            // Start the foreground service to handle rescheduling
+            val serviceIntent = Intent(context, AlarmRescheduleService::class.java)
+            
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent)
+                Log.d(TAG, "âœ… Started foreground reschedule service")
+            } else {
+                context.startService(serviceIntent)
+                Log.d(TAG, "âœ… Started reschedule service")
+            }
+            
             Log.d(TAG, "========================================")
-            Log.d(TAG, "✅ BOOT HANDLING COMPLETED")
+            Log.d(TAG, "âœ… BOOT HANDLING COMPLETED")
             Log.d(TAG, "========================================")
 
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Error handling boot: ${e.message}", e)
+            Log.e(TAG, "âŒ Error handling boot: ${e.message}", e)
         }
     }
 }

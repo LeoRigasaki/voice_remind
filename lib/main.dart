@@ -43,6 +43,8 @@ void main() async {
   await NotificationService.initializeActionListeners();
   debugPrint('✅ Notification action listeners initialized');
 
+  await NotificationService.checkAndReinitializeAfterBoot();
+
   // Request full-screen intent permission for alarms (Android 10+)
   await NotificationService.requestFullScreenPermission();
   debugPrint('✅ Full-screen permission requested');

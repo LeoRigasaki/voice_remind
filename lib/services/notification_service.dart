@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:awesome_notifications/awesome_notifications.dart';
 import 'package:flutter_fgbg/flutter_fgbg.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/reminder.dart';
 import 'storage_service.dart';
 import '../services/alarm_service.dart';
@@ -104,10 +105,14 @@ class NotificationService {
       // Set up foreground/background detection
       _setupAppStateListener();
 
+      // Check if device was rebooted and reinitialize if needed
+      await checkAndReinitializeAfterBoot();
+
       _isInitialized = true;
-      debugPrint('✅ NotificationService initialized successfully');
-    } catch (e) {
-      debugPrint('❌ Error initializing NotificationService: $e');
+      debugPrint('✅ NotificationService initialization complete');
+    } catch (e, stackTrace) {
+      debugPrint('❌ Failed to initialize NotificationService: $e');
+      debugPrint('Stack trace: $stackTrace');
       rethrow;
     }
   }
@@ -919,5 +924,92 @@ class NotificationService {
     // No need to manually refresh like flutter_local_notifications
     debugPrint(
         'ℹ️ refreshNotificationCategories called (no-op with awesome_notifications)');
+  }
+
+  static Future<void> checkAndReinitializeAfterBoot() async {
+    try {
+      debugPrint('🔍 ========================================');
+      debugPrint('🔍 CHECKING FOR BOOT RESCHEDULE FLAG');
+      debugPrint('🔍 ========================================');
+
+      final prefs = await SharedPreferences.getInstance();
+      final bootCompleted =
+          prefs.getBool('flutter.boot_reschedule_completed') ?? false;
+
+      debugPrint('🔍 Boot flag value: $bootCompleted');
+
+      if (bootCompleted) {
+        debugPrint('========================================');
+        debugPrint('📱 DEVICE WAS REBOOTED - RESCHEDULING ALL');
+        debugPrint('========================================');
+
+        // Clear the flag FIRST
+        await prefs.setBool('flutter.boot_reschedule_completed', false);
+        debugPrint('✅ Cleared boot reschedule flag');
+
+        // ALWAYS trigger a full reschedule after boot
+        debugPrint('🔄 Forcing full reschedule of all pending reminders...');
+
+        final reminders = await StorageService.getReminders();
+        debugPrint('📋 Found ${reminders.length} total reminders');
+
+        int rescheduled = 0;
+        int skipped = 0;
+
+        for (final reminder in reminders) {
+          debugPrint('🔍 Checking reminder: ${reminder.title}');
+          debugPrint('   Status: ${reminder.status}');
+          debugPrint('   Enabled: ${reminder.isNotificationEnabled}');
+          debugPrint('   Time: ${reminder.scheduledTime}');
+
+          if (reminder.status == ReminderStatus.pending &&
+              reminder.isNotificationEnabled) {
+            final now = DateTime.now();
+
+            // Skip past reminders unless they're repeating
+            if (reminder.scheduledTime.isBefore(now) &&
+                reminder.repeatType == RepeatType.none) {
+              debugPrint(
+                  '⏭️ Skipping past non-repeating reminder: ${reminder.title}');
+              skipped++;
+              continue;
+            }
+
+            try {
+              final useAlarm =
+                  await StorageService.getUseAlarmInsteadOfNotification();
+              debugPrint(
+                  '🔄 Rescheduling ${reminder.title} (useAlarm: $useAlarm)');
+
+              if (useAlarm) {
+                await AlarmService.setAlarmReminder(reminder);
+              } else {
+                await scheduleReminder(reminder);
+              }
+              rescheduled++;
+              debugPrint('✅ Rescheduled: ${reminder.title}');
+            } catch (e) {
+              debugPrint('❌ Failed to reschedule ${reminder.title}: $e');
+            }
+          } else {
+            debugPrint(
+                '⏭️ Skipping reminder (not pending or disabled): ${reminder.title}');
+            skipped++;
+          }
+        }
+
+        debugPrint('========================================');
+        debugPrint('✅ BOOT RESCHEDULE COMPLETE');
+        debugPrint('   Total: ${reminders.length}');
+        debugPrint('   Rescheduled: $rescheduled');
+        debugPrint('   Skipped: $skipped');
+        debugPrint('========================================');
+      } else {
+        debugPrint('ℹ️ No boot reschedule flag detected - normal launch');
+      }
+    } catch (e, stackTrace) {
+      debugPrint('❌ Error in boot reschedule: $e');
+      debugPrint('Stack trace: $stackTrace');
+    }
   }
 }
