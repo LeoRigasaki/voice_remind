@@ -1,6 +1,5 @@
 package com.example.voice_remind
 
-import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
@@ -14,85 +13,155 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.dart.DartExecutor
+import io.flutter.plugin.common.MethodChannel
 
 class AlarmRescheduleService : Service() {
 
     companion object {
         private const val TAG = "VoiceRemind_RescheduleService"
         private const val NOTIFICATION_ID = 999
-        private const val CHANNEL_ID = "boot_reschedule_channel"
+        private const val CHANNEL_ID = "alarm_reschedule_channel"
+        private const val CHANNEL_NAME = "Alarm Reschedule"
+        private const val RESCHEDULE_CHANNEL = "com.example.voice_remind/reschedule"
+    }
+
+    private var flutterEngine: FlutterEngine? = null
+    private var methodChannel: MethodChannel? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        Log.d(TAG, "========================================")
+        Log.d(TAG, "📱 SERVICE CREATED")
+        Log.d(TAG, "========================================")
+        
+        createNotificationChannel()
+        startForeground(NOTIFICATION_ID, createNotification())
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d(TAG, "========================================")
-        Log.d(TAG, "ðŸš€ RESCHEDULE SERVICE STARTED")
+        Log.d(TAG, "⚡ SERVICE STARTED")
         Log.d(TAG, "========================================")
 
-        // Start foreground immediately
-        startForeground(NOTIFICATION_ID, createNotification())
-
-        // Set the boot reschedule flag
-        try {
-            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-            prefs.edit().putBoolean("flutter.boot_reschedule_completed", true).apply()
-            Log.d(TAG, "âœ… Set boot reschedule flag")
-        } catch (e: Exception) {
-            Log.e(TAG, "âŒ Failed to set boot flag: ${e.message}")
-        }
-
-        // Initialize Flutter engine and let it handle rescheduling
-        try {
-            Log.d(TAG, "ðŸ”„ Initializing Flutter engine for rescheduling...")
-            
-            // Start MainActivity which will handle the actual rescheduling
-            val mainIntent = Intent(this, MainActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                putExtra("boot_reschedule", true)
-            }
-            startActivity(mainIntent)
-            Log.d(TAG, "âœ… Started MainActivity")
-            
-        } catch (e: Exception) {
-            Log.e(TAG, "âŒ Failed to initialize: ${e.message}", e)
-        }
-
-        // Stop service after 10 seconds
-        Handler(Looper.getMainLooper()).postDelayed({
-            Log.d(TAG, "âœ… Reschedule service stopping")
-            stopForeground(true)
-            stopSelf()
-        }, 10000)
+        // Initialize Flutter engine and reschedule
+        initializeFlutterAndReschedule()
 
         return START_NOT_STICKY
     }
 
-    override fun onBind(intent: Intent?): IBinder? = null
+    private fun initializeFlutterAndReschedule() {
+        try {
+            Log.d(TAG, "🔄 Initializing Flutter engine...")
 
-    private fun createNotification(): Notification {
-        createNotificationChannel()
+            // Create Flutter engine
+            flutterEngine = FlutterEngine(applicationContext)
+            
+            // Start Dart execution
+            flutterEngine?.dartExecutor?.executeDartEntrypoint(
+                DartExecutor.DartEntrypoint.createDefault()
+            )
+            
+            Log.d(TAG, "✅ Flutter engine initialized")
 
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("VoiceRemind")
-            .setContentText("Rescheduling reminders...")
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setOngoing(true)
-            .build()
+            // Wait a bit for Flutter to initialize, then trigger reschedule
+            Handler(Looper.getMainLooper()).postDelayed({
+                triggerReschedule()
+            }, 3000) // 3 second delay
+
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error initializing Flutter: ${e.message}", e)
+            stopSelfAndCleanup()
+        }
+    }
+
+    private fun triggerReschedule() {
+    try {
+        Log.d(TAG, "📞 Setting up method channel...")
+        
+        // Create method channel
+        methodChannel = MethodChannel(
+            flutterEngine!!.dartExecutor.binaryMessenger,
+            RESCHEDULE_CHANNEL
+        )
+
+        Log.d(TAG, "📤 Invoking reschedule method...")
+        
+        // Call Flutter method to reschedule
+        methodChannel?.invokeMethod("rescheduleFromBoot", null, object : MethodChannel.Result {
+            override fun success(result: Any?) {
+                Log.d(TAG, "✅ Reschedule completed successfully")
+                Log.d(TAG, "Result: $result")
+                
+                // Wait a bit then stop service
+                Handler(Looper.getMainLooper()).postDelayed({
+                    stopSelfAndCleanup()
+                }, 2000)
+            }
+
+            override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {
+                Log.e(TAG, "❌ Reschedule error: $errorCode - $errorMessage")
+                stopSelfAndCleanup()
+            }
+
+            override fun notImplemented() {
+                Log.e(TAG, "❌ Reschedule method not implemented in Flutter")
+                stopSelfAndCleanup()
+            }
+        })
+
+    } catch (e: Exception) {
+        Log.e(TAG, "❌ Error triggering reschedule: ${e.message}", e)
+        stopSelfAndCleanup()
+    }
+}
+
+    private fun stopSelfAndCleanup() {
+        Log.d(TAG, "🧹 Cleaning up and stopping service...")
+        
+        try {
+            flutterEngine?.destroy()
+            flutterEngine = null
+            methodChannel = null
+        } catch (e: Exception) {
+            Log.e(TAG, "Error during cleanup: ${e.message}")
+        }
+        
+        stopForeground(true)
+        stopSelf()
+        
+        Log.d(TAG, "========================================")
+        Log.d(TAG, "✅ SERVICE STOPPED")
+        Log.d(TAG, "========================================")
     }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Boot Reschedule",
+                CHANNEL_NAME,
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Notification shown while rescheduling reminders after boot"
+                description = "Rescheduling alarms after boot"
             }
 
             val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.createNotificationChannel(channel)
+            
+            Log.d(TAG, "✅ Notification channel created")
         }
+    }
+
+    private fun createNotification() = NotificationCompat.Builder(this, CHANNEL_ID)
+        .setContentTitle("VoiceRemind")
+        .setContentText("Rescheduling reminders...")
+        .setSmallIcon(android.R.drawable.ic_popup_reminder)
+        .setPriority(NotificationCompat.PRIORITY_LOW)
+        .build()
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onDestroy() {
+        super.onDestroy()
+        Log.d(TAG, "📱 SERVICE DESTROYED")
     }
 }

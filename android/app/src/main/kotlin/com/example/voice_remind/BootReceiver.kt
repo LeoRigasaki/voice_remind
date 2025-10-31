@@ -34,26 +34,31 @@ class BootReceiver : BroadcastReceiver() {
     }
 
     private fun handleBootCompleted(context: Context) {
-        try {
-            Log.d(TAG, "ðŸ”„ Boot completed - starting reschedule service")
-            
-            // Start the foreground service to handle rescheduling
-            val serviceIntent = Intent(context, AlarmRescheduleService::class.java)
-            
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(serviceIntent)
-                Log.d(TAG, "âœ… Started foreground reschedule service")
-            } else {
-                context.startService(serviceIntent)
-                Log.d(TAG, "âœ… Started reschedule service")
-            }
-            
-            Log.d(TAG, "========================================")
-            Log.d(TAG, "âœ… BOOT HANDLING COMPLETED")
-            Log.d(TAG, "========================================")
-
-        } catch (e: Exception) {
-            Log.e(TAG, "âŒ Error handling boot: ${e.message}", e)
+    try {
+        Log.d(TAG, "📄 Boot completed - starting reschedule service")
+        
+        // Set the flag first
+        val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        prefs.edit().putBoolean("flutter.boot_reschedule_completed", true).apply()
+        Log.d(TAG, "✅ Set boot reschedule flag")
+        
+        // Start the foreground service to handle rescheduling
+        val serviceIntent = Intent(context, AlarmRescheduleService::class.java)
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.startForegroundService(serviceIntent)
+            Log.d(TAG, "✅ Started foreground reschedule service")
+        } else {
+            context.startService(serviceIntent)
+            Log.d(TAG, "✅ Started reschedule service")
         }
+        
+        Log.d(TAG, "========================================")
+        Log.d(TAG, "✅ BOOT HANDLING COMPLETED")
+        Log.d(TAG, "========================================")
+
+    } catch (e: Exception) {
+        Log.e(TAG, "❌ Error handling boot: ${e.message}", e)
     }
+}
 }

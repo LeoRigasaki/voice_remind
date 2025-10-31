@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:voice_remind/models/reminder.dart';
 import 'dart:async';
+import 'package:flutter/services.dart';
 import 'services/notification_service.dart';
 import 'services/storage_service.dart';
 import 'services/spaces_service.dart';
@@ -16,8 +17,56 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'services/alarm_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+// Method channel for boot reschedule
+const MethodChannel _rescheduleChannel =
+    MethodChannel('com.example.voice_remind/reschedule');
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Set up method channel handler for boot reschedule
+  _rescheduleChannel.setMethodCallHandler((call) async {
+    if (call.method == 'rescheduleFromBoot') {
+      debugPrint('========================================');
+      debugPrint('📞 RECEIVED BOOT RESCHEDULE CALL FROM NATIVE');
+      debugPrint('========================================');
+
+      try {
+        // Get all pending reminders
+        final reminders = await StorageService.getReminders();
+        debugPrint('📋 Found ${reminders.length} reminders to check');
+
+        int rescheduled = 0;
+        for (final reminder in reminders) {
+          if (reminder.status == ReminderStatus.pending &&
+              reminder.isNotificationEnabled) {
+            final useAlarm =
+                await StorageService.getUseAlarmInsteadOfNotification();
+
+            if (useAlarm) {
+              await AlarmService.setAlarmReminder(reminder);
+            } else {
+              await NotificationService.scheduleReminder(reminder);
+            }
+
+            rescheduled++;
+            debugPrint('✅ Rescheduled: ${reminder.title}');
+          }
+        }
+
+        debugPrint('========================================');
+        debugPrint('✅ BOOT RESCHEDULE COMPLETE: $rescheduled reminders');
+        debugPrint('========================================');
+
+        return rescheduled;
+      } catch (e, stackTrace) {
+        debugPrint('❌ Error during boot reschedule: $e');
+        debugPrint('Stack: $stackTrace');
+        throw PlatformException(
+            code: 'RESCHEDULE_ERROR', message: e.toString());
+      }
+    }
+  });
 
   // Load environment variables with better error handling
   try {

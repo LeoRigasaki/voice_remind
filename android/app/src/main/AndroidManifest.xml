@@ -24,6 +24,7 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
 
@@ -63,7 +64,7 @@
             </intent-filter>
         </activity>
 
-    <!-- Required for notification action buttons -->
+        <!-- Required for notification action buttons -->
         <receiver
             android:exported="false"
             android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver" />
@@ -108,9 +109,14 @@
         </receiver>
 
         <!-- ============================================ -->
-        <!-- REMOVE: BootWorker (NO LONGER NEEDED)       -->
+        <!-- ALARM RESCHEDULE SERVICE                     -->
         <!-- ============================================ -->
-        <!-- The old WorkManager approach is replaced by direct AlarmManager rescheduling -->
+        <!-- This service launches Flutter engine to reschedule notifications after boot -->
+        <service
+            android:name=".AlarmRescheduleService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <!-- Alarm service for better coordination -->
         <service
