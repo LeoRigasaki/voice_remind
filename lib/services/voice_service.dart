@@ -7,6 +7,7 @@ import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/reminder.dart';
 import 'ai_reminder_service.dart';
+import 'package:flutter/services.dart';
 import 'storage_service.dart';
 
 enum VoiceState { idle, recording, processing, completed, error }
@@ -66,8 +67,20 @@ class VoiceService {
     debugPrint('🎤 Initializing  VoiceService...');
 
     try {
-      // Check and request permissions first
-      await _checkPermissions();
+      // CRITICAL FIX: Check and request permissions first
+      // Wrapped in try-catch to handle Activity not ready scenarios
+      try {
+        await _checkPermissions();
+      } on PlatformException catch (e) {
+        if (e.code == 'PermissionHandler.PermissionManager') {
+          debugPrint(
+            '⚠️ Activity not ready yet, permissions will be checked on first use',
+          );
+          // Continue initialization, permissions will be requested when user uses voice
+        } else {
+          rethrow;
+        }
+      }
 
       // Initialize speech-to-text with optimal configuration
       final isInitialized = await instance._speechToText.initialize(
@@ -78,14 +91,16 @@ class VoiceService {
 
       if (!isInitialized) {
         throw Exception(
-            'Failed to initialize speech recognition. Please check device compatibility.');
+          'Failed to initialize speech recognition. Please check device compatibility.',
+        );
       }
 
       // Get available locales
       await instance._loadAvailableLocales();
 
       debugPrint(
-          '✅  VoiceService initialized with ${instance._availableLocales.length} locales');
+        '✅  VoiceService initialized with ${instance._availableLocales.length} locales',
+      );
     } catch (e) {
       debugPrint('❌  VoiceService initialization failed: $e');
       rethrow;
@@ -123,20 +138,53 @@ class VoiceService {
   static Future<void> _checkPermissions() async {
     debugPrint('🔐 Checking voice permissions...');
 
-    final microphoneStatus = await Permission.microphone.request();
-    if (!microphoneStatus.isGranted) {
-      throw Exception(
-          'Microphone permission denied. Please grant microphone access in Settings.');
-    }
+    // CRITICAL: Wait for Activity to be ready before requesting permissions
+    // This prevents "Unable to detect current Android Activity" error
+    await Future.delayed(const Duration(milliseconds: 100));
 
-    // Speech permission is optional on Android
-    final speechStatus = await Permission.speech.request();
-    if (!speechStatus.isGranted) {
-      debugPrint(
-          '⚠️ Speech permission not granted, but microphone is available');
-    }
+    try {
+      // First check current status (doesn't need Activity)
+      final currentMicStatus = await Permission.microphone.status;
 
-    debugPrint('✅ Voice permissions checked');
+      if (currentMicStatus.isGranted) {
+        debugPrint('✅ Microphone permission already granted');
+      } else {
+        // Only request if Activity is available
+        final microphoneStatus = await Permission.microphone.request();
+        if (!microphoneStatus.isGranted) {
+          throw Exception(
+            'Microphone permission denied. Please grant microphone access in Settings.',
+          );
+        }
+      }
+
+      // Speech permission is optional on Android
+      try {
+        final currentSpeechStatus = await Permission.speech.status;
+        if (!currentSpeechStatus.isGranted) {
+          final speechStatus = await Permission.speech.request();
+          if (!speechStatus.isGranted) {
+            debugPrint(
+              '⚠️ Speech permission not granted, but microphone is available',
+            );
+          }
+        }
+      } catch (e) {
+        debugPrint('⚠️ Speech permission check skipped: $e');
+      }
+
+      debugPrint('✅ Voice permissions checked');
+    } on PlatformException catch (e) {
+      if (e.code == 'PermissionHandler.PermissionManager') {
+        debugPrint(
+          '⚠️ Activity not ready for permission request, will retry later',
+        );
+        // Don't throw, let it be retried when user actually uses voice features
+        rethrow;
+      } else {
+        rethrow;
+      }
+    }
   }
 
   /// Start recording with  continuous support
@@ -147,6 +195,17 @@ class VoiceService {
     }
 
     debugPrint('🎤 Starting  Continuous Voice Recording...');
+    // Ensure permissions are granted before starting
+    try {
+      final micStatus = await Permission.microphone.status;
+      if (!micStatus.isGranted) {
+        await _checkPermissions();
+      }
+    } catch (e) {
+      debugPrint('❌ Permission check failed: $e');
+      _updateState(VoiceState.error);
+      return;
+    }
 
     // Reset all state for new recording session
     _resetRecordingState();
@@ -283,9 +342,9 @@ class VoiceService {
         }
       } else {
         // No overlap found, check if it's a completely new sentence
-        if (!newText
-            .toLowerCase()
-            .startsWith(_cumulativeTranscription.toLowerCase())) {
+        if (!newText.toLowerCase().startsWith(
+              _cumulativeTranscription.toLowerCase(),
+            )) {
           _cumulativeTranscription += ' $newText';
         } else {
           // New text contains the old text, replace it
@@ -324,19 +383,22 @@ class VoiceService {
 
     _silenceMonitorTimer = Timer(const Duration(seconds: 8), () {
       if (_isUserStillSpeaking && _lastSpeechUpdate != null) {
-        final timeSinceLastSpeech =
-            DateTime.now().difference(_lastSpeechUpdate!);
+        final timeSinceLastSpeech = DateTime.now().difference(
+          _lastSpeechUpdate!,
+        );
 
         if (timeSinceLastSpeech.inSeconds >= 8) {
           debugPrint(
-              '🤫 Extended silence detected, but keeping session active...');
+            '🤫 Extended silence detected, but keeping session active...',
+          );
           _isUserStillSpeaking = false;
 
           // Continue monitoring but with longer intervals
           Timer(const Duration(seconds: 10), () {
             if (!_isUserStillSpeaking && !_userRequestedStop) {
               debugPrint(
-                  '🤫 Very long silence - user may have finished speaking');
+                '🤫 Very long silence - user may have finished speaking',
+              );
               // Don't auto-stop, let user control when to stop
             }
           });
@@ -396,7 +458,8 @@ class VoiceService {
 
     if (finalText.isEmpty) {
       throw Exception(
-          'No speech was captured. Please speak clearly and try again.');
+        'No speech was captured. Please speak clearly and try again.',
+      );
     }
 
     debugPrint('🧠 Processing Groq with final text: "$finalText"');
@@ -406,14 +469,16 @@ class VoiceService {
       String enhancedText = _enhanceTextForAI(finalText);
       debugPrint('🔧 text for AI: "$enhancedText"');
 
-      final response =
-          await AIReminderService.parseRemindersFromText(enhancedText);
+      final response = await AIReminderService.parseRemindersFromText(
+        enhancedText,
+      );
 
       _resultsController.add(response.reminders);
       _updateState(VoiceState.completed);
 
       debugPrint(
-          '✅ Groq processing complete: ${response.reminders.length} reminders');
+        '✅ Groq processing complete: ${response.reminders.length} reminders',
+      );
     } catch (e) {
       debugPrint('❌ Groq processing error: $e');
 
@@ -422,18 +487,21 @@ class VoiceService {
         debugPrint('🔄 Trying fallback processing...');
         final fallbackText = _createEnhancedFallbackText(finalText);
 
-        final response =
-            await AIReminderService.parseRemindersFromText(fallbackText);
+        final response = await AIReminderService.parseRemindersFromText(
+          fallbackText,
+        );
 
         _resultsController.add(response.reminders);
         _updateState(VoiceState.completed);
 
         debugPrint(
-            '✅ fallback processing succeeded: ${response.reminders.length} reminders');
+          '✅ fallback processing succeeded: ${response.reminders.length} reminders',
+        );
       } catch (fallbackError) {
         debugPrint('❌ fallback also failed: $fallbackError');
         throw Exception(
-            'Could not understand: "$finalText". Please try rephrasing.');
+          'Could not understand: "$finalText". Please try rephrasing.',
+        );
       }
     }
   }
@@ -532,11 +600,13 @@ Please extract at least one meaningful reminder from this voice input.
 
     if (audioSize < 1000) {
       throw Exception(
-          'Audio file too small. Please speak longer and more clearly.');
+        'Audio file too small. Please speak longer and more clearly.',
+      );
     }
 
     debugPrint(
-        '🧠 Processing Gemini native: $_audioFilePath (${audioSize} bytes)');
+      '🧠 Processing Gemini native: $_audioFilePath (${audioSize} bytes)',
+    );
 
     try {
       final audioBytes = await audioFile.readAsBytes();
@@ -551,7 +621,8 @@ Please extract at least one meaningful reminder from this voice input.
       _updateState(VoiceState.completed);
 
       debugPrint(
-          '✅ Gemini processing complete: ${response.reminders.length} reminders');
+        '✅ Gemini processing complete: ${response.reminders.length} reminders',
+      );
 
       await audioFile.delete();
     } catch (e) {
@@ -648,7 +719,8 @@ ALWAYS create at least one reminder, even if the speech is unclear. Return valid
         Timer(const Duration(milliseconds: 300), () async {
           if (_currentState == VoiceState.recording && !_userRequestedStop) {
             debugPrint(
-                '🔄 Auto-restarting session for continuous listening...');
+              '🔄 Auto-restarting session for continuous listening...',
+            );
             await _startIntelligentSpeechSession();
           }
         });

@@ -216,7 +216,7 @@ class _FloatingNavBarState extends State<FloatingNavBar>
           return Transform.scale(
             scale: 1.0 + (_scaleAnimation.value * 0.1),
             child: Container(
-              width: itemWidth - 8,
+              width: itemWidth > 8 ? itemWidth - 8 : 0,
               height: indicatorHeight,
               decoration: BoxDecoration(
                 color: _getIndicatorColor(isDark),
@@ -414,7 +414,8 @@ class _FloatingNavBarState extends State<FloatingNavBar>
 
   double _calculateItemWidth(double screenWidth) {
     final horizontalPadding = _getHorizontalPadding(screenWidth) * 2;
-    return (screenWidth - horizontalPadding) / 5;
+    final availableWidth = screenWidth - horizontalPadding;
+    return availableWidth > 0 ? availableWidth / 5 : 0;
   }
 
   double _calculateIndicatorPosition(double itemWidth) {

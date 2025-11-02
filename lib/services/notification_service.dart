@@ -44,6 +44,7 @@ class NotificationService {
     }
   }
 
+  /// Initialize notification service (Activity-independent parts only)
   static Future<void> initialize() async {
     if (_isInitialized) {
       debugPrint('⚠️ NotificationService already initialized');
@@ -57,7 +58,7 @@ class NotificationService {
       // Initialize timezone
       tz.initializeTimeZones();
 
-      // Initialize awesome_notifications with SOUND enabled
+      // Initialize awesome_notifications channels (no Activity needed)
       await AwesomeNotifications().initialize(
         null, // default app icon
         [
@@ -72,7 +73,6 @@ class NotificationService {
             channelShowBadge: true,
             playSound: true,
             enableVibration: true,
-            // Use default notification sound
             soundSource: null,
           ),
           // Alarm channel for full-screen alarms with LOUD ALARM sound
@@ -83,23 +83,19 @@ class NotificationService {
                 'Full-screen alarm notifications with loud sound',
             defaultColor: const Color(0xFFFF0000),
             ledColor: Colors.red,
-            importance: NotificationImportance.Max, // CRITICAL for full-screen
+            importance: NotificationImportance.Max,
             channelShowBadge: true,
             playSound: false,
             enableVibration: true,
             criticalAlerts: true,
             locked: true,
-            // Use default alarm sound (system will use loudest ringtone)
             soundSource: null,
           ),
         ],
         debug: true,
       );
 
-      //Request permissions first
-      await AwesomeNotifications().requestPermissionToSendNotifications();
-
-      //Initialize action listeners AFTER permissions
+      // Initialize action listeners (no Activity needed)
       await initializeActionListeners();
 
       // Set up foreground/background detection
@@ -109,11 +105,46 @@ class NotificationService {
       await checkAndReinitializeAfterBoot();
 
       _isInitialized = true;
-      debugPrint('✅ NotificationService initialization complete');
+      debugPrint('✅ NotificationService core initialization complete');
+      debugPrint('⏳ Permissions will be requested after Activity is ready');
     } catch (e, stackTrace) {
       debugPrint('❌ Failed to initialize NotificationService: $e');
       debugPrint('Stack trace: $stackTrace');
       rethrow;
+    }
+  }
+
+  /// Initialize Activity-dependent features (call after first frame)
+  static Future<void> initializeActivityDependentFeatures() async {
+    if (!_isInitialized) {
+      debugPrint(
+          '⚠️ Cannot initialize Activity features - service not initialized');
+      return;
+    }
+
+    try {
+      debugPrint('🎯 Initializing Activity-dependent notification features...');
+
+      // Now we can safely request permissions
+      final isAllowed = await AwesomeNotifications().isNotificationAllowed();
+
+      if (!isAllowed) {
+        final granted =
+            await AwesomeNotifications().requestPermissionToSendNotifications();
+        if (granted) {
+          debugPrint('✅ Notification permissions granted');
+        } else {
+          debugPrint('⚠️ Notification permissions denied by user');
+        }
+      } else {
+        debugPrint('✅ Notification permissions already granted');
+      }
+
+      debugPrint('✅ Activity-dependent features initialized');
+    } catch (e, stackTrace) {
+      debugPrint('⚠️ Failed to initialize Activity-dependent features: $e');
+      debugPrint('Stack trace: $stackTrace');
+      // Don't rethrow - this is non-fatal
     }
   }
 
@@ -145,27 +176,28 @@ class NotificationService {
     });
   }
 
-  /// Request full-screen intent permission for Android 10+
+  /// Request full-screen intent permissions (Activity-safe)
   static Future<void> requestFullScreenPermission() async {
     try {
-      // Request permission to show full-screen intents
-      final permissionGranted = await AwesomeNotifications()
-          .isNotificationAllowed()
-          .then((isAllowed) async {
-        if (!isAllowed) {
-          return await AwesomeNotifications()
-              .requestPermissionToSendNotifications();
-        }
-        return true;
-      });
+      debugPrint('🔐 Requesting full-screen intent permissions...');
 
-      if (permissionGranted) {
-        debugPrint('✅ Full-screen notification permission granted');
+      final isAllowed = await AwesomeNotifications().isNotificationAllowed();
+
+      if (!isAllowed) {
+        final permissionGranted =
+            await AwesomeNotifications().requestPermissionToSendNotifications();
+
+        if (permissionGranted) {
+          debugPrint('✅ Full-screen notification permission granted');
+        } else {
+          debugPrint('⚠️ Full-screen notification permission denied');
+        }
       } else {
-        debugPrint('⚠️ Full-screen notification permission denied');
+        debugPrint('✅ Full-screen notifications already allowed');
       }
     } catch (e) {
-      debugPrint('❌ Error requesting full-screen permission: $e');
+      debugPrint('⚠️ Error requesting full-screen permission: $e');
+      // Non-fatal - permissions might already be granted
     }
   }
 

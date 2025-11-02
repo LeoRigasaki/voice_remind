@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'dart:convert';
 import '../models/reminder.dart';
 import 'storage_service.dart';
+import 'dart:io';
 
 class AIReminderService {
   static GenerativeModel? _model;
@@ -227,6 +228,124 @@ class AIReminderService {
       }
       throw Exception('Failed to parse reminders: $e');
     }
+  }
+
+  /// Parse reminders from image with optional custom prompt
+  static Future<AIReminderResponse> parseRemindersFromImage({
+    required Uint8List imageBytes,
+    String? customPrompt,
+  }) async {
+    if (!canGenerateReminders) {
+      throw Exception(
+          'AI Service not ready. Please configure an API key in Settings.');
+    }
+
+    if (_currentProvider != 'gemini') {
+      throw Exception('Image analysis requires Gemini provider');
+    }
+
+    if (_model == null) {
+      throw Exception('Gemini model not initialized');
+    }
+
+    // Use custom prompt if provided, otherwise use default
+    final prompt = customPrompt?.trim().isEmpty ?? true
+        ? _buildImageAnalysisPrompt()
+        : _buildImageAnalysisPromptWithCustomText(customPrompt!);
+
+    try {
+      final imagePart = DataPart('image/jpeg', imageBytes);
+      final textPart = TextPart(prompt);
+
+      final response = await _model!.generateContent([
+        Content.multi([textPart, imagePart])
+      ]);
+
+      if (response.text == null || response.text!.isEmpty) {
+        throw Exception('Empty response from Gemini AI');
+      }
+
+      return _parseResponse(response.text!);
+    } catch (e) {
+      if (e.toString().contains('API_KEY_INVALID')) {
+        throw Exception(
+            'Invalid Gemini API key. Please check your API key in Settings.');
+      }
+      rethrow;
+    }
+  }
+
+  static String _buildImageAnalysisPrompt() {
+    final now = DateTime.now();
+    final formatter = DateFormat('EEEE, MMMM d, yyyy \'at\' h:mm a');
+    final currentTimeStr = formatter.format(now);
+
+    return '''
+You are a smart reminder extraction AI. Analyze this screenshot/image and extract ALL possible reminders, tasks, events, or time-sensitive information.
+
+CURRENT TIME: $currentTimeStr
+Today is ${DateFormat('EEEE').format(now)}.
+
+EXTRACTION RULES:
+1. Extract ALL text visible in the image
+2. Identify dates, times, deadlines, appointments
+3. Look for: calendar events, messages, notifications, notes, to-do lists
+4. Understand context: "tomorrow" means ${DateFormat('yyyy-MM-dd').format(now.add(Duration(days: 1)))}
+5. If no time specified, default to 9:00 AM
+6. Extract recurring patterns if mentioned
+7. Identify priority from urgency words (urgent, ASAP, important)
+
+OUTPUT FORMAT (strict JSON):
+{
+  "reminders": [
+    {
+      "title": "Brief task description",
+      "context": "Full context from image",
+      "priority": "HIGH|MEDIUM|LOW",
+      "due_date": "YYYY-MM-DDTHH:MM:SS",
+      "tags": ["category1", "category2"],
+      "repeat_type": "NONE|DAILY|WEEKLY|MONTHLY"
+    }
+  ],
+  "parsing_confidence": 0.0-1.0,
+  "ambiguities": ["list any unclear items"]
+}
+
+Analyze the image now and extract reminders:''';
+  }
+
+  static String _buildImageAnalysisPromptWithCustomText(String customText) {
+    final now = DateTime.now();
+    final formatter = DateFormat('EEEE, MMMM d, yyyy \'at\' h:mm a');
+    final currentTimeStr = formatter.format(now);
+
+    return '''
+You are a smart reminder extraction AI. 
+
+CURRENT TIME: $currentTimeStr
+Today is ${DateFormat('EEEE').format(now)}.
+
+USER REQUEST: "$customText"
+
+Analyze the provided image and follow the user's specific request above. Extract reminders based on what they asked for.
+
+OUTPUT FORMAT (strict JSON):
+{
+  "reminders": [
+    {
+      "title": "Brief task description",
+      "context": "Full context",
+      "priority": "HIGH|MEDIUM|LOW",
+      "due_date": "YYYY-MM-DDTHH:MM:SS",
+      "tags": ["category1", "category2"],
+      "repeat_type": "NONE|DAILY|WEEKLY|MONTHLY"
+    }
+  ],
+  "parsing_confidence": 0.0-1.0,
+  "ambiguities": ["list any unclear items"]
+}
+
+Analyze the image according to the user's request:''';
   }
 
   static Future<AIReminderResponse> _parseWithGemini(String fullPrompt) async {

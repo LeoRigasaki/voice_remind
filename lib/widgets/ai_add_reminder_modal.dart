@@ -11,6 +11,8 @@ import '../services/notification_service.dart';
 import '../services/ai_reminder_service.dart';
 import '../screens/settings_screen.dart';
 import '../widgets/multi_time_section.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 
 enum ReminderCreationMode { manual, aiText, voice }
 
@@ -64,6 +66,9 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
   String _voiceTranscription = '';
   // AI Text state
   final _aiInputController = TextEditingController();
+  File? _selectedImage;
+  final ImagePicker _imagePicker = ImagePicker();
+  bool _isImageMode = false;
   List<Reminder> _aiGeneratedReminders = [];
   Set<int> _selectedReminderIndices = {};
   bool _isGenerating = false;
@@ -419,7 +424,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
     _titleController.dispose();
     _descriptionController.dispose();
     _aiInputController.dispose();
-
+    _selectedImage = null;
     _orbPulseController.dispose();
     _ringController.dispose();
     _waveformController.dispose();
@@ -555,7 +560,11 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
 
   // AI Text methods (enhanced for multi-time support)
   Future<void> _generateReminders() async {
-    if (_aiInputController.text.trim().isEmpty) return;
+    // Check if we have either text or image
+    if (_aiInputController.text.trim().isEmpty && _selectedImage == null) {
+      _showError('Please enter text or select an image');
+      return;
+    }
 
     if (!_aiServiceReady) {
       _showAIConfigurationDialog();
@@ -569,9 +578,24 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
     });
 
     try {
-      final response = await AIReminderService.parseRemindersFromText(
-        _aiInputController.text.trim(),
-      );
+      AIReminderResponse response;
+
+      // Image mode: use image analysis
+      if (_selectedImage != null) {
+        final imageBytes = await _selectedImage!.readAsBytes();
+        final customPrompt = _aiInputController.text.trim();
+
+        response = await AIReminderService.parseRemindersFromImage(
+          imageBytes: imageBytes,
+          customPrompt: customPrompt.isEmpty ? null : customPrompt,
+        );
+      }
+      // Text mode: use text parsing
+      else {
+        response = await AIReminderService.parseRemindersFromText(
+          _aiInputController.text.trim(),
+        );
+      }
 
       setState(() {
         _aiGeneratedReminders = response.reminders;
@@ -597,6 +621,56 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
         _showAIConfigurationDialog();
       }
     }
+  }
+
+  Future<void> _pickImageFromGallery() async {
+    try {
+      final XFile? image = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1920,
+        maxHeight: 1920,
+        imageQuality: 85,
+      );
+
+      if (image != null) {
+        setState(() {
+          _selectedImage = File(image.path);
+          _isImageMode = true;
+          _showPreview = false;
+        });
+      }
+    } catch (e) {
+      _showError('Failed to pick image: $e');
+    }
+  }
+
+  Future<void> _pickImageFromCamera() async {
+    try {
+      final XFile? image = await _imagePicker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1920,
+        maxHeight: 1920,
+        imageQuality: 85,
+      );
+
+      if (image != null) {
+        setState(() {
+          _selectedImage = File(image.path);
+          _isImageMode = true;
+          _showPreview = false;
+        });
+      }
+    } catch (e) {
+      _showError('Failed to capture image: $e');
+    }
+  }
+
+  void _clearImage() {
+    setState(() {
+      _selectedImage = null;
+      _isImageMode = false;
+      _showPreview = false;
+    });
   }
 
   Future<void> _createSelectedReminders() async {
@@ -1152,7 +1226,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
 
   bool _canGenerateReminders() {
     return !_isGenerating &&
-        _aiInputController.text.trim().isNotEmpty &&
+        (_aiInputController.text.trim().isNotEmpty || _selectedImage != null) &&
         _aiServiceReady;
   }
 
@@ -1535,7 +1609,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
       child: Column(
         children: [
           if (!_showPreview) ...[
-            // COMPACT AI STATUS TAG ONLY
+            // AI STATUS TAG
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
@@ -1592,11 +1666,8 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                               }
                             });
                           },
-                          child: const Icon(
-                            Icons.arrow_forward_ios,
-                            size: 12,
-                            color: Colors.orange,
-                          ),
+                          child: const Icon(Icons.arrow_forward_ios,
+                              size: 12, color: Colors.orange),
                         ),
                       ],
                     ],
@@ -1605,118 +1676,153 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
               ],
             ),
 
-            // RESPONSIVE SPACING
             SizedBox(height: MediaQuery.of(context).size.height * 0.02),
 
-            // BEAUTIFUL MATERIAL DESIGN TEXT INPUT
+            // IMAGE PICKER BUTTONS
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _isGenerating ? null : _pickImageFromGallery,
+                    icon: const Icon(Icons.photo_library, size: 18),
+                    label:
+                        const Text('Gallery', style: TextStyle(fontSize: 13)),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _isGenerating ? null : _pickImageFromCamera,
+                    icon: const Icon(Icons.camera_alt, size: 18),
+                    label: const Text('Camera', style: TextStyle(fontSize: 13)),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            // IMAGE PREVIEW
+            if (_selectedImage != null) ...[
+              const SizedBox(height: 12),
+              Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.file(
+                      _selectedImage!,
+                      height: 180,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: CircleAvatar(
+                      radius: 16,
+                      backgroundColor: Colors.black54,
+                      child: IconButton(
+                        icon: const Icon(Icons.close,
+                            color: Colors.white, size: 16),
+                        onPressed: _clearImage,
+                        padding: EdgeInsets.zero,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+
+            SizedBox(height: MediaQuery.of(context).size.height * 0.015),
+
+            // TEXT INPUT
             Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  return Column(
-                    children: [
-                      // TEXT INPUT CONTAINER
-                      Expanded(
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(4),
-                          child: TextField(
-                            controller: _aiInputController,
-                            enabled: _aiServiceReady,
-                            maxLines: null,
-                            expands: true,
-                            textAlignVertical: TextAlignVertical.top,
-                            style:
-                                Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                      height: 1.5,
-                                      fontSize: 16,
-                                    ),
-                            decoration: InputDecoration(
-                              hintText: _aiServiceReady
-                                  ? 'Describe your reminders here...\n\nExample: Take medicine at 8AM, 2PM, and 8PM daily'
-                                  : 'Configure AI provider in Settings first...',
-                              hintStyle: TextStyle(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurface
-                                    .withValues(alpha: 0.4),
-                                fontSize: 16,
-                                height: 1.5,
-                              ),
-                              border: InputBorder.none,
-                              enabledBorder: InputBorder.none,
-                              focusedBorder: InputBorder.none,
-                              errorBorder: InputBorder.none,
-                              disabledBorder: InputBorder.none,
-                              contentPadding: const EdgeInsets.all(16),
-                              filled: false,
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      // ELEGANT UNDERLINE
-                      Container(
-                        height: 1,
-                        width: double.infinity,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              Theme.of(context)
-                                  .colorScheme
-                                  .primary
-                                  .withValues(alpha: 0.0),
-                              Theme.of(context)
-                                  .colorScheme
-                                  .primary
-                                  .withValues(alpha: 0.6),
-                              Theme.of(context)
-                                  .colorScheme
-                                  .primary
-                                  .withValues(alpha: 0.0),
-                            ],
-                          ),
-                        ),
-                      ),
-
-                      SizedBox(
-                          height: MediaQuery.of(context).size.height * 0.015),
-                    ],
-                  );
-                },
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(4),
+                child: TextField(
+                  controller: _aiInputController,
+                  enabled: _aiServiceReady,
+                  maxLines: null,
+                  expands: true,
+                  textAlignVertical: TextAlignVertical.top,
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodyLarge
+                      ?.copyWith(height: 1.5, fontSize: 16),
+                  decoration: InputDecoration(
+                    hintText: _selectedImage != null
+                        ? 'Optional: Add custom instructions...\n\nExample: "Extract only meetings" or leave empty for automatic analysis'
+                        : _aiServiceReady
+                            ? 'Describe your reminders here...\n\nExample: Take medicine at 8AM, 2PM, and 8PM daily'
+                            : 'Configure AI provider in Settings first...',
+                    hintStyle: TextStyle(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withValues(alpha: 0.4),
+                      fontSize: 16,
+                      height: 1.5,
+                    ),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.all(16),
+                  ),
+                ),
               ),
             ),
 
-            // ERROR MESSAGE - CONDITIONAL & COMPACT
+            // UNDERLINE
+            Container(
+              height: 1,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Theme.of(context)
+                        .colorScheme
+                        .primary
+                        .withValues(alpha: 0.0),
+                    Theme.of(context)
+                        .colorScheme
+                        .primary
+                        .withValues(alpha: 0.6),
+                    Theme.of(context)
+                        .colorScheme
+                        .primary
+                        .withValues(alpha: 0.0),
+                  ],
+                ),
+              ),
+            ),
+
+            SizedBox(height: MediaQuery.of(context).size.height * 0.015),
+
+            // ERROR
             if (_aiError != null) ...[
               Container(
-                width: double.infinity,
                 margin: const EdgeInsets.only(bottom: 12),
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
                   color: Colors.red.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: Colors.red.withValues(alpha: 0.3),
-                    width: 1,
-                  ),
+                  border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
                 ),
                 child: const Row(
                   children: [
-                    Icon(
-                      Icons.error_outline,
-                      color: Colors.red,
-                      size: 16,
-                    ),
+                    Icon(Icons.error_outline, color: Colors.red, size: 16),
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         'Error generating reminders. Please try again.',
                         style: TextStyle(
-                          color: Colors.red,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
+                            color: Colors.red,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500),
                       ),
                     ),
                   ],
@@ -1724,7 +1830,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
               ),
             ],
 
-            // GENERATE BUTTON - ENHANCED DESIGN
+            // GENERATE BUTTON
             Container(
               width: double.infinity,
               height: 56,
@@ -1739,8 +1845,6 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                               .primary
                               .withValues(alpha: 0.8),
                         ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
                       )
                     : null,
                 color: !_canGenerateReminders()
@@ -1772,7 +1876,9 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                               ),
                               const SizedBox(width: 12),
                               Text(
-                                'GENERATING...',
+                                _selectedImage != null
+                                    ? 'ANALYZING...'
+                                    : 'GENERATING...',
                                 style: TextStyle(
                                   color:
                                       Theme.of(context).colorScheme.onPrimary,
@@ -1786,9 +1892,11 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Icon(
-                                _aiServiceReady
-                                    ? Icons.auto_awesome
-                                    : Icons.settings_outlined,
+                                _selectedImage != null
+                                    ? Icons.image_search
+                                    : _aiServiceReady
+                                        ? Icons.auto_awesome
+                                        : Icons.settings_outlined,
                                 size: 20,
                                 color: _canGenerateReminders()
                                     ? Theme.of(context).colorScheme.onPrimary
@@ -1799,9 +1907,11 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                _aiServiceReady
-                                    ? 'GENERATE REMINDERS'
-                                    : 'SETUP AI FIRST',
+                                _selectedImage != null
+                                    ? 'ANALYZE SCREENSHOT'
+                                    : _aiServiceReady
+                                        ? 'GENERATE REMINDERS'
+                                        : 'SETUP AI FIRST',
                                 style: TextStyle(
                                   fontWeight: FontWeight.w600,
                                   letterSpacing: 0.5,
@@ -1820,19 +1930,19 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
               ),
             ),
           ] else
-            // PREVIEW SECTION (unchanged)
+            // PREVIEW (unchanged)
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Header with confidence
                   Row(
                     children: [
                       Text(
                         'Generated Reminders',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleLarge
+                            ?.copyWith(fontWeight: FontWeight.w600),
                       ),
                       const Spacer(),
                       Container(
@@ -1862,10 +1972,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                       ),
                     ],
                   ),
-
                   const SizedBox(height: 16),
-
-                  // Reminders list
                   Expanded(
                     child: ListView.builder(
                       itemCount: _aiGeneratedReminders.length,
@@ -1873,7 +1980,6 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                         final reminder = _aiGeneratedReminders[index];
                         final isSelected =
                             _selectedReminderIndices.contains(index);
-
                         return Card(
                           margin: const EdgeInsets.only(bottom: 12),
                           color: isSelected
@@ -1895,18 +2001,15 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                                 });
                               },
                             ),
-                            title: Text(
-                              reminder.title,
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.w600),
-                            ),
+                            title: Text(reminder.title,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600)),
                             subtitle: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 if (reminder.description != null)
                                   Text(reminder.description!),
                                 const SizedBox(height: 4),
-                                // Show multi-time or single time info
                                 if (reminder.hasMultipleTimes) ...[
                                   Text(
                                     '${reminder.timeSlots.length} times: ${reminder.timeSlots.map((slot) => slot.formattedTime).join(', ')}',
@@ -1952,14 +2055,10 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                       },
                     ),
                   ),
-
-                  // Action buttons
                   Padding(
                     padding: const EdgeInsets.only(top: 16),
                     child: Row(
                       children: [
-                        // Back button
-                        // Back button
                         Expanded(
                           child: OutlinedButton(
                             onPressed: () {
@@ -1971,22 +2070,16 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                             style: OutlinedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 16),
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
+                                  borderRadius: BorderRadius.circular(12)),
                             ),
                             child: const FittedBox(
                               fit: BoxFit.scaleDown,
-                              child: Text(
-                                'EDIT PROMPT',
-                                style: TextStyle(fontSize: 12),
-                              ),
+                              child: Text('EDIT PROMPT',
+                                  style: TextStyle(fontSize: 12)),
                             ),
                           ),
                         ),
-
                         const SizedBox(width: 12),
-
-                        // Create button
                         Expanded(
                           flex: 2,
                           child: ElevatedButton(
@@ -2001,8 +2094,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                                   Theme.of(context).colorScheme.onPrimary,
                               padding: const EdgeInsets.symmetric(vertical: 16),
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
+                                  borderRadius: BorderRadius.circular(12)),
                             ),
                             child: _isLoading
                                 ? const SizedBox(

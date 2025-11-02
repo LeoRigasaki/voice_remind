@@ -68,7 +68,11 @@ void main() async {
     }
   });
 
-  // Load environment variables with better error handling
+  debugPrint('🚀 ========================================');
+  debugPrint('🚀 PHASE 1: Critical Services Initialization');
+  debugPrint('🚀 ========================================');
+
+  // Load environment variables
   try {
     await dotenv.load(fileName: ".env");
     debugPrint('✅ Environment variables loaded');
@@ -77,28 +81,18 @@ void main() async {
         '⚠️ No .env file found, will rely on user-provided keys if needed');
   }
 
-  // Initialize storage first (required for AI service to load user keys)
+  // Initialize storage (no Activity needed)
   await StorageService.initialize();
   debugPrint('✅ Storage service initialized');
 
-  // Initialize AI service with proper user key loading
+  // Initialize AI service (no Activity needed)
   await _initializeAIService();
 
-  // CRITICAL: Initialize NotificationService FIRST (includes action listeners)
+  // Initialize NotificationService CORE (no Activity needed)
   await NotificationService.initialize();
-  debugPrint('✅ Notification service initialized');
+  debugPrint('✅ Notification service core initialized');
 
-  // CRITICAL: Initialize notification action listeners
-  await NotificationService.initializeActionListeners();
-  debugPrint('✅ Notification action listeners initialized');
-
-  await NotificationService.checkAndReinitializeAfterBoot();
-
-  // Request full-screen intent permission for alarms (Android 10+)
-  await NotificationService.requestFullScreenPermission();
-  debugPrint('✅ Full-screen permission requested');
-
-  // Then initialize AlarmService (depends on NotificationService)
+  // Initialize AlarmService (no Activity needed)
   await _initializeAlarmService();
 
   // Initialize spaces service
@@ -113,11 +107,12 @@ void main() async {
   await ThemeService.initialize();
   debugPrint('✅ Theme service initialized');
 
-  // Initialize voice service
-  await _initializeVoiceService();
-
-  // Check if device was rebooted - reschedule all alarms if needed
+  // Check if device was rebooted
   await _handleBootReschedule();
+
+  debugPrint('🚀 ========================================');
+  debugPrint('🚀 PHASE 2: Starting App');
+  debugPrint('🚀 ========================================');
 
   runApp(const VoiceRemindApp());
 }
@@ -399,6 +394,36 @@ class _VoiceRemindAppState extends State<VoiceRemindApp>
 
     // Start enhanced background update monitoring
     _startBackgroundUpdateMonitoring();
+
+    // CRITICAL: Initialize Activity-dependent features after first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeActivityDependentFeatures();
+    });
+  }
+
+  /// Initialize features that require Activity context
+  Future<void> _initializeActivityDependentFeatures() async {
+    debugPrint('🚀 ========================================');
+    debugPrint('🚀 PHASE 3: Activity-Dependent Features');
+    debugPrint('🚀 ========================================');
+
+    try {
+      // Initialize notification permissions (requires Activity)
+      await NotificationService.initializeActivityDependentFeatures();
+
+      // Request full-screen permissions (requires Activity)
+      await NotificationService.requestFullScreenPermission();
+
+      // Initialize voice service (requires Activity for permissions)
+      await _initializeVoiceService();
+
+      debugPrint('✅ All Activity-dependent features initialized');
+    } catch (e, stackTrace) {
+      debugPrint(
+          '⚠️ Some Activity-dependent features failed to initialize: $e');
+      debugPrint('Stack trace: $stackTrace');
+      // Non-fatal - app can continue
+    }
   }
 
   /// Force refresh all reminder data when critical updates occur
