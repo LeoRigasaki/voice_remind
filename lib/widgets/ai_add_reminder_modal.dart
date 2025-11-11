@@ -14,7 +14,9 @@ import '../utils/reminder_helpers.dart';
 import '../screens/settings_screen.dart';
 import '../widgets/multi_time_section.dart';
 import '../models/space.dart';
+import '../models/custom_repeat_config.dart';
 import '../widgets/reminder_form/space_selector_field.dart';
+import '../widgets/reminder_form/custom_repeat_dialog.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 
@@ -53,6 +55,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
   DateTime _selectedDate = DateTime.now().add(const Duration(hours: 1));
   TimeOfDay _selectedTime = TimeOfDay.now();
   RepeatType _selectedRepeat = RepeatType.none;
+  CustomRepeatConfig? _customRepeatConfig;
   bool _isNotificationEnabled = true;
   bool _isLoading = false;
 
@@ -524,6 +527,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
           spaceId: _selectedSpace?.id,
           timeSlots: _timeSlots,
           isMultiTime: true,
+          customRepeatConfig: _customRepeatConfig,
         );
       } else {
         // Create single-time reminder
@@ -538,6 +542,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
           spaceId: _selectedSpace?.id,
           timeSlots: [],
           isMultiTime: false,
+          customRepeatConfig: _customRepeatConfig,
         );
       }
 
@@ -1558,7 +1563,11 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                       child: ListTile(
                         leading: const Icon(Icons.repeat),
                         title: const Text('Repeat'),
-                        subtitle: Text(getRepeatDisplayName(_selectedRepeat)),
+                        subtitle: Text(
+                          _selectedRepeat == RepeatType.custom && _customRepeatConfig != null
+                              ? _customRepeatConfig!.formatInterval()
+                              : getRepeatDisplayName(_selectedRepeat),
+                        ),
                         trailing: const Icon(Icons.edit),
                         onTap: _showRepeatSelector,
                       ),
@@ -2945,18 +2954,52 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                           leading: Radio<RepeatType>(
                             value: repeat,
                             groupValue: _selectedRepeat,
-                            onChanged: (value) {
-                              setState(() {
-                                _selectedRepeat = value!;
-                              });
-                              Navigator.pop(context);
+                            onChanged: (value) async {
+                              if (value == RepeatType.custom) {
+                                Navigator.pop(context);
+                                final config = await showDialog<CustomRepeatConfig>(
+                                  context: context,
+                                  builder: (context) => CustomRepeatDialog(
+                                    initialConfig: _customRepeatConfig,
+                                  ),
+                                );
+                                if (config != null) {
+                                  setState(() {
+                                    _selectedRepeat = RepeatType.custom;
+                                    _customRepeatConfig = config;
+                                  });
+                                }
+                              } else {
+                                setState(() {
+                                  _selectedRepeat = value!;
+                                  _customRepeatConfig = null;
+                                });
+                                Navigator.pop(context);
+                              }
                             },
                           ),
-                          onTap: () {
-                            setState(() {
-                              _selectedRepeat = repeat;
-                            });
-                            Navigator.pop(context);
+                          onTap: () async {
+                            if (repeat == RepeatType.custom) {
+                              Navigator.pop(context);
+                              final config = await showDialog<CustomRepeatConfig>(
+                                context: context,
+                                builder: (context) => CustomRepeatDialog(
+                                  initialConfig: _customRepeatConfig,
+                                ),
+                              );
+                              if (config != null) {
+                                setState(() {
+                                  _selectedRepeat = RepeatType.custom;
+                                  _customRepeatConfig = config;
+                                });
+                              }
+                            } else {
+                              setState(() {
+                                _selectedRepeat = repeat;
+                                _customRepeatConfig = null;
+                              });
+                              Navigator.pop(context);
+                            }
                           },
                         ),
                     ],

@@ -238,26 +238,74 @@ class _CustomRepeatDialogState extends State<CustomRepeatDialog> {
                     Row(
                       children: [
                         Expanded(
-                          child: _buildNumberField(
-                            controller: _minutesController,
-                            label: 'min',
-                            max: 59,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.only(left: 4, bottom: 8),
+                                child: Text(
+                                  'Minutes',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: theme.colorScheme.onSurface.withOpacity(0.7),
+                                  ),
+                                ),
+                              ),
+                              _buildNumberField(
+                                controller: _minutesController,
+                                label: 'min',
+                                hint: '0',
+                                max: 59,
+                              ),
+                            ],
                           ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                          child: _buildNumberField(
-                            controller: _hoursController,
-                            label: 'hrs',
-                            max: 23,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.only(left: 4, bottom: 8),
+                                child: Text(
+                                  'Hours',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: theme.colorScheme.onSurface.withOpacity(0.7),
+                                  ),
+                                ),
+                              ),
+                              _buildNumberField(
+                                controller: _hoursController,
+                                label: 'hrs',
+                                hint: '0',
+                                max: 23,
+                              ),
+                            ],
                           ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                          child: _buildNumberField(
-                            controller: _daysController,
-                            label: 'days',
-                            max: 365,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.only(left: 4, bottom: 8),
+                                child: Text(
+                                  'Days',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: theme.colorScheme.onSurface.withOpacity(0.7),
+                                  ),
+                                ),
+                              ),
+                              _buildNumberField(
+                                controller: _daysController,
+                                label: 'days',
+                                hint: '0',
+                                max: 365,
+                              ),
+                            ],
                           ),
                         ),
                       ],
@@ -489,6 +537,7 @@ class _CustomRepeatDialogState extends State<CustomRepeatDialog> {
   Widget _buildNumberField({
     required TextEditingController controller,
     required String label,
+    required String hint,
     required int max,
   }) {
     return TextField(
@@ -500,6 +549,8 @@ class _CustomRepeatDialogState extends State<CustomRepeatDialog> {
         _MaxValueInputFormatter(max),
       ],
       decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: TextStyle(color: Colors.grey.shade400),
         suffixText: label,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
