@@ -9,6 +9,8 @@ import '../models/reminder.dart';
 import '../services/storage_service.dart';
 import '../services/notification_service.dart';
 import '../services/ai_reminder_service.dart';
+import '../services/reminder_service.dart';
+import '../utils/reminder_helpers.dart';
 import '../screens/settings_screen.dart';
 import '../widgets/multi_time_section.dart';
 import 'package:image_picker/image_picker.dart';
@@ -905,7 +907,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                         child: ListTile(
                           leading: const Icon(Icons.repeat),
                           title: const Text('Repeat'),
-                          subtitle: Text(_getRepeatDisplayName(selectedRepeat)),
+                          subtitle: Text(getRepeatDisplayName(selectedRepeat)),
                           trailing: const Icon(Icons.edit),
                           onTap: () {
                             showModalBottomSheet(
@@ -994,7 +996,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                                                         : 8.0,
                                                   ),
                                                   title: Text(
-                                                    _getRepeatDisplayName(
+                                                    getRepeatDisplayName(
                                                         repeat),
                                                     style: TextStyle(
                                                       fontSize:
@@ -1008,7 +1010,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                                                     ),
                                                   ),
                                                   subtitle: Text(
-                                                    _getRepeatDescription(
+                                                    getRepeatDescription(
                                                         repeat),
                                                     style: TextStyle(
                                                       fontSize:
@@ -1538,7 +1540,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                       child: ListTile(
                         leading: const Icon(Icons.repeat),
                         title: const Text('Repeat'),
-                        subtitle: Text(_getRepeatDisplayName(_selectedRepeat)),
+                        subtitle: Text(getRepeatDisplayName(_selectedRepeat)),
                         trailing: const Icon(Icons.edit),
                         onTap: _showRepeatSelector,
                       ),
@@ -2880,7 +2882,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                             vertical: isVerySmallDevice ? 4.0 : 8.0,
                           ),
                           title: Text(
-                            _getRepeatDisplayName(repeat),
+                            getRepeatDisplayName(repeat),
                             style: TextStyle(
                               fontSize: isVerySmallDevice
                                   ? 14.0
@@ -2891,7 +2893,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                             ),
                           ),
                           subtitle: Text(
-                            _getRepeatDescription(repeat),
+                            getRepeatDescription(repeat),
                             style: TextStyle(
                               fontSize: isVerySmallDevice
                                   ? 11.0
@@ -2932,19 +2934,6 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
     );
   }
 
-  String _getRepeatDisplayName(RepeatType repeat) {
-    switch (repeat) {
-      case RepeatType.none:
-        return 'No Repeat';
-      case RepeatType.daily:
-        return 'Daily';
-      case RepeatType.weekly:
-        return 'Weekly';
-      case RepeatType.monthly:
-        return 'Monthly';
-    }
-  }
-
   void _editVoiceReminder(int index) {
     final reminder = _voiceGeneratedReminders[index];
 
@@ -2954,19 +2943,6 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
       backgroundColor: Colors.transparent,
       builder: (context) => _buildEditReminderSheet(reminder, index),
     );
-  }
-
-  String _getRepeatDescription(RepeatType repeat) {
-    switch (repeat) {
-      case RepeatType.none:
-        return 'This reminder will only trigger once';
-      case RepeatType.daily:
-        return 'Repeat every day at the same time';
-      case RepeatType.weekly:
-        return 'Repeat every week on the same day';
-      case RepeatType.monthly:
-        return 'Repeat every month on the same date';
-    }
   }
 }
 
