@@ -41,19 +41,8 @@ class BootReceiver : BroadcastReceiver() {
     try {
         Log.d(TAG, "📄 Boot completed - starting reschedule service")
 
-        val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-
-        // Check if already rescheduled to prevent duplicate runs
-        val alreadyRescheduled = prefs.getBoolean("flutter.boot_reschedule_completed", false)
-        if (alreadyRescheduled) {
-            Log.d(TAG, "⏭️ Already rescheduled in this boot session, skipping")
-            Log.d(TAG, "========================================")
-            return
-        }
-
-        // Set the flag to prevent duplicate reschedules
-        prefs.edit().putBoolean("flutter.boot_reschedule_completed", true).apply()
-        Log.d(TAG, "✅ Set boot reschedule flag")
+        // No need to check SharedPreferences since we only handle LOCKED_BOOT_COMPLETED now
+        // (BOOT_COMPLETED is skipped, so no duplicate runs)
 
         // Start the foreground service to handle rescheduling
         val serviceIntent = Intent(context, AlarmRescheduleService::class.java)
