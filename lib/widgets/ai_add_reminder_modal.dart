@@ -9,8 +9,12 @@ import '../models/reminder.dart';
 import '../services/storage_service.dart';
 import '../services/notification_service.dart';
 import '../services/ai_reminder_service.dart';
+import '../services/spaces_service.dart';
+import '../utils/reminder_helpers.dart';
 import '../screens/settings_screen.dart';
 import '../widgets/multi_time_section.dart';
+import '../models/space.dart';
+import '../widgets/reminder_form/space_selector_field.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 
@@ -55,6 +59,10 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
   // Multi-time state
   bool _isMultiTime = false;
   List<TimeSlot> _timeSlots = [];
+
+  // Space state
+  Space? _selectedSpace;
+  List<Space> _availableSpaces = [];
 
   StreamSubscription<VoiceState>? _voiceStateSubscription;
   StreamSubscription<String>? _voiceTranscriptionSubscription;
@@ -152,6 +160,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
 
     await _loadAIServiceStatus();
     await _loadDefaultTabPreference();
+    await _loadSpaces();
     await _initializeTabs();
 
     // Add listener to AI input controller to update button state
@@ -294,6 +303,19 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
       }
     } catch (e) {
       debugPrint('Failed to load default tab preference: $e');
+    }
+  }
+
+  Future<void> _loadSpaces() async {
+    try {
+      final spaces = await SpacesService.getSpaces();
+      if (mounted) {
+        setState(() {
+          _availableSpaces = spaces;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading spaces: $e');
     }
   }
 
@@ -500,6 +522,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
           scheduledTime: _selectedDate, // Keep for backward compatibility
           repeatType: _selectedRepeat,
           isNotificationEnabled: _isNotificationEnabled,
+          spaceId: _selectedSpace?.id,
           timeSlots: _timeSlots,
           isMultiTime: true,
         );
@@ -513,6 +536,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
           scheduledTime: _selectedDate,
           repeatType: _selectedRepeat,
           isNotificationEnabled: _isNotificationEnabled,
+          spaceId: _selectedSpace?.id,
           timeSlots: [],
           isMultiTime: false,
         );
@@ -905,7 +929,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                         child: ListTile(
                           leading: const Icon(Icons.repeat),
                           title: const Text('Repeat'),
-                          subtitle: Text(_getRepeatDisplayName(selectedRepeat)),
+                          subtitle: Text(getRepeatDisplayName(selectedRepeat)),
                           trailing: const Icon(Icons.edit),
                           onTap: () {
                             showModalBottomSheet(
@@ -994,7 +1018,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                                                         : 8.0,
                                                   ),
                                                   title: Text(
-                                                    _getRepeatDisplayName(
+                                                    getRepeatDisplayName(
                                                         repeat),
                                                     style: TextStyle(
                                                       fontSize:
@@ -1008,7 +1032,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                                                     ),
                                                   ),
                                                   subtitle: Text(
-                                                    _getRepeatDescription(
+                                                    getRepeatDescription(
                                                         repeat),
                                                     style: TextStyle(
                                                       fontSize:
@@ -1538,13 +1562,32 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                       child: ListTile(
                         leading: const Icon(Icons.repeat),
                         title: const Text('Repeat'),
-                        subtitle: Text(_getRepeatDisplayName(_selectedRepeat)),
+                        subtitle: Text(getRepeatDisplayName(_selectedRepeat)),
                         trailing: const Icon(Icons.edit),
                         onTap: _showRepeatSelector,
                       ),
                     ),
 
                     const SizedBox(height: 20),
+
+                    // Space selector
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 4, vertical: 8),
+                        child: SpaceSelectorField(
+                          selectedSpace: _selectedSpace,
+                          availableSpaces: _availableSpaces,
+                          onSpaceChanged: (space) {
+                            setState(() {
+                              _selectedSpace = space;
+                            });
+                          },
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
 
                     // Notification toggle
                     Card(
@@ -2880,7 +2923,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                             vertical: isVerySmallDevice ? 4.0 : 8.0,
                           ),
                           title: Text(
-                            _getRepeatDisplayName(repeat),
+                            getRepeatDisplayName(repeat),
                             style: TextStyle(
                               fontSize: isVerySmallDevice
                                   ? 14.0
@@ -2891,7 +2934,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                             ),
                           ),
                           subtitle: Text(
-                            _getRepeatDescription(repeat),
+                            getRepeatDescription(repeat),
                             style: TextStyle(
                               fontSize: isVerySmallDevice
                                   ? 11.0
@@ -2932,19 +2975,6 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
     );
   }
 
-  String _getRepeatDisplayName(RepeatType repeat) {
-    switch (repeat) {
-      case RepeatType.none:
-        return 'No Repeat';
-      case RepeatType.daily:
-        return 'Daily';
-      case RepeatType.weekly:
-        return 'Weekly';
-      case RepeatType.monthly:
-        return 'Monthly';
-    }
-  }
-
   void _editVoiceReminder(int index) {
     final reminder = _voiceGeneratedReminders[index];
 
@@ -2954,19 +2984,6 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
       backgroundColor: Colors.transparent,
       builder: (context) => _buildEditReminderSheet(reminder, index),
     );
-  }
-
-  String _getRepeatDescription(RepeatType repeat) {
-    switch (repeat) {
-      case RepeatType.none:
-        return 'This reminder will only trigger once';
-      case RepeatType.daily:
-        return 'Repeat every day at the same time';
-      case RepeatType.weekly:
-        return 'Repeat every week on the same day';
-      case RepeatType.monthly:
-        return 'Repeat every month on the same date';
-    }
   }
 }
 
