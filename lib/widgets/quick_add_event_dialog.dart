@@ -5,6 +5,7 @@ import '../models/reminder.dart';
 import '../models/space.dart';
 import '../services/calendar_service.dart';
 import '../services/spaces_service.dart';
+import '../utils/reminder_helpers.dart';
 
 /// Quick dialog for adding events directly from calendar
 class QuickAddEventDialog extends StatefulWidget {
@@ -402,7 +403,7 @@ class _QuickAddEventDialogState extends State<QuickAddEventDialog>
             children: RepeatType.values.map((type) {
               final isSelected = _repeatType == type;
               return FilterChip(
-                label: Text(_getRepeatDisplayName(type)),
+                label: Text(getRepeatDisplayName(type)),
                 selected: isSelected,
                 onSelected: (selected) {
                   setState(() {
@@ -591,19 +592,6 @@ class _QuickAddEventDialogState extends State<QuickAddEventDialog>
           _isLoading = false;
         });
       }
-    }
-  }
-
-  String _getRepeatDisplayName(RepeatType type) {
-    switch (type) {
-      case RepeatType.none:
-        return 'Never';
-      case RepeatType.daily:
-        return 'Daily';
-      case RepeatType.weekly:
-        return 'Weekly';
-      case RepeatType.monthly:
-        return 'Monthly';
     }
   }
 }
