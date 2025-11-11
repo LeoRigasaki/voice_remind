@@ -177,6 +177,14 @@ Future<void> _rescheduleAllPendingReminders() async {
                   scheduleTime.minute,
                 );
                 break;
+              case RepeatType.custom:
+                // Custom repeat handled by notification service
+                if (reminder.customRepeatConfig != null) {
+                  scheduleTime = scheduleTime.add(
+                    Duration(minutes: reminder.customRepeatConfig!.totalMinutes),
+                  );
+                }
+                break;
               case RepeatType.none:
                 break;
             }

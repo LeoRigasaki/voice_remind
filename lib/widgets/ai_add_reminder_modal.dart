@@ -76,7 +76,6 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
   final _aiInputController = TextEditingController();
   File? _selectedImage;
   final ImagePicker _imagePicker = ImagePicker();
-  bool _isImageMode = false;
   List<Reminder> _aiGeneratedReminders = [];
   Set<int> _selectedReminderIndices = {};
   bool _isGenerating = false;
@@ -659,7 +658,6 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
       if (image != null) {
         setState(() {
           _selectedImage = File(image.path);
-          _isImageMode = true;
           _showPreview = false;
         });
       }
@@ -680,7 +678,6 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
       if (image != null) {
         setState(() {
           _selectedImage = File(image.path);
-          _isImageMode = true;
           _showPreview = false;
         });
       }
@@ -692,7 +689,6 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
   void _clearImage() {
     setState(() {
       _selectedImage = null;
-      _isImageMode = false;
       _showPreview = false;
     });
   }

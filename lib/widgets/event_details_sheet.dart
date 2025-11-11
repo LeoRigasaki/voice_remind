@@ -544,6 +544,11 @@ class _EventDetailsSheetState extends State<EventDetailsSheet>
         return 'Repeats weekly';
       case RepeatType.monthly:
         return 'Repeats monthly';
+      case RepeatType.custom:
+        if (widget.event.customRepeatConfig != null) {
+          return 'Repeats ${widget.event.customRepeatConfig!.formatInterval()}';
+        }
+        return 'Custom repeat';
       case RepeatType.none:
         return 'No repeat';
     }
