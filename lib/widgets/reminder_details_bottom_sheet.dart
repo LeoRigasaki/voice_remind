@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'dart:async';
 import '../models/reminder.dart';
+import '../models/custom_repeat_config.dart';
 import '../services/storage_service.dart';
 import '../services/notification_service.dart';
 import '../widgets/space_tag_widget.dart';
@@ -396,7 +397,7 @@ class _ReminderDetailsBottomSheetState extends State<ReminderDetailsBottomSheet>
             _buildDetailSection(
               'Repeat',
               Icons.repeat,
-              _getRepeatText(reminder.repeatType),
+              _getRepeatText(reminder.repeatType, reminder.customRepeatConfig),
             ),
             const SizedBox(height: 20),
           ],
@@ -1297,7 +1298,7 @@ class _ReminderDetailsBottomSheetState extends State<ReminderDetailsBottomSheet>
     }
   }
 
-  String _getRepeatText(RepeatType repeat) {
+  String _getRepeatText(RepeatType repeat, CustomRepeatConfig? customConfig) {
     switch (repeat) {
       case RepeatType.none:
         return 'No repeat';
@@ -1307,6 +1308,11 @@ class _ReminderDetailsBottomSheetState extends State<ReminderDetailsBottomSheet>
         return 'Weekly';
       case RepeatType.monthly:
         return 'Monthly';
+      case RepeatType.custom:
+        if (customConfig != null) {
+          return customConfig.formatInterval();
+        }
+        return 'Custom';
     }
   }
 }

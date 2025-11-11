@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/reminder.dart';
+import '../models/custom_repeat_config.dart';
 import '../services/storage_service.dart';
 import '../services/notification_service.dart';
 import '../services/default_sound_service.dart';
@@ -315,6 +316,7 @@ class AlarmService {
             final nextScheduledTime = _calculateNextOccurrence(
               reminder.scheduledTime,
               reminder.repeatType,
+              customRepeatConfig: reminder.customRepeatConfig,
             );
 
             final updatedReminder = reminder.copyWith(
@@ -344,6 +346,7 @@ class AlarmService {
           final nextScheduledTime = _calculateNextOccurrence(
             reminder.scheduledTime,
             reminder.repeatType,
+            customRepeatConfig: reminder.customRepeatConfig,
           );
 
           final updatedReminder = reminder.copyWith(
@@ -403,7 +406,10 @@ class AlarmService {
 
   /// Calculate next occurrence for repeating reminders
   static DateTime _calculateNextOccurrence(
-      DateTime currentTime, RepeatType repeatType) {
+    DateTime currentTime,
+    RepeatType repeatType, {
+    CustomRepeatConfig? customRepeatConfig,
+  }) {
     switch (repeatType) {
       case RepeatType.daily:
         return currentTime.add(const Duration(days: 1));
@@ -431,6 +437,14 @@ class AlarmService {
           currentTime.hour,
           currentTime.minute,
         );
+
+      case RepeatType.custom:
+        if (customRepeatConfig != null) {
+          return currentTime.add(
+            Duration(minutes: customRepeatConfig.totalMinutes),
+          );
+        }
+        return currentTime;
 
       case RepeatType.none:
         return currentTime;

@@ -615,6 +615,15 @@ class StorageService {
               originalDate.minute,
             );
             break;
+          case RepeatType.custom:
+            if (reminder.customRepeatConfig != null) {
+              nextScheduledTime = reminder.scheduledTime.add(
+                Duration(minutes: reminder.customRepeatConfig!.totalMinutes),
+              );
+            } else {
+              nextScheduledTime = reminder.scheduledTime;
+            }
+            break;
           case RepeatType.none:
             nextScheduledTime = reminder.scheduledTime;
             break;
@@ -826,6 +835,15 @@ class StorageService {
             originalDate.hour,
             originalDate.minute,
           );
+          break;
+        case RepeatType.custom:
+          if (originalReminder.customRepeatConfig != null) {
+            nextScheduledTime = originalReminder.scheduledTime.add(
+              Duration(minutes: originalReminder.customRepeatConfig!.totalMinutes),
+            );
+          } else {
+            return; // No valid config
+          }
           break;
         case RepeatType.none:
           return; // No repeat

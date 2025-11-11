@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import '../models/reminder.dart';
 import '../models/space.dart';
+import '../models/custom_repeat_config.dart';
 import '../services/reminder_service.dart';
 import '../services/spaces_service.dart';
 
@@ -18,6 +19,7 @@ class ReminderFormController extends ChangeNotifier {
   RepeatType _selectedRepeat = RepeatType.none;
   bool _isNotificationEnabled = true;
   Space? _selectedSpace;
+  CustomRepeatConfig? _customRepeatConfig;
 
   // Multi-time state
   bool _isMultiTime = false;
@@ -39,6 +41,7 @@ class ReminderFormController extends ChangeNotifier {
   RepeatType get selectedRepeat => _selectedRepeat;
   bool get isNotificationEnabled => _isNotificationEnabled;
   Space? get selectedSpace => _selectedSpace;
+  CustomRepeatConfig? get customRepeatConfig => _customRepeatConfig;
   bool get isMultiTime => _isMultiTime;
   List<TimeSlot> get timeSlots => _timeSlots;
   List<Space> get availableSpaces => _availableSpaces;
@@ -86,6 +89,7 @@ class ReminderFormController extends ChangeNotifier {
     _isNotificationEnabled = reminder.isNotificationEnabled;
     _isMultiTime = reminder.hasMultipleTimes;
     _timeSlots = List.from(reminder.timeSlots);
+    _customRepeatConfig = reminder.customRepeatConfig;
 
     if (reminder.spaceId != null) {
       _selectedSpace = await SpacesService.getSpaceById(reminder.spaceId!);
@@ -122,6 +126,16 @@ class ReminderFormController extends ChangeNotifier {
   /// Update repeat type
   void setRepeatType(RepeatType repeat) {
     _selectedRepeat = repeat;
+    // Clear custom config when switching to non-custom repeat
+    if (repeat != RepeatType.custom) {
+      _customRepeatConfig = null;
+    }
+    notifyListeners();
+  }
+
+  /// Update custom repeat config
+  void setCustomRepeatConfig(CustomRepeatConfig? config) {
+    _customRepeatConfig = config;
     notifyListeners();
   }
 
@@ -177,6 +191,7 @@ class ReminderFormController extends ChangeNotifier {
         spaceId: _selectedSpace?.id,
         timeSlots: _timeSlots,
         isMultiTime: _isMultiTime,
+        customRepeatConfig: _customRepeatConfig,
       );
 
       _isLoading = false;
@@ -200,6 +215,7 @@ class ReminderFormController extends ChangeNotifier {
     _selectedRepeat = RepeatType.none;
     _isNotificationEnabled = true;
     _selectedSpace = null;
+    _customRepeatConfig = null;
     _isMultiTime = false;
     _timeSlots.clear();
     _isEditing = false;

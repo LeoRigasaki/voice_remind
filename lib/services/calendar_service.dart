@@ -1,6 +1,7 @@
 // [lib/services]/calendar_service.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:voice_remind/models/custom_repeat_config.dart';
 import '../models/calendar_event.dart';
 import '../models/reminder.dart';
 import '../models/space.dart';
@@ -146,6 +147,7 @@ class CalendarService {
     DateTime? endTime,
     String? spaceId,
     RepeatType repeatType = RepeatType.none,
+    CustomRepeatConfig? customRepeatConfig,
   }) async {
     try {
       // Create the reminder
@@ -156,6 +158,7 @@ class CalendarService {
         repeatType: repeatType,
         spaceId: spaceId,
         isNotificationEnabled: true,
+        customRepeatConfig: customRepeatConfig,
       );
 
       // Save to storage

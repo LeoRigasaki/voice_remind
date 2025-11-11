@@ -14,6 +14,8 @@ String getRepeatDisplayName(RepeatType repeat) {
       return 'Weekly';
     case RepeatType.monthly:
       return 'Monthly';
+    case RepeatType.custom:
+      return 'Custom';
   }
 }
 
@@ -28,6 +30,8 @@ String getRepeatDescription(RepeatType repeat) {
       return 'Repeat every week on the same day';
     case RepeatType.monthly:
       return 'Repeat every month on the same date';
+    case RepeatType.custom:
+      return 'Create a custom repeat schedule with flexible intervals';
   }
 }
 

@@ -351,6 +351,8 @@ class _ReminderFormFieldsState extends State<ReminderFormFields> {
               RepeatTypeSelector(
                 selectedRepeat: widget.controller.selectedRepeat,
                 onRepeatChanged: widget.controller.setRepeatType,
+                customRepeatConfig: widget.controller.customRepeatConfig,
+                onCustomRepeatChanged: widget.controller.setCustomRepeatConfig,
               ),
             ],
           ),

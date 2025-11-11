@@ -3,18 +3,24 @@
 
 import 'package:flutter/material.dart';
 import '../../models/reminder.dart';
+import '../../models/custom_repeat_config.dart';
 import '../../utils/reminder_helpers.dart';
+import 'custom_repeat_dialog.dart';
 
 class RepeatTypeSelector extends StatelessWidget {
   final RepeatType selectedRepeat;
   final ValueChanged<RepeatType> onRepeatChanged;
   final String? title;
+  final CustomRepeatConfig? customRepeatConfig;
+  final ValueChanged<CustomRepeatConfig?>? onCustomRepeatChanged;
 
   const RepeatTypeSelector({
     super.key,
     required this.selectedRepeat,
     required this.onRepeatChanged,
     this.title,
+    this.customRepeatConfig,
+    this.onCustomRepeatChanged,
   });
 
   void _showRepeatSelector(BuildContext context) {
@@ -132,9 +138,27 @@ class RepeatTypeSelector extends StatelessWidget {
                       Material(
                         color: Colors.transparent,
                         child: InkWell(
-                          onTap: () {
-                            onRepeatChanged(repeat);
-                            Navigator.pop(context);
+                          onTap: () async {
+                            if (repeat == RepeatType.custom) {
+                              // Open custom repeat dialog
+                              Navigator.pop(context);
+                              final config = await showDialog<CustomRepeatConfig>(
+                                context: context,
+                                builder: (context) => CustomRepeatDialog(
+                                  initialConfig: customRepeatConfig,
+                                ),
+                              );
+
+                              if (config != null) {
+                                onRepeatChanged(RepeatType.custom);
+                                onCustomRepeatChanged?.call(config);
+                              }
+                            } else {
+                              // Clear custom config when selecting standard repeat
+                              onCustomRepeatChanged?.call(null);
+                              onRepeatChanged(repeat);
+                              Navigator.pop(context);
+                            }
                           },
                           child: Container(
                             padding: EdgeInsets.symmetric(
@@ -274,7 +298,9 @@ class RepeatTypeSelector extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      getRepeatDisplayName(selectedRepeat),
+                      selectedRepeat == RepeatType.custom && customRepeatConfig != null
+                          ? customRepeatConfig!.formatInterval()
+                          : getRepeatDisplayName(selectedRepeat),
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: Theme.of(context)
                                 .colorScheme

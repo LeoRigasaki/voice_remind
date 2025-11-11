@@ -8,7 +8,6 @@ import 'package:intl/intl.dart';
 import 'dart:convert';
 import '../models/reminder.dart';
 import 'storage_service.dart';
-import 'dart:io';
 
 class AIReminderService {
   static GenerativeModel? _model;
