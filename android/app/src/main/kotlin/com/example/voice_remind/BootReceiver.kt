@@ -16,19 +16,23 @@ class BootReceiver : BroadcastReceiver() {
         val action = intent.action
 
         Log.d(TAG, "========================================")
-        Log.d(TAG, "ðŸ“± BOOT RECEIVER TRIGGERED")
+        Log.d(TAG, "📱 BOOT RECEIVER TRIGGERED")
         Log.d(TAG, "Action: $action")
         Log.d(TAG, "========================================")
 
+        // Only handle LOCKED_BOOT_COMPLETED to avoid Android 14+ FGS restrictions
+        // BOOT_COMPLETED triggers ForegroundServiceStartNotAllowedException for dataSync type
         when (action) {
-            Intent.ACTION_BOOT_COMPLETED,
             Intent.ACTION_LOCKED_BOOT_COMPLETED,
             "android.intent.action.QUICKBOOT_POWERON",
             "com.htc.intent.action.QUICKBOOT_POWERON" -> {
                 handleBootCompleted(context)
             }
+            Intent.ACTION_BOOT_COMPLETED -> {
+                Log.d(TAG, "⏭️ Skipping BOOT_COMPLETED (handled by LOCKED_BOOT_COMPLETED)")
+            }
             else -> {
-                Log.w(TAG, "âš ï¸ Received unknown action: $action")
+                Log.w(TAG, "⚠️ Received unknown action: $action")
             }
         }
     }
@@ -36,15 +40,24 @@ class BootReceiver : BroadcastReceiver() {
     private fun handleBootCompleted(context: Context) {
     try {
         Log.d(TAG, "📄 Boot completed - starting reschedule service")
-        
-        // Set the flag first
+
         val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+
+        // Check if already rescheduled to prevent duplicate runs
+        val alreadyRescheduled = prefs.getBoolean("flutter.boot_reschedule_completed", false)
+        if (alreadyRescheduled) {
+            Log.d(TAG, "⏭️ Already rescheduled in this boot session, skipping")
+            Log.d(TAG, "========================================")
+            return
+        }
+
+        // Set the flag to prevent duplicate reschedules
         prefs.edit().putBoolean("flutter.boot_reschedule_completed", true).apply()
         Log.d(TAG, "✅ Set boot reschedule flag")
-        
+
         // Start the foreground service to handle rescheduling
         val serviceIntent = Intent(context, AlarmRescheduleService::class.java)
-        
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.startForegroundService(serviceIntent)
             Log.d(TAG, "✅ Started foreground reschedule service")
@@ -52,7 +65,7 @@ class BootReceiver : BroadcastReceiver() {
             context.startService(serviceIntent)
             Log.d(TAG, "✅ Started reschedule service")
         }
-        
+
         Log.d(TAG, "========================================")
         Log.d(TAG, "✅ BOOT HANDLING COMPLETED")
         Log.d(TAG, "========================================")
