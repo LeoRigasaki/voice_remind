@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import '../models/reminder.dart';
 import '../models/space.dart';
+import '../models/custom_repeat_config.dart';
 
 /// Calendar event model that wraps our existing Reminder for kalender integration
 class CalendarEvent {
@@ -115,6 +116,9 @@ class CalendarEvent {
         return Colors.blue;
     }
   }
+
+  /// Get custom repeat config from original reminder
+  CustomRepeatConfig? get customRepeatConfig => originalReminder.customRepeatConfig;
 
   /// Create a copy with updated properties
   CalendarEvent copyWith({
