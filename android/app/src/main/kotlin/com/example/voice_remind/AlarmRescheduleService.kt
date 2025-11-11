@@ -77,10 +77,24 @@ class AlarmRescheduleService : Service() {
     private fun triggerReschedule() {
     try {
         Log.d(TAG, "📞 Setting up method channel...")
-        
+
+        // Null safety check
+        if (flutterEngine == null) {
+            Log.e(TAG, "❌ Flutter engine is null")
+            stopSelfAndCleanup()
+            return
+        }
+
+        val dartExecutor = flutterEngine?.dartExecutor
+        if (dartExecutor == null) {
+            Log.e(TAG, "❌ Dart executor is null")
+            stopSelfAndCleanup()
+            return
+        }
+
         // Create method channel
         methodChannel = MethodChannel(
-            flutterEngine!!.dartExecutor.binaryMessenger,
+            dartExecutor.binaryMessenger,
             RESCHEDULE_CHANNEL
         )
 
