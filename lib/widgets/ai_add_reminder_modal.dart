@@ -1573,7 +1573,8 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                     // Space selector
                     Card(
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 4, vertical: 8),
                         child: SpaceSelectorField(
                           selectedSpace: _selectedSpace,
                           availableSpaces: _availableSpaces,
