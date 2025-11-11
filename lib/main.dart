@@ -247,11 +247,6 @@ Future<void> _handleBootReschedule() async {
       debugPrint('📱 Normal app launch - checking for pending reminders');
       await _rescheduleAllPendingReminders();
     }
-
-    // Reset the boot reschedule flag for next boot
-    // This flag is set by BootReceiver.kt to prevent duplicate reschedules
-    await prefs.setBool('boot_reschedule_completed', false);
-    debugPrint('✅ Reset boot reschedule flag for next boot');
   } catch (e, stackTrace) {
     debugPrint('❌ Error in boot reschedule handler: $e');
     debugPrint('Stack trace: $stackTrace');
