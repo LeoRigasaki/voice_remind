@@ -3,6 +3,7 @@
 
 import 'package:flutter/material.dart';
 import '../models/reminder.dart';
+import '../models/custom_repeat_config.dart';
 import '../services/storage_service.dart';
 import '../services/notification_service.dart';
 
@@ -18,6 +19,7 @@ class ReminderService {
     String? spaceId,
     List<TimeSlot> timeSlots = const [],
     bool isMultiTime = false,
+    CustomRepeatConfig? customRepeatConfig,
   }) async {
     try {
       final reminder = Reminder(
@@ -31,6 +33,7 @@ class ReminderService {
         spaceId: spaceId,
         timeSlots: timeSlots,
         isMultiTime: isMultiTime,
+        customRepeatConfig: customRepeatConfig,
       );
 
       await StorageService.addReminder(reminder);
@@ -59,6 +62,7 @@ class ReminderService {
     String? spaceId,
     List<TimeSlot> timeSlots = const [],
     bool isMultiTime = false,
+    CustomRepeatConfig? customRepeatConfig,
   }) async {
     try {
       final updatedReminder = originalReminder.copyWith(
@@ -72,6 +76,8 @@ class ReminderService {
         spaceId: spaceId,
         timeSlots: timeSlots,
         isMultiTime: isMultiTime,
+        customRepeatConfig: customRepeatConfig,
+        clearCustomRepeatConfig: repeatType != RepeatType.custom,
       );
 
       await StorageService.updateReminder(updatedReminder);
@@ -116,6 +122,7 @@ class ReminderService {
     String? spaceId,
     List<TimeSlot> timeSlots = const [],
     bool isMultiTime = false,
+    CustomRepeatConfig? customRepeatConfig,
   }) async {
     if (existingReminder != null) {
       return updateReminder(
@@ -128,6 +135,7 @@ class ReminderService {
         spaceId: spaceId,
         timeSlots: timeSlots,
         isMultiTime: isMultiTime,
+        customRepeatConfig: customRepeatConfig,
       );
     } else {
       return createReminder(
@@ -139,6 +147,7 @@ class ReminderService {
         spaceId: spaceId,
         timeSlots: timeSlots,
         isMultiTime: isMultiTime,
+        customRepeatConfig: customRepeatConfig,
       );
     }
   }

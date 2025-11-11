@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
+import 'custom_repeat_config.dart';
 
 enum ReminderStatus {
   pending,
@@ -12,6 +13,7 @@ enum RepeatType {
   daily,
   weekly,
   monthly,
+  custom,
 }
 
 /// Individual time slot within a reminder
@@ -143,6 +145,7 @@ class Reminder {
   final String? spaceId;
   final List<TimeSlot> timeSlots; // New: Multiple time slots
   final bool isMultiTime; // New: UI rendering flag
+  final CustomRepeatConfig? customRepeatConfig; // Custom repeat configuration
 
   Reminder({
     String? id,
@@ -157,6 +160,7 @@ class Reminder {
     this.spaceId,
     List<TimeSlot>? timeSlots,
     bool? isMultiTime,
+    this.customRepeatConfig,
   })  : id = id ?? const Uuid().v4(),
         createdAt = createdAt ?? DateTime.now(),
         updatedAt = updatedAt ?? DateTime.now(),
@@ -282,6 +286,8 @@ class Reminder {
         return 'Weekly';
       case RepeatType.monthly:
         return 'Monthly';
+      case RepeatType.custom:
+        return customRepeatConfig?.formatInterval() ?? 'Custom';
     }
   }
 
@@ -296,7 +302,10 @@ class Reminder {
     bool? isNotificationEnabled,
     String? spaceId,
     List<TimeSlot>? timeSlots,
-    bool? isMultiTime, DateTime? completedAt,
+    bool? isMultiTime,
+    DateTime? completedAt,
+    CustomRepeatConfig? customRepeatConfig,
+    bool clearCustomRepeatConfig = false,
   }) {
     return Reminder(
       id: id,
@@ -312,6 +321,9 @@ class Reminder {
       spaceId: spaceId ?? this.spaceId,
       timeSlots: timeSlots ?? this.timeSlots,
       isMultiTime: isMultiTime ?? this.isMultiTime,
+      customRepeatConfig: clearCustomRepeatConfig
+          ? null
+          : (customRepeatConfig ?? this.customRepeatConfig),
     );
   }
 
@@ -330,6 +342,7 @@ class Reminder {
       'spaceId': spaceId,
       'timeSlots': timeSlots.map((slot) => slot.toMap()).toList(),
       'isMultiTime': isMultiTime,
+      'customRepeatConfig': customRepeatConfig?.toJson(),
     };
   }
 
@@ -345,6 +358,12 @@ class Reminder {
 
     final isMultiTimeValue = map['isMultiTime'] as bool? ?? false;
 
+    // Parse custom repeat config if exists
+    final customRepeatConfigMap = map['customRepeatConfig'] as Map<String, dynamic>?;
+    final customRepeatConfigValue = customRepeatConfigMap != null
+        ? CustomRepeatConfig.fromJson(customRepeatConfigMap)
+        : null;
+
     return Reminder(
       id: map['id'],
       title: map['title'],
@@ -358,6 +377,7 @@ class Reminder {
       spaceId: map['spaceId'],
       timeSlots: timeSlotsConverted,
       isMultiTime: isMultiTimeValue,
+      customRepeatConfig: customRepeatConfigValue,
     );
   }
 

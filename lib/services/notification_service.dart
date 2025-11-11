@@ -5,6 +5,7 @@ import 'package:flutter_fgbg/flutter_fgbg.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/reminder.dart';
+import '../models/custom_repeat_config.dart';
 import 'storage_service.dart';
 import '../services/alarm_service.dart';
 import '../services/default_sound_service.dart';
@@ -485,6 +486,24 @@ class NotificationService {
 
       final now = DateTime.now();
 
+      // Handle custom repeat for alarm notifications
+      if (customTime == null &&
+          reminder.repeatType == RepeatType.custom &&
+          reminder.customRepeatConfig != null) {
+        final nextOccurrence = _calculateNextCustomOccurrence(
+          reminder.scheduledTime,
+          reminder.customRepeatConfig!,
+        );
+
+        if (nextOccurrence == null) {
+          debugPrint('No more occurrences for custom repeat - end date reached');
+          return;
+        }
+
+        scheduledTime = nextOccurrence;
+        debugPrint('Custom repeat alarm: Next occurrence at $scheduledTime');
+      }
+
       // Check if time is in the past
       if (scheduledTime.isBefore(now)) {
         debugPrint('⚠️ Scheduled time is in the past');
@@ -664,11 +683,78 @@ class NotificationService {
     }
   }
 
+  /// Calculate the next occurrence for a custom repeat reminder
+  static DateTime? _calculateNextCustomOccurrence(
+    DateTime startTime,
+    CustomRepeatConfig config,
+  ) {
+    final now = DateTime.now();
+    DateTime nextTime = startTime;
+
+    // If start time is in the past, calculate the next valid occurrence
+    if (nextTime.isBefore(now)) {
+      final intervalMinutes = config.totalMinutes;
+      final minutesSinceStart = now.difference(startTime).inMinutes;
+      final occurrencesPassed = (minutesSinceStart / intervalMinutes).ceil();
+
+      nextTime = startTime.add(Duration(minutes: intervalMinutes * occurrencesPassed));
+
+      // Ensure we're not scheduling in the past
+      while (nextTime.isBefore(now)) {
+        nextTime = nextTime.add(Duration(minutes: intervalMinutes));
+      }
+    }
+
+    // Check if we've passed the end date
+    if (config.endDate != null && nextTime.isAfter(config.endDate!)) {
+      return null; // No more occurrences
+    }
+
+    // Check if this falls on a specific day requirement
+    if (config.specificDays != null && config.specificDays!.isNotEmpty) {
+      // Keep advancing until we find a valid day
+      int attempts = 0;
+      while (attempts < 1000) { // Safety limit
+        final weekday = nextTime.weekday; // 1=Mon, 7=Sun
+        if (config.specificDays!.contains(weekday)) {
+          break; // Found a valid day
+        }
+
+        // Advance to next occurrence
+        nextTime = nextTime.add(Duration(minutes: config.totalMinutes));
+
+        // Check end date again
+        if (config.endDate != null && nextTime.isAfter(config.endDate!)) {
+          return null;
+        }
+
+        attempts++;
+      }
+    }
+
+    return nextTime;
+  }
+
   static Future<void> _scheduleSingleTimeReminder(Reminder reminder) async {
     try {
       final now = DateTime.now();
+      DateTime scheduledTime = reminder.scheduledTime;
 
-      if (reminder.scheduledTime
+      // Handle custom repeat
+      if (reminder.repeatType == RepeatType.custom && reminder.customRepeatConfig != null) {
+        final nextOccurrence = _calculateNextCustomOccurrence(
+          reminder.scheduledTime,
+          reminder.customRepeatConfig!,
+        );
+
+        if (nextOccurrence == null) {
+          debugPrint('No more occurrences for custom repeat - end date reached');
+          return;
+        }
+
+        scheduledTime = nextOccurrence;
+        debugPrint('Custom repeat: Next occurrence at $scheduledTime');
+      } else if (reminder.scheduledTime
           .isBefore(now.subtract(const Duration(minutes: 5)))) {
         debugPrint('Skipping notification - time is too far in the past');
         return;
@@ -696,6 +782,7 @@ class NotificationService {
         'type': 'notification',
       };
 
+      // For custom repeat, we schedule as one-time and will need to reschedule after trigger
       await AwesomeNotifications().createNotification(
         content: NotificationContent(
           id: reminder.id.hashCode,
@@ -708,13 +795,13 @@ class NotificationService {
         ),
         actionButtons: actionButtons,
         schedule: NotificationCalendar.fromDate(
-          date: reminder.scheduledTime,
+          date: scheduledTime,
           allowWhileIdle: true,
-          preciseAlarm: true, // ← ADD THIS LINE!
+          preciseAlarm: true,
         ),
       );
 
-      debugPrint('✅ Scheduled notification for ${reminder.title}');
+      debugPrint('✅ Scheduled notification for ${reminder.title} at $scheduledTime');
     } catch (e) {
       debugPrint('❌ Error scheduling single-time reminder: $e');
     }
