@@ -6,7 +6,6 @@ import '../models/space.dart';
 import '../models/custom_repeat_config.dart';
 import '../services/calendar_service.dart';
 import '../services/spaces_service.dart';
-import '../utils/reminder_helpers.dart';
 import '../widgets/reminder_form/repeat_type_selector.dart';
 
 /// Quick dialog for adding events directly from calendar

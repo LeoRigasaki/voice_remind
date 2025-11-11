@@ -1,6 +1,7 @@
 // [lib/services]/calendar_service.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:voice_remind/models/custom_repeat_config.dart';
 import '../models/calendar_event.dart';
 import '../models/reminder.dart';
 import '../models/space.dart';
