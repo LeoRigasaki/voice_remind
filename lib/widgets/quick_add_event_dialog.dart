@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/reminder.dart';
 import '../models/space.dart';
+import '../models/custom_repeat_config.dart';
 import '../services/calendar_service.dart';
 import '../services/spaces_service.dart';
 import '../utils/reminder_helpers.dart';
+import '../widgets/reminder_form/repeat_type_selector.dart';
 
 /// Quick dialog for adding events directly from calendar
 class QuickAddEventDialog extends StatefulWidget {
@@ -33,6 +35,7 @@ class _QuickAddEventDialogState extends State<QuickAddEventDialog>
   late DateTime _selectedDateTime;
   late TimeOfDay _selectedTime;
   RepeatType _repeatType = RepeatType.none;
+  CustomRepeatConfig? _customRepeatConfig;
   Space? _selectedSpace;
   List<Space> _availableSpaces = [];
   bool _isLoading = false;
@@ -386,34 +389,19 @@ class _QuickAddEventDialogState extends State<QuickAddEventDialog>
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Repeat',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Theme.of(context).colorScheme.onSurface,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            children: RepeatType.values.map((type) {
-              final isSelected = _repeatType == type;
-              return FilterChip(
-                label: Text(getRepeatDisplayName(type)),
-                selected: isSelected,
-                onSelected: (selected) {
-                  setState(() {
-                    _repeatType = type;
-                  });
-                },
-              );
-            }).toList(),
-          ),
-        ],
+      child: RepeatTypeSelector(
+        selectedRepeat: _repeatType,
+        onRepeatChanged: (repeat) {
+          setState(() {
+            _repeatType = repeat;
+          });
+        },
+        customRepeatConfig: _customRepeatConfig,
+        onCustomRepeatChanged: (config) {
+          setState(() {
+            _customRepeatConfig = config;
+          });
+        },
       ),
     );
   }
@@ -572,6 +560,7 @@ class _QuickAddEventDialogState extends State<QuickAddEventDialog>
         startTime: _selectedDateTime,
         spaceId: _selectedSpace?.id,
         repeatType: _repeatType,
+        customRepeatConfig: _customRepeatConfig,
       );
 
       if (mounted && event != null) {

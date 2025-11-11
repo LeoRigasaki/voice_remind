@@ -146,6 +146,7 @@ class CalendarService {
     DateTime? endTime,
     String? spaceId,
     RepeatType repeatType = RepeatType.none,
+    CustomRepeatConfig? customRepeatConfig,
   }) async {
     try {
       // Create the reminder
@@ -156,6 +157,7 @@ class CalendarService {
         repeatType: repeatType,
         spaceId: spaceId,
         isNotificationEnabled: true,
+        customRepeatConfig: customRepeatConfig,
       );
 
       // Save to storage
