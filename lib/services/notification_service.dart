@@ -269,19 +269,22 @@ class NotificationService {
   static Future<void> _onNotificationCreatedMethod(
       ReceivedNotification receivedNotification) async {
     debugPrint('🔔 Notification created: ${receivedNotification.id}');
+
+    // Check if this is an alarm notification (Mixed Mode)
+    // Play sound ONLY when notification is created, not when displayed/tapped
+    if (receivedNotification.payload?['type'] == 'alarm') {
+      // Play alarm sound using flutter_ringtone_player
+      await DefaultSoundService.playAlarmSound();
+      debugPrint('🔊 Started playing alarm sound for notification');
+    }
   }
 
   @pragma('vm:entry-point')
   static Future<void> _onNotificationDisplayedMethod(
       ReceivedNotification receivedNotification) async {
     debugPrint('📢 Notification displayed: ${receivedNotification.id}');
-
-    // Check if this is an alarm notification (Mixed Mode)
-    if (receivedNotification.payload?['type'] == 'alarm') {
-      // Play alarm sound using flutter_ringtone_player
-      await DefaultSoundService.playAlarmSound();
-      debugPrint('🔊 Started playing alarm sound for notification');
-    }
+    // Sound is now played in _onNotificationCreatedMethod to prevent
+    // it from replaying when user taps the notification
   }
 
   @pragma('vm:entry-point')
@@ -325,7 +328,7 @@ class NotificationService {
         debugPrint('🔇 Stopped alarm sound');
       }
 
-      // Cancel the notification
+      // Cancel the notification (this will also reset badge counter)
       final alarmId = timeSlotId != null
           ? AlarmService.generateTimeSlotAlarmId(reminderId, timeSlotId)
           : reminderId.hashCode;
@@ -923,6 +926,10 @@ class NotificationService {
         }
       }
 
+      // Reset badge counter to prevent accumulation
+      await AwesomeNotifications().resetBadgeCounter();
+      debugPrint('🔵 Reset badge counter after cancelling reminder');
+
       debugPrint('✅ Cancelled for: $reminderId');
     } catch (e) {
       debugPrint('❌ Error cancelling reminder: $e');
@@ -940,6 +947,10 @@ class NotificationService {
     try {
       await AwesomeNotifications().cancel(notificationId);
       debugPrint('📕 Canceled notification ID: $notificationId');
+
+      // Reset badge counter to prevent accumulation
+      await AwesomeNotifications().resetBadgeCounter();
+      debugPrint('🔵 Reset badge counter after cancellation');
     } catch (e) {
       debugPrint('⚠️ Error canceling notification ID $notificationId: $e');
     }
@@ -948,7 +959,10 @@ class NotificationService {
   static Future<void> cancelAllReminders() async {
     try {
       await AwesomeNotifications().cancelAll();
-      debugPrint('📕 Canceled all notifications');
+
+      // Reset badge counter to clear all badges
+      await AwesomeNotifications().resetBadgeCounter();
+      debugPrint('📕 Canceled all notifications and reset badge counter');
     } catch (e) {
       debugPrint('⚠️ Error canceling all notifications: $e');
     }
