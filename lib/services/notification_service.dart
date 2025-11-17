@@ -30,6 +30,11 @@ class NotificationService {
       WidgetsFlutterBinding.ensureInitialized();
       debugPrint('✅ Flutter bindings initialized');
 
+      // CRITICAL FIX: Initialize timezone data in background isolate
+      // This is needed for NotificationCalendar.fromDate() to work
+      tz.initializeTimeZones();
+      debugPrint('✅ Timezone data initialized in background isolate');
+
       //Initialize StorageService with fresh instance
       await StorageService.initialize();
       debugPrint('✅ StorageService initialized in background');
