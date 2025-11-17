@@ -19,6 +19,23 @@ class NotificationService {
   static const String snoozeAction1Id = 'snooze_action_1';
   static const String snoozeAction2Id = 'snooze_action_2';
 
+  /// Create a NotificationCalendar that works reliably in background isolates
+  /// by manually setting all components instead of using fromDate()
+  static NotificationCalendar _createSafeNotificationCalendar(DateTime scheduledTime) {
+    return NotificationCalendar(
+      year: scheduledTime.year,
+      month: scheduledTime.month,
+      day: scheduledTime.day,
+      hour: scheduledTime.hour,
+      minute: scheduledTime.minute,
+      second: scheduledTime.second,
+      millisecond: 0,
+      allowWhileIdle: true,
+      preciseAlarm: true,
+      timeZone: null, // Let the system use local timezone
+    );
+  }
+
   @pragma('vm:entry-point')
   static Future<void> _initializeBackgroundServices() async {
     try {
@@ -35,9 +52,23 @@ class NotificationService {
       tz.initializeTimeZones();
       debugPrint('✅ Timezone data initialized in background isolate');
 
+      // CRITICAL FIX: Re-initialize AwesomeNotifications in background isolate
+      // This ensures the plugin's native components (including Java TimeZone handling)
+      // are properly initialized when scheduling from background
+      try {
+        final isInitialized = await AwesomeNotifications().isNotificationAllowed();
+        debugPrint('✅ AwesomeNotifications checked in background: $isInitialized');
+      } catch (e) {
+        debugPrint('⚠️ AwesomeNotifications check failed (may be normal): $e');
+      }
+
       //Initialize StorageService with fresh instance
       await StorageService.initialize();
       debugPrint('✅ StorageService initialized in background');
+
+      // Small delay to ensure all native components are fully initialized
+      await Future.delayed(const Duration(milliseconds: 100));
+      debugPrint('✅ Initialization delay completed');
 
       debugPrint('🔧 ========================================');
       debugPrint('🔧 BACKGROUND SERVICES READY');
@@ -597,11 +628,7 @@ class NotificationService {
           locked: true,
         ),
         actionButtons: actionButtons,
-        schedule: NotificationCalendar.fromDate(
-          date: scheduledTime,
-          allowWhileIdle: true,
-          preciseAlarm: true,
-        ),
+        schedule: _createSafeNotificationCalendar(scheduledTime),
       );
 
       // Always assume success since method doesn't return bool
@@ -799,11 +826,7 @@ class NotificationService {
           payload: payload,
         ),
         actionButtons: actionButtons,
-        schedule: NotificationCalendar.fromDate(
-          date: scheduledTime,
-          allowWhileIdle: true,
-          preciseAlarm: true,
-        ),
+        schedule: _createSafeNotificationCalendar(scheduledTime),
       );
 
       debugPrint('✅ Scheduled notification for ${reminder.title} at $scheduledTime');
@@ -889,10 +912,7 @@ class NotificationService {
         payload: payload,
       ),
       actionButtons: actionButtons,
-      schedule: NotificationCalendar.fromDate(
-        date: scheduledTime,
-        allowWhileIdle: true,
-      ),
+      schedule: _createSafeNotificationCalendar(scheduledTime),
     );
 
     debugPrint('✅ Scheduled time slot notification: ID $notificationId');
