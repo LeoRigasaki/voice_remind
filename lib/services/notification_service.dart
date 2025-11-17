@@ -22,17 +22,28 @@ class NotificationService {
   /// Create a NotificationCalendar that works reliably in background isolates
   /// by manually setting all components instead of using fromDate()
   static NotificationCalendar _createSafeNotificationCalendar(DateTime scheduledTime) {
+    // CRITICAL: We must provide an explicit timezone string to avoid calling
+    // TimeZone.getDefault() which can be null in background isolates.
+    //
+    // We convert to UTC and mark it as UTC. The notification system will
+    // fire at this absolute moment in time, regardless of timezone changes.
+    final utcTime = scheduledTime.toUtc();
+
+    debugPrint('🕐 Scheduling notification:');
+    debugPrint('   Local time: $scheduledTime');
+    debugPrint('   UTC time: $utcTime');
+
     return NotificationCalendar(
-      year: scheduledTime.year,
-      month: scheduledTime.month,
-      day: scheduledTime.day,
-      hour: scheduledTime.hour,
-      minute: scheduledTime.minute,
-      second: scheduledTime.second,
+      year: utcTime.year,
+      month: utcTime.month,
+      day: utcTime.day,
+      hour: utcTime.hour,
+      minute: utcTime.minute,
+      second: utcTime.second,
       millisecond: 0,
       allowWhileIdle: true,
       preciseAlarm: true,
-      timeZone: null, // Let the system use local timezone
+      timeZone: 'UTC', // Explicitly use UTC to avoid TimeZone.getDefault() call
     );
   }
 
