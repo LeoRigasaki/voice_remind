@@ -256,9 +256,66 @@ class AIReminderService {
       final imagePart = DataPart('image/jpeg', imageBytes);
       final textPart = TextPart(prompt);
 
-      final response = await _model!.generateContent([
-        Content.multi([textPart, imagePart])
-      ]);
+      final response = await _model!.generateContent(
+        [
+          Content.multi([textPart, imagePart])
+        ],
+        generationConfig: GenerationConfig(
+          responseMimeType: 'application/json',
+          responseSchema: Schema.object(
+            properties: {
+              'reminders': Schema.array(
+                items: Schema.object(
+                  properties: {
+                    'title': Schema.string(
+                      description: 'Brief task description',
+                    ),
+                    'context': Schema.string(
+                      description: 'Full context from image',
+                    ),
+                    'priority': Schema.enumString(
+                      enumValues: ['HIGH', 'MEDIUM', 'LOW'],
+                      description: 'Task priority level',
+                    ),
+                    'due_date': Schema.string(
+                      description: 'ISO 8601 datetime string',
+                    ),
+                    'tags': Schema.array(
+                      items: Schema.string(),
+                      description: 'Categories or labels',
+                    ),
+                    'repeat_type': Schema.enumString(
+                      enumValues: ['NONE', 'DAILY', 'WEEKLY', 'MONTHLY'],
+                      description: 'Recurrence pattern',
+                    ),
+                  },
+                  requiredProperties: [
+                    'title',
+                    'context',
+                    'priority',
+                    'due_date',
+                    'tags',
+                    'repeat_type'
+                  ],
+                ),
+              ),
+              'parsing_confidence': Schema.number(
+                description: 'Confidence score between 0 and 1',
+              ),
+              'ambiguities': Schema.array(
+                items: Schema.string(),
+                description: 'List of unclear items',
+              ),
+            },
+            requiredProperties: [
+              'reminders',
+              'parsing_confidence',
+              'ambiguities'
+            ],
+          ),
+          temperature: 0.1,
+        ),
+      );
 
       if (response.text == null || response.text!.isEmpty) {
         throw Exception('Empty response from Gemini AI');
@@ -353,8 +410,64 @@ Analyze the image according to the user's request:''';
     }
 
     try {
-      final response =
-          await _model!.generateContent([Content.text(fullPrompt)]);
+      final response = await _model!.generateContent(
+        [Content.text(fullPrompt)],
+        generationConfig: GenerationConfig(
+          responseMimeType: 'application/json',
+          responseSchema: Schema.object(
+            properties: {
+              'reminders': Schema.array(
+                items: Schema.object(
+                  properties: {
+                    'title': Schema.string(
+                      description: 'Brief task description',
+                    ),
+                    'context': Schema.string(
+                      description: 'Full context from user input',
+                    ),
+                    'priority': Schema.enumString(
+                      enumValues: ['HIGH', 'MEDIUM', 'LOW'],
+                      description: 'Task priority level',
+                    ),
+                    'due_date': Schema.string(
+                      description: 'ISO 8601 datetime string',
+                    ),
+                    'tags': Schema.array(
+                      items: Schema.string(),
+                      description: 'Categories or labels',
+                    ),
+                    'repeat_type': Schema.enumString(
+                      enumValues: ['NONE', 'DAILY', 'WEEKLY', 'MONTHLY'],
+                      description: 'Recurrence pattern',
+                    ),
+                  },
+                  requiredProperties: [
+                    'title',
+                    'context',
+                    'priority',
+                    'due_date',
+                    'tags',
+                    'repeat_type'
+                  ],
+                ),
+              ),
+              'parsing_confidence': Schema.number(
+                description: 'Confidence score between 0 and 1',
+              ),
+              'ambiguities': Schema.array(
+                items: Schema.string(),
+                description: 'List of unclear items',
+              ),
+            },
+            requiredProperties: [
+              'reminders',
+              'parsing_confidence',
+              'ambiguities'
+            ],
+          ),
+          temperature: 0.1,
+        ),
+      );
 
       if (response.text == null || response.text!.isEmpty) {
         throw Exception('Empty response from Gemini AI');
@@ -389,7 +502,64 @@ Analyze the image according to the user's request:''';
         Content.data('audio/wav', audioBytes),
       ];
 
-      final response = await _model!.generateContent(content);
+      final response = await _model!.generateContent(
+        content,
+        generationConfig: GenerationConfig(
+          responseMimeType: 'application/json',
+          responseSchema: Schema.object(
+            properties: {
+              'reminders': Schema.array(
+                items: Schema.object(
+                  properties: {
+                    'title': Schema.string(
+                      description: 'Brief task description',
+                    ),
+                    'context': Schema.string(
+                      description: 'Full context from audio',
+                    ),
+                    'priority': Schema.enumString(
+                      enumValues: ['HIGH', 'MEDIUM', 'LOW'],
+                      description: 'Task priority level',
+                    ),
+                    'due_date': Schema.string(
+                      description: 'ISO 8601 datetime string',
+                    ),
+                    'tags': Schema.array(
+                      items: Schema.string(),
+                      description: 'Categories or labels',
+                    ),
+                    'repeat_type': Schema.enumString(
+                      enumValues: ['NONE', 'DAILY', 'WEEKLY', 'MONTHLY'],
+                      description: 'Recurrence pattern',
+                    ),
+                  },
+                  requiredProperties: [
+                    'title',
+                    'context',
+                    'priority',
+                    'due_date',
+                    'tags',
+                    'repeat_type'
+                  ],
+                ),
+              ),
+              'parsing_confidence': Schema.number(
+                description: 'Confidence score between 0 and 1',
+              ),
+              'ambiguities': Schema.array(
+                items: Schema.string(),
+                description: 'List of unclear items',
+              ),
+            },
+            requiredProperties: [
+              'reminders',
+              'parsing_confidence',
+              'ambiguities'
+            ],
+          ),
+          temperature: 0.1,
+        ),
+      );
 
       if (response.text == null || response.text!.isEmpty) {
         throw Exception('Empty response from Gemini AI');
@@ -412,12 +582,80 @@ Analyze the image according to the user's request:''';
     }
 
     final requestBody = {
-      'model': 'deepseek-r1-distill-llama-70b',
+      'model':
+          'moonshotai/kimi-k2-instruct-0905', // Model with structured output support
       'messages': [
         {'role': 'system', 'content': systemPrompt},
         {'role': 'user', 'content': userInput}
       ],
-      'response_format': {'type': 'json_object'},
+      'response_format': {
+        'type': 'json_schema',
+        'json_schema': {
+          'name': 'reminder_extraction',
+          'schema': {
+            'type': 'object',
+            'properties': {
+              'reminders': {
+                'type': 'array',
+                'items': {
+                  'type': 'object',
+                  'properties': {
+                    'title': {
+                      'type': 'string',
+                      'description': 'Brief task description'
+                    },
+                    'context': {
+                      'type': 'string',
+                      'description': 'Full context from user input'
+                    },
+                    'priority': {
+                      'type': 'string',
+                      'enum': ['HIGH', 'MEDIUM', 'LOW'],
+                      'description': 'Task priority level'
+                    },
+                    'due_date': {
+                      'type': 'string',
+                      'description': 'ISO 8601 datetime string'
+                    },
+                    'tags': {
+                      'type': 'array',
+                      'items': {'type': 'string'},
+                      'description': 'Categories or labels'
+                    },
+                    'repeat_type': {
+                      'type': 'string',
+                      'enum': ['NONE', 'DAILY', 'WEEKLY', 'MONTHLY'],
+                      'description': 'Recurrence pattern'
+                    }
+                  },
+                  'required': [
+                    'title',
+                    'context',
+                    'priority',
+                    'due_date',
+                    'tags',
+                    'repeat_type'
+                  ],
+                  'additionalProperties': false
+                }
+              },
+              'parsing_confidence': {
+                'type': 'number',
+                'minimum': 0,
+                'maximum': 1,
+                'description': 'Confidence score between 0 and 1'
+              },
+              'ambiguities': {
+                'type': 'array',
+                'items': {'type': 'string'},
+                'description': 'List of unclear items'
+              }
+            },
+            'required': ['reminders', 'parsing_confidence', 'ambiguities'],
+            'additionalProperties': false
+          }
+        }
+      },
       'temperature': 0.1,
     };
 

@@ -5,6 +5,8 @@ import 'package:speech_to_text/speech_to_text.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import '../models/reminder.dart';
 import 'ai_reminder_service.dart';
 import 'package:flutter/services.dart';
@@ -216,13 +218,12 @@ class VoiceService {
       final currentProvider =
           await StorageService.getSelectedAIProvider() ?? 'none';
 
-      if (currentProvider == 'gemini') {
-        // Gemini: Use audio recording approach
-        await _startAudioRecording();
-      } else {
-        // Groq: Use continuous speech-to-text approach
-        await _startContinuousSpeechToText();
-      }
+      // BOTH providers now use audio recording for better quality
+      // Gemini: Native audio processing
+      // Groq: Whisper API transcription + LLM parsing
+      await _startAudioRecording();
+
+      debugPrint('🎤 Recording audio for $currentProvider provider');
     } catch (e) {
       debugPrint('❌ Failed to start recording: $e');
       _updateState(VoiceState.error);
@@ -242,16 +243,6 @@ class VoiceService {
 
     _sessionRestartTimer?.cancel();
     _silenceMonitorTimer?.cancel();
-  }
-
-  /// Start continuous speech-to-text with intelligent session management
-  Future<void> _startContinuousSpeechToText() async {
-    if (!_speechToText.isAvailable) {
-      throw Exception('Speech recognition not available on this device');
-    }
-
-    debugPrint('📝 Starting Continuous Speech-to-Text...');
-    await _startIntelligentSpeechSession();
   }
 
   // Start an intelligent speech session with auto-restart capability
@@ -426,12 +417,14 @@ class VoiceService {
       final currentProvider =
           await StorageService.getSelectedAIProvider() ?? 'none';
 
+      // Stop audio recording (used by both providers now)
+      await _stopAudioRecording();
+
       if (currentProvider == 'gemini') {
-        await _stopAudioRecording();
         await _processWithGeminiNative();
       } else {
-        await _stopSpeechToText();
-        await _processWithGroqEnhanced();
+        // Use Groq Whisper API for transcription
+        await _processWithGroqWhisper();
       }
     } catch (e) {
       debugPrint('❌ Failed to stop recording: $e');
@@ -440,35 +433,39 @@ class VoiceService {
     }
   }
 
-  /// Stop speech-to-text cleanly
-  Future<void> _stopSpeechToText() async {
-    try {
-      await _speechToText.stop();
-      debugPrint('🛑 speech-to-text stopped cleanly');
-    } catch (e) {
-      debugPrint('⚠️ Error stopping speech-to-text: $e');
+  /// Process audio with Groq Whisper API
+  Future<void> _processWithGroqWhisper() async {
+    if (_audioFilePath == null || !File(_audioFilePath!).existsSync()) {
+      throw Exception('No audio file available for Groq processing');
     }
-  }
 
-  /// Process with Groq approach
-  Future<void> _processWithGroqEnhanced() async {
-    final finalText = _cumulativeTranscription.isNotEmpty
-        ? _cumulativeTranscription.trim()
-        : _currentTranscription.trim();
+    final audioFile = File(_audioFilePath!);
+    final audioSize = await audioFile.length();
 
-    if (finalText.isEmpty) {
+    // Check minimum audio size (Groq requires at least 0.01 seconds)
+    if (audioSize < 1000) {
       throw Exception(
-        'No speech was captured. Please speak clearly and try again.',
+        'Audio file too small. Please speak longer and more clearly.',
       );
     }
 
-    debugPrint('🧠 Processing Groq with final text: "$finalText"');
+    debugPrint(
+        '🎙️ Transcribing with Groq Whisper: $_audioFilePath (${audioSize} bytes)');
 
     try {
-      // preprocessing for better AI understanding
-      String enhancedText = _enhanceTextForAI(finalText);
-      debugPrint('🔧 text for AI: "$enhancedText"');
+      // Step 1: Transcribe audio using Groq Whisper API
+      final transcription = await _transcribeWithGroqWhisper(audioFile);
 
+      if (transcription.isEmpty) {
+        throw Exception('No speech detected in audio. Please try again.');
+      }
+
+      debugPrint('📝 Groq transcription: "$transcription"');
+
+      // Step 2: Enhance transcription for better AI understanding
+      final enhancedText = _enhanceTextForAI(transcription);
+
+      // Step 3: Parse reminders using Groq LLM
       final response = await AIReminderService.parseRemindersFromText(
         enhancedText,
       );
@@ -477,32 +474,89 @@ class VoiceService {
       _updateState(VoiceState.completed);
 
       debugPrint(
-        '✅ Groq processing complete: ${response.reminders.length} reminders',
+        '✅ Groq Whisper + LLM processing complete: ${response.reminders.length} reminders',
       );
+
+      // Cleanup audio file
+      await audioFile.delete();
     } catch (e) {
-      debugPrint('❌ Groq processing error: $e');
+      _updateState(VoiceState.error);
+      debugPrint('❌ Groq Whisper processing error: $e');
 
-      // fallback processing
-      try {
-        debugPrint('🔄 Trying fallback processing...');
-        final fallbackText = _createEnhancedFallbackText(finalText);
-
-        final response = await AIReminderService.parseRemindersFromText(
-          fallbackText,
-        );
-
-        _resultsController.add(response.reminders);
-        _updateState(VoiceState.completed);
-
-        debugPrint(
-          '✅ fallback processing succeeded: ${response.reminders.length} reminders',
-        );
-      } catch (fallbackError) {
-        debugPrint('❌ fallback also failed: $fallbackError');
-        throw Exception(
-          'Could not understand: "$finalText". Please try rephrasing.',
-        );
+      // Cleanup on error
+      if (await audioFile.exists()) {
+        await audioFile.delete();
       }
+
+      throw Exception('Failed to process audio: ${e.toString()}');
+    }
+  }
+
+  /// Transcribe audio file using Groq Whisper API
+  Future<String> _transcribeWithGroqWhisper(File audioFile) async {
+    final apiKey = await StorageService.getGroqApiKey();
+
+    if (apiKey == null || apiKey.isEmpty) {
+      throw Exception('Groq API key not configured');
+    }
+
+    try {
+      // Prepare multipart request
+      final uri =
+          Uri.parse('https://api.groq.com/openai/v1/audio/transcriptions');
+      final request = http.MultipartRequest('POST', uri);
+
+      // Add headers
+      request.headers.addAll({
+        'Authorization': 'Bearer $apiKey',
+      });
+
+      // Add audio file
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'file',
+          audioFile.path,
+          filename: 'audio.wav',
+        ),
+      );
+
+      // Add parameters for optimal transcription
+      request.fields.addAll({
+        'model': 'whisper-large-v3-turbo', // Fast and affordable
+        'language': 'en', // Specify language for better accuracy
+        'temperature': '0.0', // Deterministic output
+        'response_format': 'json', // Get JSON response
+        'prompt':
+            'This is a voice reminder. User is creating tasks, appointments, or reminders.', // Context for better accuracy
+      });
+
+      debugPrint('📡 Sending audio to Groq Whisper API...');
+
+      // Send request
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode != 200) {
+        debugPrint('❌ Groq Whisper API error: ${response.statusCode}');
+        debugPrint('   Response: ${response.body}');
+        throw Exception('Groq Whisper API error: ${response.statusCode}');
+      }
+
+      // Parse response
+      final jsonResponse = jsonDecode(response.body);
+      final transcription = jsonResponse['text'] as String? ?? '';
+
+      if (transcription.isEmpty) {
+        throw Exception('Empty transcription from Groq Whisper');
+      }
+
+      debugPrint('✅ Groq Whisper transcription successful');
+      debugPrint('   Text: "$transcription"');
+
+      return transcription.trim();
+    } catch (e) {
+      debugPrint('❌ Groq Whisper API call failed: $e');
+      rethrow;
     }
   }
 
@@ -540,47 +594,31 @@ class VoiceService {
     return enhanced;
   }
 
-  /// Create fallback text with more context
-  String _createEnhancedFallbackText(String originalText) {
-    final now = DateTime.now();
-
-    return '''
-Voice input from user: "$originalText"
-
-Instructions for AI:
-- The user was speaking naturally and may have been interrupted or spoke incomplete thoughts
-- Create the most logical reminder(s) possible from this voice input
-- If timing is unclear, default to tomorrow morning at 9 AM
-- If the task is vague, create a reasonable reminder that captures the user's intent
-- Be forgiving of speech recognition errors and incomplete sentences
-
-Current context: ${now.toString()}
-
-Please extract at least one meaningful reminder from this voice input.
-''';
-  }
-
-  /// Start audio recording for Gemini native
+  /// Start audio recording optimized for STT (16KHz mono)
   Future<void> _startAudioRecording() async {
     final tempDir = await getTemporaryDirectory();
-    _audioFilePath =
-        '${tempDir.path}/voice_recording_${DateTime.now().millisecondsSinceEpoch}.wav';
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+
+    // Use WAV for better quality and compatibility with both Gemini and Groq
+    _audioFilePath = '${tempDir.path}/voice_recording_$timestamp.wav';
 
     if (!await _audioRecorder.hasPermission()) {
       throw Exception('Audio recording permission not granted');
     }
 
+    // Optimal settings for speech-to-text (16KHz mono as per Groq/Gemini docs)
     await _audioRecorder.start(
       const RecordConfig(
         encoder: AudioEncoder.wav,
-        bitRate: 16000,
-        sampleRate: 16000,
-        numChannels: 1,
+        bitRate: 16000, // 16 Kbps for speech
+        sampleRate: 16000, // 16KHz optimal for STT
+        numChannels: 1, // Mono for speech recognition
       ),
       path: _audioFilePath!,
     );
 
-    debugPrint('🎵 audio recording started: $_audioFilePath');
+    debugPrint('🎵 Optimized audio recording started: $_audioFilePath');
+    debugPrint('   Format: 16KHz mono WAV for STT');
   }
 
   /// Stop audio recording

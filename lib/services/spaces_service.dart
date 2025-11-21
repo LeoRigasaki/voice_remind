@@ -213,8 +213,7 @@ class SpacesService {
     for (final spaceId in spaceIds) {
       final space = spaces.firstWhere((s) => s.id == spaceId);
       final duplicatedSpace = Space(
-        id: DateTime.now().millisecondsSinceEpoch.toString() +
-            '_${newSpaces.length}',
+        id: '${DateTime.now().millisecondsSinceEpoch}_${newSpaces.length}',
         name: '${space.name} Copy',
         color: space.color,
         icon: space.icon,
