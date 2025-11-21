@@ -303,6 +303,19 @@ class NotificationService {
       } else if (buttonKey.isEmpty) {
         // User tapped the notification body (not a button)
         debugPrint('👆 User tapped notification body, opening app...');
+
+        // CRITICAL FIX: Stop alarm sound if it's playing
+        if (DefaultSoundService.isPlaying) {
+          await DefaultSoundService.stop();
+          debugPrint('🔇 Stopped alarm sound on notification tap');
+        }
+
+        // Cancel the notification to clear it from the tray
+        final alarmId = timeSlotId != null
+            ? AlarmService.generateTimeSlotAlarmId(reminderId, timeSlotId)
+            : reminderId.hashCode;
+        await cancelNotification(alarmId);
+        debugPrint('🔴 Cancelled notification on tap: $alarmId');
       } else {
         debugPrint('⚠️ Unknown button key: $buttonKey');
       }
@@ -350,10 +363,19 @@ class NotificationService {
       return;
     }
 
-    // Stop alarm sound if it's playing (for swipe dismiss)
-    if (DefaultSoundService.isPlaying) {
-      await DefaultSoundService.stop();
-      debugPrint('🔇 Stopped alarm sound on swipe dismiss');
+    try {
+      // Stop alarm sound if it's playing (for swipe dismiss)
+      if (DefaultSoundService.isPlaying) {
+        await DefaultSoundService.stop();
+        debugPrint('🔇 Stopped alarm sound on swipe dismiss');
+      }
+
+      // CRITICAL FIX: Ensure the notification is actually cancelled from the system
+      // This prevents stale notifications from accumulating and causing badge count issues
+      await cancelNotification(receivedAction.id!);
+      debugPrint('🔴 Ensured notification ${receivedAction.id} is cancelled from system');
+    } catch (e) {
+      debugPrint('⚠️ Error handling swipe dismiss: $e');
     }
   }
 
@@ -1081,6 +1103,79 @@ class NotificationService {
         'ℹ️ refreshNotificationCategories called (no-op with awesome_notifications)');
   }
 
+  /// Clean up stale notifications that don't have corresponding active reminders
+  /// This prevents badge count issues from accumulating stale notifications
+  static Future<void> cleanupStaleNotifications() async {
+    try {
+      debugPrint('🧹 ========================================');
+      debugPrint('🧹 CLEANING UP STALE NOTIFICATIONS');
+      debugPrint('🧹 ========================================');
+
+      // Get all active notifications from the system
+      final activeNotifications = await AwesomeNotifications().listScheduledNotifications();
+      debugPrint('📋 Found ${activeNotifications.length} scheduled notifications in system');
+
+      if (activeNotifications.isEmpty) {
+        debugPrint('✅ No scheduled notifications to clean up');
+        return;
+      }
+
+      // Get all reminders from storage
+      final reminders = await StorageService.getReminders();
+      debugPrint('📋 Found ${reminders.length} reminders in storage');
+
+      // Build a set of valid notification IDs
+      final validNotificationIds = <int>{};
+
+      for (final reminder in reminders) {
+        if (reminder.status == ReminderStatus.pending && reminder.isNotificationEnabled) {
+          // Add main reminder notification ID
+          validNotificationIds.add(reminder.id.hashCode);
+
+          // Add time slot notification IDs if multi-time
+          if (reminder.hasMultipleTimes) {
+            for (final timeSlot in reminder.timeSlots) {
+              if (timeSlot.status == ReminderStatus.pending) {
+                final notificationId = generateTimeSlotNotificationId(reminder.id, timeSlot.id);
+                validNotificationIds.add(notificationId);
+
+                // Also add alarm ID for mixed mode
+                final alarmId = AlarmService.generateTimeSlotAlarmId(reminder.id, timeSlot.id);
+                validNotificationIds.add(alarmId);
+              }
+            }
+          }
+
+          // Add alarm ID for mixed mode
+          final alarmId = AlarmService.generateAlarmId(reminder.id);
+          validNotificationIds.add(alarmId);
+        }
+      }
+
+      debugPrint('✅ Built set of ${validNotificationIds.length} valid notification IDs');
+
+      // Cancel any notifications that aren't in the valid set
+      int cancelledCount = 0;
+      for (final notification in activeNotifications) {
+        if (!validNotificationIds.contains(notification.content?.id)) {
+          await cancelNotification(notification.content!.id!);
+          debugPrint('🗑️ Cancelled stale notification: ${notification.content!.id} - ${notification.content!.title}');
+          cancelledCount++;
+        }
+      }
+
+      debugPrint('🧹 ========================================');
+      debugPrint('✅ CLEANUP COMPLETE');
+      debugPrint('   Scheduled: ${activeNotifications.length}');
+      debugPrint('   Cancelled: $cancelledCount');
+      debugPrint('   Remaining: ${activeNotifications.length - cancelledCount}');
+      debugPrint('🧹 ========================================');
+    } catch (e, stackTrace) {
+      debugPrint('❌ Error cleaning up stale notifications: $e');
+      debugPrint('Stack trace: $stackTrace');
+    }
+  }
+
   static Future<void> checkAndReinitializeAfterBoot() async {
     try {
       debugPrint('🔍 ========================================');
@@ -1159,8 +1254,14 @@ class NotificationService {
         debugPrint('   Rescheduled: $rescheduled');
         debugPrint('   Skipped: $skipped');
         debugPrint('========================================');
+
+        // Clean up any stale notifications after rescheduling
+        await cleanupStaleNotifications();
       } else {
         debugPrint('ℹ️ No boot reschedule flag detected - normal launch');
+
+        // Still run cleanup on normal launch to clear any stale notifications
+        await cleanupStaleNotifications();
       }
     } catch (e, stackTrace) {
       debugPrint('❌ Error in boot reschedule: $e');
