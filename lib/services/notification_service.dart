@@ -322,13 +322,8 @@ class NotificationService {
   static Future<void> _onNotificationDisplayedMethod(
       ReceivedNotification receivedNotification) async {
     debugPrint('📢 Notification displayed: ${receivedNotification.id}');
-
-    // Check if this is an alarm notification (Mixed Mode)
-    if (receivedNotification.payload?['type'] == 'alarm') {
-      // Play alarm sound using flutter_ringtone_player
-      await DefaultSoundService.playAlarmSound();
-      debugPrint('🔊 Started playing alarm sound for notification');
-    }
+    // Sound is handled automatically by notification channels
+    // No manual playback needed
   }
 
   @pragma('vm:entry-point')
