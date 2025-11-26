@@ -1,5 +1,7 @@
 package com.example.voice_remind
 
+import android.content.Context
+import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
@@ -8,13 +10,14 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity: FlutterActivity() {
-    private val CHANNEL = "com.example.voice_remind/alarm"
+    private val ALARM_CHANNEL = "com.example.voice_remind/alarm"
+    private val AUDIO_CHANNEL = "com.example.voice_remind/audio"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        
+
         // Set up method channel for alarm-specific features
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ALARM_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "showOverLockScreen" -> {
                     showOverLockScreen()
@@ -29,6 +32,25 @@ class MainActivity: FlutterActivity() {
                 }
             }
         }
+
+        // Set up method channel for audio features
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, AUDIO_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getRingerMode" -> {
+                    val ringerMode = getRingerMode()
+                    result.success(ringerMode)
+                }
+                else -> {
+                    result.notImplemented()
+                }
+            }
+        }
+    }
+
+    private fun getRingerMode(): Int {
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        return audioManager.ringerMode
+        // Returns: RINGER_MODE_NORMAL = 2, RINGER_MODE_VIBRATE = 1, RINGER_MODE_SILENT = 0
     }
 
    override fun onCreate(savedInstanceState: Bundle?) {

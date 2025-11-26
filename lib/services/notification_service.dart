@@ -386,6 +386,9 @@ class NotificationService {
       //Notify storage of background update
       await StorageService.markNotificationUpdate();
 
+      // Update badge count
+      await updateBadgeCount();
+
       debugPrint('🚫 ========================================');
       debugPrint('🚫 DISMISS COMPLETED SUCCESSFULLY');
       debugPrint('🚫 ========================================');
@@ -511,6 +514,9 @@ class NotificationService {
 
       //Notify storage of background update
       await StorageService.markNotificationUpdate();
+
+      // Badge count remains same (still pending, just snoozed)
+      // No need to update badge count here
 
       debugPrint('💤 ========================================');
       debugPrint('💤 SNOOZE COMPLETED SUCCESSFULLY');
@@ -984,9 +990,47 @@ class NotificationService {
   static Future<void> cancelAllReminders() async {
     try {
       await AwesomeNotifications().cancelAll();
-      debugPrint('📕 Canceled all notifications');
+      await resetBadgeCount();
+      debugPrint('📕 Canceled all notifications and reset badge');
     } catch (e) {
       debugPrint('⚠️ Error canceling all notifications: $e');
+    }
+  }
+
+  /// Reset badge count to 0
+  static Future<void> resetBadgeCount() async {
+    try {
+      await AwesomeNotifications().setGlobalBadgeCounter(0);
+      debugPrint('🔢 Badge count reset to 0');
+    } catch (e) {
+      debugPrint('⚠️ Error resetting badge count: $e');
+    }
+  }
+
+  /// Update badge count based on pending reminders
+  static Future<void> updateBadgeCount() async {
+    try {
+      final reminders = await StorageService.getReminders();
+      int pendingCount = 0;
+
+      for (final reminder in reminders) {
+        if (reminder.hasMultipleTimes) {
+          // Count pending time slots
+          pendingCount += reminder.timeSlots
+              .where((slot) => slot.status == ReminderStatus.pending)
+              .length;
+        } else {
+          // Count single-time pending reminders
+          if (reminder.status == ReminderStatus.pending) {
+            pendingCount++;
+          }
+        }
+      }
+
+      await AwesomeNotifications().setGlobalBadgeCounter(pendingCount);
+      debugPrint('🔢 Badge count updated to: $pendingCount');
+    } catch (e) {
+      debugPrint('⚠️ Error updating badge count: $e');
     }
   }
 

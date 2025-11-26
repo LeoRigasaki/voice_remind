@@ -871,7 +871,9 @@ class StorageService {
 
       // Schedule notification for the updated reminder
       if (updatedReminder.isNotificationEnabled) {
-        // await NotificationService.scheduleReminder(updatedReminder);
+        await NotificationService.scheduleReminder(updatedReminder);
+        // Update badge count after rescheduling
+        await NotificationService.updateBadgeCount();
       }
 
       debugPrint(

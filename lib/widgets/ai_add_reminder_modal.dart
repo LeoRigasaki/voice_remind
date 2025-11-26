@@ -278,8 +278,8 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
         }
 
         // Unfocus any active text fields when switching away from AI Text tab
+        // Don't clear composing text - just unfocus to preserve user input
         if (previousMode == ReminderCreationMode.aiText && newIndex != 1) {
-          _aiInputController.clearComposing();
           FocusScope.of(context).unfocus();
         }
 
@@ -747,6 +747,14 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
     List<TimeSlot> timeSlots = [...reminder.timeSlots];
     bool isNotificationEnabled = reminder.isNotificationEnabled;
 
+    // Add listener to dispose controllers when sheet is closed
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        titleController.dispose();
+        descriptionController.dispose();
+      }
+    });
+
     return StatefulBuilder(
       builder: (context, setModalState) {
         // FIXED RESPONSIVE CALCULATIONS
@@ -759,7 +767,10 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
             ? screenHeight - topPadding - keyboardHeight - 40
             : screenHeight * 0.85;
 
-        return Container(
+        return GestureDetector(
+          // Dismiss keyboard when tapping outside text fields
+          onTap: () => FocusScope.of(context).unfocus(),
+          child: Container(
           height: modalHeight,
           margin: EdgeInsets.only(
             left: 16,
@@ -802,7 +813,12 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                     ),
                     const Spacer(),
                     IconButton(
-                      onPressed: () => Navigator.pop(context),
+                      onPressed: () {
+                        // Dispose controllers before closing
+                        titleController.dispose();
+                        descriptionController.dispose();
+                        Navigator.pop(context);
+                      },
                       icon: const Icon(Icons.close),
                       style: IconButton.styleFrom(
                         backgroundColor: Theme.of(context).colorScheme.surface,
@@ -1147,6 +1163,10 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                         }
                       });
 
+                      // Dispose controllers before closing
+                      titleController.dispose();
+                      descriptionController.dispose();
+
                       Navigator.pop(context);
                     },
                     style: ElevatedButton.styleFrom(
@@ -1165,6 +1185,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
               ),
             ],
           ),
+          ), // Close GestureDetector
         );
       },
     );
