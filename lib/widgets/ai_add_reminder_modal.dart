@@ -732,7 +732,15 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _buildEditReminderSheet(reminder, index),
+      isDismissible: true,
+      enableDrag: true,
+      useSafeArea: true,
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: _buildEditReminderSheet(reminder, index),
+      ),
     );
   }
 
@@ -1564,7 +1572,8 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                         leading: const Icon(Icons.repeat),
                         title: const Text('Repeat'),
                         subtitle: Text(
-                          _selectedRepeat == RepeatType.custom && _customRepeatConfig != null
+                          _selectedRepeat == RepeatType.custom &&
+                                  _customRepeatConfig != null
                               ? _customRepeatConfig!.formatInterval()
                               : getRepeatDisplayName(_selectedRepeat),
                         ),
@@ -1763,7 +1772,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                     borderRadius: BorderRadius.circular(12),
                     child: Image.file(
                       _selectedImage!,
-                      height: 180,
+                      height: 120,
                       width: double.infinity,
                       fit: BoxFit.cover,
                     ),
@@ -1789,37 +1798,35 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
             SizedBox(height: MediaQuery.of(context).size.height * 0.015),
 
             // TEXT INPUT
-            Expanded(
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(4),
-                child: TextField(
-                  controller: _aiInputController,
-                  enabled: _aiServiceReady,
-                  maxLines: null,
-                  expands: true,
-                  textAlignVertical: TextAlignVertical.top,
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodyLarge
-                      ?.copyWith(height: 1.5, fontSize: 16),
-                  decoration: InputDecoration(
-                    hintText: _selectedImage != null
-                        ? 'Optional: Add custom instructions...\n\nExample: "Extract only meetings" or leave empty for automatic analysis'
-                        : _aiServiceReady
-                            ? 'Describe your reminders here...\n\nExample: Take medicine at 8AM, 2PM, and 8PM daily'
-                            : 'Configure AI provider in Settings first...',
-                    hintStyle: TextStyle(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withValues(alpha: 0.4),
-                      fontSize: 16,
-                      height: 1.5,
-                    ),
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.all(16),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(4),
+              child: TextField(
+                controller: _aiInputController,
+                enabled: _aiServiceReady,
+                minLines: 3,
+                maxLines: 8,
+                textAlignVertical: TextAlignVertical.top,
+                style: Theme.of(context)
+                    .textTheme
+                    .bodyLarge
+                    ?.copyWith(height: 1.5, fontSize: 16),
+                decoration: InputDecoration(
+                  hintText: _selectedImage != null
+                      ? 'Optional: Add custom instructions...\n\nExample: "Extract only meetings" or leave empty for automatic analysis'
+                      : _aiServiceReady
+                          ? 'Describe your reminders here...\n\nExample: Take medicine at 8AM, 2PM, and 8PM daily'
+                          : 'Configure AI provider in Settings first...',
+                  hintStyle: TextStyle(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.4),
+                    fontSize: 16,
+                    height: 1.5,
                   ),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.all(16),
                 ),
               ),
             ),
@@ -2957,7 +2964,8 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                             onChanged: (value) async {
                               if (value == RepeatType.custom) {
                                 Navigator.pop(context);
-                                final config = await showDialog<CustomRepeatConfig>(
+                                final config =
+                                    await showDialog<CustomRepeatConfig>(
                                   context: context,
                                   builder: (context) => CustomRepeatDialog(
                                     initialConfig: _customRepeatConfig,
@@ -2981,7 +2989,8 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                           onTap: () async {
                             if (repeat == RepeatType.custom) {
                               Navigator.pop(context);
-                              final config = await showDialog<CustomRepeatConfig>(
+                              final config =
+                                  await showDialog<CustomRepeatConfig>(
                                 context: context,
                                 builder: (context) => CustomRepeatDialog(
                                   initialConfig: _customRepeatConfig,
@@ -3021,7 +3030,15 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _buildEditReminderSheet(reminder, index),
+      isDismissible: true,
+      enableDrag: true,
+      useSafeArea: true,
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: _buildEditReminderSheet(reminder, index),
+      ),
     );
   }
 }
