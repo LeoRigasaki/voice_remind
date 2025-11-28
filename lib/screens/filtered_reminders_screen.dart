@@ -142,13 +142,19 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
         return reminders;
       case FilterType.pending:
         return reminders
-            .where((r) => !r.isCompleted && r.scheduledTime.isAfter(now))
+            .where((r) {
+              final timeToCheck = r.snoozedUntil ?? r.scheduledTime;
+              return !r.isCompleted && timeToCheck.isAfter(now);
+            })
             .toList();
       case FilterType.completed:
         return reminders.where((r) => r.isCompleted).toList();
       case FilterType.overdue:
         return reminders
-            .where((r) => !r.isCompleted && r.scheduledTime.isBefore(now))
+            .where((r) {
+              final timeToCheck = r.snoozedUntil ?? r.scheduledTime;
+              return !r.isCompleted && timeToCheck.isBefore(now);
+            })
             .toList();
       case FilterType.today:
         return reminders.where((r) {
@@ -309,7 +315,10 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
           await StorageService.updateReminderStatus(id, ReminderStatus.pending);
           if (reminder.scheduledTime.isAfter(DateTime.now())) {
             await NotificationService.scheduleReminder(
-              reminder.copyWith(status: ReminderStatus.pending),
+              reminder.copyWith(
+                status: ReminderStatus.pending,
+                clearSnooze: true, // Clear snooze when uncompleting
+              ),
             );
           }
         }

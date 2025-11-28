@@ -21,7 +21,8 @@ class NotificationService {
 
   /// Create a NotificationCalendar that works reliably in background isolates
   /// by manually setting all components instead of using fromDate()
-  static NotificationCalendar _createSafeNotificationCalendar(DateTime scheduledTime) {
+  static NotificationCalendar _createSafeNotificationCalendar(
+      DateTime scheduledTime) {
     // CRITICAL: We must provide an explicit timezone string to avoid calling
     // TimeZone.getDefault() which can be null in background isolates.
     //
@@ -67,8 +68,10 @@ class NotificationService {
       // This ensures the plugin's native components (including Java TimeZone handling)
       // are properly initialized when scheduling from background
       try {
-        final isInitialized = await AwesomeNotifications().isNotificationAllowed();
-        debugPrint('✅ AwesomeNotifications checked in background: $isInitialized');
+        final isInitialized =
+            await AwesomeNotifications().isNotificationAllowed();
+        debugPrint(
+            '✅ AwesomeNotifications checked in background: $isInitialized');
       } catch (e) {
         debugPrint('⚠️ AwesomeNotifications check failed (may be normal): $e');
       }
@@ -425,87 +428,91 @@ class NotificationService {
         return;
       }
 
-      // Calculate new scheduled time
-      final newScheduledTime = DateTime.now().add(snoozeDuration);
-      debugPrint('⏰ New alarm time: $newScheduledTime');
+      // Calculate snooze time (don't modify original time, use snoozedUntil instead)
+      final snoozeTime = DateTime.now().add(snoozeDuration);
+      debugPrint('⏰ Snooze time: $snoozeTime');
+      debugPrint(
+          '📌 Original reminder time preserved: ${reminder.scheduledTime}');
 
-      // CRITICAL FIX: Update the reminder's scheduledTime in storage
-      Reminder updatedReminder;
+      // Update reminder with snoozedUntil field for UI display
+      final snoozedReminder = reminder.copyWith(
+        snoozedUntil: snoozeTime,
+        updatedAt: DateTime.now(),
+      );
+      await StorageService.updateReminder(snoozedReminder);
+      debugPrint(
+          '💾 Saved snooze state (snoozedUntil: $snoozeTime) to storage');
 
-      if (timeSlotId != null && reminder.hasMultipleTimes) {
-        // Handle multi-time snooze - update the specific time slot
-        final updatedTimeSlots = reminder.timeSlots.map((slot) {
-          if (slot.id == timeSlotId) {
-            // Update the time slot's time to the snoozed time
-            return slot.copyWith(
-              time: TimeOfDay(
-                hour: newScheduledTime.hour,
-                minute: newScheduledTime.minute,
-              ),
-            );
-          }
-          return slot;
-        }).toList();
-
-        updatedReminder = reminder.copyWith(
-          timeSlots: updatedTimeSlots,
-          updatedAt: DateTime.now(),
-        );
-
-        debugPrint('📝 Updated time slot: $timeSlotId to $newScheduledTime');
-      } else {
-        // Handle single-time snooze - update the main scheduledTime
-        updatedReminder = reminder.copyWith(
-          scheduledTime: newScheduledTime,
-          updatedAt: DateTime.now(),
-        );
-
-        debugPrint('📝 Updated reminder scheduledTime to: $newScheduledTime');
-      }
-
-      // Save the updated reminder to storage
-      await StorageService.updateReminder(updatedReminder);
-      debugPrint('💾 Saved updated reminder to storage');
-
-      // CRITICAL FIX: Check mode before rescheduling
+      // Schedule temporary notification (original reminder unchanged)
       final useAlarm = await StorageService.getUseAlarmInsteadOfNotification();
 
       if (useAlarm) {
-        // Mixed Mode: Reschedule as alarm notification
-        debugPrint('📢 Rescheduling in MIXED MODE (alarm_channel)');
-        if (timeSlotId != null && updatedReminder.hasMultipleTimes) {
+        // Mixed Mode: Schedule temporary alarm
+        debugPrint('📢 Scheduling temporary alarm in MIXED MODE');
+        if (timeSlotId != null && snoozedReminder.hasMultipleTimes) {
           final timeSlot =
-              updatedReminder.timeSlots.firstWhere((ts) => ts.id == timeSlotId);
+              snoozedReminder.timeSlots.firstWhere((ts) => ts.id == timeSlotId);
           await scheduleAlarmNotification(
-            reminder: updatedReminder,
+            reminder: snoozedReminder,
             alarmId: alarmId,
-            customTime: newScheduledTime,
+            customTime: snoozeTime,
             timeSlot: timeSlot,
           );
-          debugPrint('✅ Rescheduled multi-time alarm');
+          debugPrint('✅ Scheduled temporary multi-time alarm');
         } else {
           await scheduleAlarmNotification(
-            reminder: updatedReminder,
+            reminder: snoozedReminder,
             alarmId: alarmId,
-            customTime: newScheduledTime,
+            customTime: snoozeTime,
           );
-          debugPrint('✅ Rescheduled single-time alarm');
+          debugPrint('✅ Scheduled temporary single-time alarm');
         }
       } else {
-        // Notification Mode: Reschedule as regular notification
-        debugPrint('📢 Rescheduling in NOTIFICATION MODE (reminder_channel)');
-        if (timeSlotId != null && updatedReminder.hasMultipleTimes) {
+        // Notification Mode: Schedule temporary notification
+        debugPrint('📢 Scheduling temporary notification in NOTIFICATION MODE');
+        if (timeSlotId != null && snoozedReminder.hasMultipleTimes) {
           final timeSlot =
-              updatedReminder.timeSlots.firstWhere((ts) => ts.id == timeSlotId);
+              snoozedReminder.timeSlots.firstWhere((ts) => ts.id == timeSlotId);
           await _scheduleTimeSlotNotification(
-            reminder: updatedReminder,
+            reminder: snoozedReminder,
             timeSlot: timeSlot,
-            scheduledTime: newScheduledTime,
+            scheduledTime: snoozeTime,
           );
-          debugPrint('✅ Rescheduled multi-time notification');
+          debugPrint('✅ Scheduled temporary multi-time notification');
         } else {
-          await _scheduleSingleTimeReminder(updatedReminder);
-          debugPrint('✅ Rescheduled single-time notification');
+          // For single-time snooze in notification mode, create temporary notification
+          final actionButtons = <NotificationActionButton>[
+            NotificationActionButton(
+              key: 'COMPLETE',
+              label: 'Dismiss',
+              actionType: ActionType.SilentAction,
+            ),
+            NotificationActionButton(
+              key: 'SNOOZE_5',
+              label: 'Snooze 5min',
+              actionType: ActionType.SilentAction,
+            ),
+          ];
+
+          final payload = <String, String>{
+            'reminder_id': snoozedReminder.id,
+            'type': 'notification',
+          };
+
+          await AwesomeNotifications().createNotification(
+            content: NotificationContent(
+              id: snoozedReminder.id.hashCode,
+              channelKey: 'reminder_channel',
+              title: snoozedReminder.title,
+              body: snoozedReminder.description ?? 'Reminder notification',
+              category: NotificationCategory.Reminder,
+              wakeUpScreen: false,
+              payload: payload,
+            ),
+            actionButtons: actionButtons,
+            schedule: _createSafeNotificationCalendar(snoozeTime),
+          );
+          debugPrint('✅ Scheduled temporary single-time notification');
         }
       }
 
@@ -514,7 +521,10 @@ class NotificationService {
 
       debugPrint('💤 ========================================');
       debugPrint('💤 SNOOZE COMPLETED SUCCESSFULLY');
-      debugPrint('💤 New time: $newScheduledTime');
+      debugPrint('💤 Temporary alarm at: $snoozeTime');
+      debugPrint(
+          '💤 Original reminder preserved at: ${reminder.scheduledTime}');
+      debugPrint('💤 UI will show snoozed time until: $snoozeTime');
       debugPrint('💤 ========================================');
     } catch (e, stackTrace) {
       debugPrint('❌ Error snoozing alarm: $e');
@@ -543,7 +553,8 @@ class NotificationService {
         );
 
         if (nextOccurrence == null) {
-          debugPrint('No more occurrences for custom repeat - end date reached');
+          debugPrint(
+              'No more occurrences for custom repeat - end date reached');
           return;
         }
 
@@ -740,7 +751,8 @@ class NotificationService {
       final minutesSinceStart = now.difference(startTime).inMinutes;
       final occurrencesPassed = (minutesSinceStart / intervalMinutes).ceil();
 
-      nextTime = startTime.add(Duration(minutes: intervalMinutes * occurrencesPassed));
+      nextTime =
+          startTime.add(Duration(minutes: intervalMinutes * occurrencesPassed));
 
       // Ensure we're not scheduling in the past
       while (nextTime.isBefore(now)) {
@@ -757,7 +769,8 @@ class NotificationService {
     if (config.specificDays != null && config.specificDays!.isNotEmpty) {
       // Keep advancing until we find a valid day
       int attempts = 0;
-      while (attempts < 1000) { // Safety limit
+      while (attempts < 1000) {
+        // Safety limit
         final weekday = nextTime.weekday; // 1=Mon, 7=Sun
         if (config.specificDays!.contains(weekday)) {
           break; // Found a valid day
@@ -781,25 +794,28 @@ class NotificationService {
   static Future<void> _scheduleSingleTimeReminder(Reminder reminder) async {
     try {
       final now = DateTime.now();
-      DateTime scheduledTime = reminder.scheduledTime;
+      // FIX: Use snoozedUntil if reminder is snoozed, otherwise use scheduledTime
+      DateTime scheduledTime = reminder.snoozedUntil ?? reminder.scheduledTime;
 
       // Handle custom repeat
-      if (reminder.repeatType == RepeatType.custom && reminder.customRepeatConfig != null) {
+      if (reminder.repeatType == RepeatType.custom &&
+          reminder.customRepeatConfig != null) {
         final nextOccurrence = _calculateNextCustomOccurrence(
           reminder.scheduledTime,
           reminder.customRepeatConfig!,
         );
 
         if (nextOccurrence == null) {
-          debugPrint('No more occurrences for custom repeat - end date reached');
+          debugPrint(
+              'No more occurrences for custom repeat - end date reached');
           return;
         }
 
         scheduledTime = nextOccurrence;
         debugPrint('Custom repeat: Next occurrence at $scheduledTime');
-      } else if (reminder.scheduledTime
+      } else if (scheduledTime
           .isBefore(now.subtract(const Duration(minutes: 5)))) {
-        debugPrint('Skipping notification - time is too far in the past');
+        debugPrint('Skipping notification - time is too far in the past (checked: ${reminder.snoozedUntil != null ? "snoozed" : "scheduled"} time)');
         return;
       }
 
@@ -840,7 +856,8 @@ class NotificationService {
         schedule: _createSafeNotificationCalendar(scheduledTime),
       );
 
-      debugPrint('✅ Scheduled notification for ${reminder.title} at $scheduledTime');
+      debugPrint(
+          '✅ Scheduled notification for ${reminder.title} at $scheduledTime');
     } catch (e) {
       debugPrint('❌ Error scheduling single-time reminder: $e');
     }

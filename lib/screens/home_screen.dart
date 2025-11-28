@@ -242,7 +242,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           await StorageService.updateReminderStatus(id, ReminderStatus.pending);
           if (reminder.scheduledTime.isAfter(DateTime.now())) {
             await NotificationService.scheduleReminder(
-              reminder.copyWith(status: ReminderStatus.pending),
+              reminder.copyWith(
+                status: ReminderStatus.pending,
+                clearSnooze: true, // Clear snooze when uncompleting
+              ),
             );
           }
         }

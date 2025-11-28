@@ -110,7 +110,9 @@ class _ReminderCardWidgetState extends State<ReminderCardWidget> {
       final activeSlot = _activeTimeSlot;
       return activeSlot?.formattedTime ?? '';
     }
-    return DateFormat('h:mm a').format(widget.reminder.scheduledTime);
+    // Show snoozed time if reminder is snoozed
+    final displayTime = widget.reminder.snoozedUntil ?? widget.reminder.scheduledTime;
+    return DateFormat('h:mm a').format(displayTime);
   }
 
   String? get _displayDescription {
@@ -136,7 +138,8 @@ class _ReminderCardWidgetState extends State<ReminderCardWidget> {
         );
       }
     }
-    return widget.reminder.scheduledTime;
+    // Show snoozed time if reminder is snoozed
+    return widget.reminder.snoozedUntil ?? widget.reminder.scheduledTime;
   }
 
   // Check if display time is overdue
@@ -149,8 +152,9 @@ class _ReminderCardWidgetState extends State<ReminderCardWidget> {
       }
       return false;
     }
-    return !widget.reminder.isCompleted &&
-        widget.reminder.scheduledTime.isBefore(DateTime.now());
+    // Use snoozed time if available, otherwise use scheduled time
+    final timeToCheck = widget.reminder.snoozedUntil ?? widget.reminder.scheduledTime;
+    return !widget.reminder.isCompleted && timeToCheck.isBefore(DateTime.now());
   }
 
   // Check if display time is completed
@@ -902,7 +906,10 @@ class _ReminderCardWidgetState extends State<ReminderCardWidget> {
           await NotificationService.cancelReminder(widget.reminder.id);
         } else if (widget.reminder.scheduledTime.isAfter(DateTime.now())) {
           await NotificationService.scheduleReminder(
-            widget.reminder.copyWith(status: newStatus),
+            widget.reminder.copyWith(
+              status: newStatus,
+              clearSnooze: true, // Clear snooze when uncompleting
+            ),
           );
         }
       }

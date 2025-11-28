@@ -78,6 +78,7 @@ class ReminderService {
         isMultiTime: isMultiTime,
         customRepeatConfig: customRepeatConfig,
         clearCustomRepeatConfig: repeatType != RepeatType.custom,
+        clearSnooze: true, // FIX: Clear snooze when editing reminder
       );
 
       await StorageService.updateReminder(updatedReminder);

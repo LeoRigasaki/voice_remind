@@ -281,6 +281,15 @@ class AlarmService {
       final reminder = reminders[reminderIndex];
       debugPrint('📋 Found reminder: ${reminder.title}');
 
+      // Clear snooze state if reminder was snoozed
+      Reminder activeReminder = reminder;
+      if (reminder.snoozedUntil != null) {
+        debugPrint('🔔 Clearing snooze state (was snoozed until: ${reminder.snoozedUntil})');
+        activeReminder = reminder.copyWith(clearSnooze: true, updatedAt: DateTime.now());
+        await StorageService.updateReminder(activeReminder);
+        debugPrint('✅ Snooze state cleared');
+      }
+
       // Check if this is a repeating reminder
       if (reminder.repeatType != RepeatType.none) {
         debugPrint('🔄 This is a repeating reminder: ${reminder.repeatType}');

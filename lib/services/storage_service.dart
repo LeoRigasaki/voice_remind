@@ -468,20 +468,28 @@ class StorageService {
   // =============================================================================
 
   /// Snooze a single-time reminder by the specified duration
+  /// NOTE: This method is deprecated - use NotificationService._handleSnoozeAction instead
   static Future<void> snoozeReminder(
       String reminderId, Duration snoozeDuration) async {
     final reminder = await getReminderById(reminderId);
     if (reminder == null) return;
 
     final snoozeTime = DateTime.now().add(snoozeDuration);
-    final snoozedReminder = reminder.copyWith(scheduledTime: snoozeTime);
+    // FIX: Use snoozedUntil instead of modifying scheduledTime
+    final snoozedReminder = reminder.copyWith(
+      snoozedUntil: snoozeTime,
+      updatedAt: DateTime.now(),
+    );
 
     await updateReminder(snoozedReminder);
     debugPrint(
-        'Snoozed reminder $reminderId for ${snoozeDuration.inMinutes} minutes');
+        'Snoozed reminder $reminderId for ${snoozeDuration.inMinutes} minutes (snoozedUntil: $snoozeTime, original: ${reminder.scheduledTime})');
   }
 
   /// Snooze a specific time slot by the specified duration
+  /// NOTE: This method is deprecated and has incorrect logic
+  /// Use NotificationService._handleSnoozeAction instead
+  @Deprecated('Use NotificationService._handleSnoozeAction instead - this method modifies time slots directly which is incorrect')
   static Future<void> snoozeTimeSlot(
       String reminderId, String timeSlotId, Duration snoozeDuration) async {
     final reminder = await getReminderById(reminderId);
@@ -493,6 +501,8 @@ class StorageService {
     );
 
     final snoozeTime = DateTime.now().add(snoozeDuration);
+    // NOTE: This old approach modifies the time slot directly, which is wrong
+    // The correct approach is to use reminder.snoozedUntil
     final snoozedTimeSlot = timeSlot.copyWith(
       time: TimeOfDay(hour: snoozeTime.hour, minute: snoozeTime.minute),
     );

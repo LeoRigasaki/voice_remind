@@ -323,9 +323,10 @@ class _ReminderDetailsBottomSheetState extends State<ReminderDetailsBottomSheet>
 
   Widget _buildReminderDetails(Reminder reminder) {
     final now = DateTime.now();
+    final timeToCheck = reminder.snoozedUntil ?? reminder.scheduledTime;
     final isOverdue = reminder.hasMultipleTimes
         ? reminder.overallStatus == ReminderStatus.overdue
-        : !reminder.isCompleted && reminder.scheduledTime.isBefore(now);
+        : !reminder.isCompleted && timeToCheck.isBefore(now);
 
     final statusColor = reminder.hasMultipleTimes
         ? _getMultiTimeStatusColor(reminder)
@@ -820,8 +821,9 @@ class _ReminderDetailsBottomSheetState extends State<ReminderDetailsBottomSheet>
 
   Widget _buildSingleTimeSection(Reminder reminder) {
     final now = DateTime.now();
+    final timeToCheck = reminder.snoozedUntil ?? reminder.scheduledTime;
     final isOverdue =
-        !reminder.isCompleted && reminder.scheduledTime.isBefore(now);
+        !reminder.isCompleted && timeToCheck.isBefore(now);
     final statusColor = reminder.isCompleted
         ? const Color(0xFF28A745)
         : isOverdue
@@ -830,12 +832,30 @@ class _ReminderDetailsBottomSheetState extends State<ReminderDetailsBottomSheet>
 
     return Column(
       children: [
-        // Date & Time
-        _buildDetailSection(
-          'Scheduled Time',
-          Icons.schedule_outlined,
-          DateFormat('EEEE, MMMM d, y • h:mm a').format(reminder.scheduledTime),
-        ),
+        // Show BOTH scheduled time and snoozed time when snoozed
+        if (reminder.snoozedUntil != null) ...[
+          // Original Scheduled Time
+          _buildDetailSection(
+            'Scheduled Time',
+            Icons.schedule_outlined,
+            DateFormat('EEEE, MMMM d, y • h:mm a').format(reminder.scheduledTime),
+          ),
+          const SizedBox(height: 20),
+
+          // Snoozed Until Time
+          _buildDetailSection(
+            'Snoozed Until',
+            Icons.snooze,
+            DateFormat('EEEE, MMMM d, y • h:mm a').format(reminder.snoozedUntil!),
+          ),
+        ] else ...[
+          // Just Scheduled Time (not snoozed)
+          _buildDetailSection(
+            'Scheduled Time',
+            Icons.schedule_outlined,
+            DateFormat('EEEE, MMMM d, y • h:mm a').format(reminder.scheduledTime),
+          ),
+        ],
 
         const SizedBox(height: 20),
 
@@ -853,7 +873,7 @@ class _ReminderDetailsBottomSheetState extends State<ReminderDetailsBottomSheet>
                   : Icons.timer_outlined,
           reminder.isCompleted
               ? 'Task completed'
-              : _formatTimeRemaining(reminder.scheduledTime),
+              : _formatTimeRemaining(reminder.snoozedUntil ?? reminder.scheduledTime),
           color: statusColor,
         ),
       ],
@@ -1253,7 +1273,10 @@ class _ReminderDetailsBottomSheetState extends State<ReminderDetailsBottomSheet>
           await NotificationService.cancelReminder(reminder.id);
         } else if (reminder.scheduledTime.isAfter(DateTime.now())) {
           await NotificationService.scheduleReminder(
-            reminder.copyWith(status: newStatus),
+            reminder.copyWith(
+              status: newStatus,
+              clearSnooze: true, // Clear snooze when uncompleting
+            ),
           );
         }
       }

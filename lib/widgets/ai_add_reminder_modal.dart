@@ -735,446 +735,19 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
       isDismissible: true,
       enableDrag: true,
       useSafeArea: true,
-      builder: (context) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
-        ),
-        child: _buildEditReminderSheet(reminder, index),
+      builder: (context) => _EditReminderSheet(
+        reminder: reminder,
+        index: index,
+        onSave: (updatedReminder) {
+          setState(() {
+            if (_currentMode == ReminderCreationMode.voice) {
+              _voiceGeneratedReminders[index] = updatedReminder;
+            } else {
+              _aiGeneratedReminders[index] = updatedReminder;
+            }
+          });
+        },
       ),
-    );
-  }
-
-  Widget _buildEditReminderSheet(Reminder reminder, int index) {
-    final titleController = TextEditingController(text: reminder.title);
-    final descriptionController =
-        TextEditingController(text: reminder.description ?? '');
-    DateTime selectedDate = reminder.scheduledTime;
-    TimeOfDay selectedTime = TimeOfDay.fromDateTime(reminder.scheduledTime);
-    RepeatType selectedRepeat = reminder.repeatType;
-    bool isMultiTime = reminder.hasMultipleTimes;
-    List<TimeSlot> timeSlots = [...reminder.timeSlots];
-    bool isNotificationEnabled = reminder.isNotificationEnabled;
-
-    return StatefulBuilder(
-      builder: (context, setModalState) {
-        // FIXED RESPONSIVE CALCULATIONS
-        final screenHeight = MediaQuery.of(context).size.height;
-        final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
-        final topPadding = MediaQuery.of(context).padding.top;
-
-// Calculate modal height that doesn't shrink
-        final modalHeight = keyboardHeight > 0
-            ? screenHeight - topPadding - keyboardHeight - 40
-            : screenHeight * 0.85;
-
-        return Container(
-          height: modalHeight,
-          margin: EdgeInsets.only(
-            left: 16,
-            right: 16,
-            top: keyboardHeight > 0
-                ? 10
-                : 20, // Reduced top margin when keyboard is open
-            bottom: 16,
-          ),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Column(
-            children: [
-              // FIXED HEADER - Compact when keyboard is open
-              Container(
-                padding: EdgeInsets.all(keyboardHeight > 0 ? 12 : 16),
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .outline
-                          .withValues(alpha: 0.1),
-                      width: 1,
-                    ),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Text(
-                      'Edit Reminder',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            fontSize: keyboardHeight > 0
-                                ? 18
-                                : 20, // Smaller when keyboard is open
-                          ),
-                    ),
-                    const Spacer(),
-                    IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close),
-                      style: IconButton.styleFrom(
-                        backgroundColor: Theme.of(context).colorScheme.surface,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              // SCROLLABLE CONTENT - Takes remaining space
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: EdgeInsets.all(keyboardHeight > 0 ? 12 : 16),
-                  child: Column(
-                    children: [
-                      // Title field
-                      TextFormField(
-                        controller: titleController,
-                        decoration: const InputDecoration(
-                          labelText: 'Title',
-                          hintText: 'What do you want to be reminded about?',
-                          prefixIcon: Icon(Icons.title),
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // Description field
-                      TextFormField(
-                        controller: descriptionController,
-                        decoration: const InputDecoration(
-                          labelText: 'Description',
-                          hintText: 'Add more details...',
-                          prefixIcon: Icon(Icons.description_outlined),
-                          border: OutlineInputBorder(),
-                        ),
-                        maxLines: keyboardHeight > 0
-                            ? 2
-                            : 3, // Fewer lines when keyboard is open
-                      ),
-
-                      const SizedBox(height: 20),
-
-                      // FULL MULTI-TIME SECTION - Same as Manual tab
-                      MultiTimeSection(
-                        timeSlots: timeSlots,
-                        onTimeSlotsChanged: (newTimeSlots) {
-                          setModalState(() {
-                            timeSlots = newTimeSlots;
-                          });
-                        },
-                        isMultiTime: isMultiTime,
-                        onMultiTimeToggle: (value) {
-                          setModalState(() {
-                            isMultiTime = value;
-                            if (!value) {
-                              timeSlots.clear();
-                            }
-                          });
-                        },
-                        initialSingleTime: selectedTime,
-                        onSingleTimeChanged: (newTime) {
-                          setModalState(() {
-                            selectedTime = newTime;
-                            selectedDate = DateTime(
-                              selectedDate.year,
-                              selectedDate.month,
-                              selectedDate.day,
-                              newTime.hour,
-                              newTime.minute,
-                            );
-                          });
-                        },
-                        singleTimeLabel: 'Time',
-                        padding: EdgeInsets.zero,
-                      ),
-
-                      const SizedBox(height: 20),
-
-                      // FULL DATE SELECTOR - Same as Manual tab
-                      Card(
-                        child: ListTile(
-                          leading: const Icon(Icons.calendar_today_outlined),
-                          title: Text(isMultiTime ? 'Base Date' : 'Date'),
-                          subtitle: Text(
-                            isMultiTime
-                                ? '${DateFormat('EEEE, MMMM d, y').format(selectedDate)} (for all times)'
-                                : DateFormat('EEEE, MMMM d, y')
-                                    .format(selectedDate),
-                          ),
-                          trailing: const Icon(Icons.edit),
-                          onTap: () async {
-                            final now = DateTime.now();
-                            final initialDate =
-                                selectedDate.isBefore(now) ? now : selectedDate;
-
-                            final date = await showDatePicker(
-                              context: context,
-                              initialDate: initialDate,
-                              firstDate: now,
-                              lastDate:
-                                  DateTime.now().add(const Duration(days: 365)),
-                            );
-
-                            if (date != null) {
-                              setModalState(() {
-                                selectedDate = DateTime(
-                                  date.year,
-                                  date.month,
-                                  date.day,
-                                  selectedTime.hour,
-                                  selectedTime.minute,
-                                );
-                              });
-                            }
-                          },
-                        ),
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // FULL REPEAT SELECTOR - Same as Manual tab
-                      Card(
-                        child: ListTile(
-                          leading: const Icon(Icons.repeat),
-                          title: const Text('Repeat'),
-                          subtitle: Text(getRepeatDisplayName(selectedRepeat)),
-                          trailing: const Icon(Icons.edit),
-                          onTap: () {
-                            showModalBottomSheet(
-                              context: context,
-                              backgroundColor: Colors.transparent,
-                              isScrollControlled: true,
-                              builder: (context) {
-                                // Get screen dimensions for responsive design
-                                final screenHeight =
-                                    MediaQuery.of(context).size.height;
-                                final keyboardHeight =
-                                    MediaQuery.of(context).viewInsets.bottom;
-
-                                // Calculate available height
-                                final availableHeight = screenHeight -
-                                    MediaQuery.of(context).padding.top -
-                                    MediaQuery.of(context).padding.bottom -
-                                    keyboardHeight -
-                                    32; // margins
-
-                                // Determine device size categories
-                                final isSmallDevice = screenHeight < 700;
-                                final isVerySmallDevice = screenHeight < 600;
-
-                                // Calculate responsive dimensions
-                                final maxModalHeight = isVerySmallDevice
-                                    ? availableHeight * 0.85
-                                    : isSmallDevice
-                                        ? availableHeight * 0.75
-                                        : availableHeight * 0.6;
-
-                                final horizontalMargin =
-                                    isSmallDevice ? 12.0 : 16.0;
-                                final verticalPadding = isVerySmallDevice
-                                    ? 12.0
-                                    : isSmallDevice
-                                        ? 16.0
-                                        : 20.0;
-
-                                return Container(
-                                  margin: EdgeInsets.only(
-                                    left: horizontalMargin,
-                                    right: horizontalMargin,
-                                    top: 16,
-                                    bottom: 16 + keyboardHeight,
-                                  ),
-                                  constraints: BoxConstraints(
-                                    maxHeight: maxModalHeight,
-                                    minHeight: 200,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color:
-                                        Theme.of(context).colorScheme.surface,
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      // HEADER
-                                      Padding(
-                                        padding:
-                                            EdgeInsets.all(verticalPadding),
-                                        child: Text(
-                                          'Repeat Options',
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .titleLarge
-                                              ?.copyWith(
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                        ),
-                                      ),
-                                      Flexible(
-                                        child: SingleChildScrollView(
-                                          child: Column(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              for (RepeatType repeat
-                                                  in RepeatType.values)
-                                                ListTile(
-                                                  contentPadding:
-                                                      EdgeInsets.symmetric(
-                                                    horizontal: 20,
-                                                    vertical: isVerySmallDevice
-                                                        ? 4.0
-                                                        : 8.0,
-                                                  ),
-                                                  title: Text(
-                                                    getRepeatDisplayName(
-                                                        repeat),
-                                                    style: TextStyle(
-                                                      fontSize:
-                                                          isVerySmallDevice
-                                                              ? 14.0
-                                                              : isSmallDevice
-                                                                  ? 15.0
-                                                                  : 16.0,
-                                                      fontWeight:
-                                                          FontWeight.w500,
-                                                    ),
-                                                  ),
-                                                  subtitle: Text(
-                                                    getRepeatDescription(
-                                                        repeat),
-                                                    style: TextStyle(
-                                                      fontSize:
-                                                          isVerySmallDevice
-                                                              ? 11.0
-                                                              : isSmallDevice
-                                                                  ? 12.0
-                                                                  : 13.0,
-                                                      height: isVerySmallDevice
-                                                          ? 1.3
-                                                          : 1.4,
-                                                    ),
-                                                    maxLines: isVerySmallDevice
-                                                        ? 2
-                                                        : 3,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                  ),
-                                                  leading: Radio<RepeatType>(
-                                                    value: repeat,
-                                                    groupValue: selectedRepeat,
-                                                    onChanged: (value) {
-                                                      setModalState(() {
-                                                        selectedRepeat = value!;
-                                                      });
-                                                      Navigator.pop(context);
-                                                    },
-                                                  ),
-                                                  onTap: () {
-                                                    setModalState(() {
-                                                      selectedRepeat = repeat;
-                                                    });
-                                                    Navigator.pop(context);
-                                                  },
-                                                ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                      SizedBox(
-                                          height: isVerySmallDevice ? 10 : 20),
-                                    ],
-                                  ),
-                                );
-                              },
-                            );
-                          },
-                        ),
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // NOTIFICATION TOGGLE - Same as Manual tab
-                      Card(
-                        child: SwitchListTile(
-                          title: const Text('Enable Notifications'),
-                          subtitle: const Text('Get notified when it\'s time'),
-                          value: isNotificationEnabled,
-                          onChanged: (value) {
-                            setModalState(() {
-                              isNotificationEnabled = value;
-                            });
-                          },
-                        ),
-                      ),
-
-                      // Extra spacing at bottom for keyboard
-                      SizedBox(height: keyboardHeight > 0 ? 10 : 20),
-                    ],
-                  ),
-                ),
-              ),
-
-              // SAVE BUTTON - Fixed at bottom with improved responsiveness
-              Container(
-                padding: EdgeInsets.all(keyboardHeight > 0 ? 12 : 16),
-                decoration: BoxDecoration(
-                  border: Border(
-                    top: BorderSide(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .outline
-                          .withValues(alpha: 0.1),
-                      width: 1,
-                    ),
-                  ),
-                ),
-                child: SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      final updatedReminder = reminder.copyWith(
-                        title: titleController.text.trim(),
-                        description: descriptionController.text.trim().isEmpty
-                            ? null
-                            : descriptionController.text.trim(),
-                        scheduledTime: selectedDate,
-                        repeatType: selectedRepeat,
-                        timeSlots: timeSlots,
-                        isMultiTime: isMultiTime,
-                        isNotificationEnabled: isNotificationEnabled,
-                      );
-
-                      setState(() {
-                        // Update the appropriate list based on current tab
-                        if (_currentMode == ReminderCreationMode.voice) {
-                          _voiceGeneratedReminders[index] = updatedReminder;
-                        } else {
-                          _aiGeneratedReminders[index] = updatedReminder;
-                        }
-                      });
-
-                      Navigator.pop(context);
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Theme.of(context).colorScheme.primary,
-                      foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: const Text(
-                      'Save Changes',
-                      style: TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 
@@ -3033,11 +2606,14 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
       isDismissible: true,
       enableDrag: true,
       useSafeArea: true,
-      builder: (context) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
-        ),
-        child: _buildEditReminderSheet(reminder, index),
+      builder: (context) => _EditReminderSheet(
+        reminder: reminder,
+        index: index,
+        onSave: (updatedReminder) {
+          setState(() {
+            _voiceGeneratedReminders[index] = updatedReminder;
+          });
+        },
       ),
     );
   }
@@ -3288,6 +2864,439 @@ class _VoiceReactiveWaveform extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+// Edit Reminder Sheet - StatefulWidget to preserve controller state
+class _EditReminderSheet extends StatefulWidget {
+  final Reminder reminder;
+  final int index;
+  final Function(Reminder) onSave;
+
+  const _EditReminderSheet({
+    required this.reminder,
+    required this.index,
+    required this.onSave,
+  });
+
+  @override
+  State<_EditReminderSheet> createState() => _EditReminderSheetState();
+}
+
+class _EditReminderSheetState extends State<_EditReminderSheet> {
+  late final TextEditingController _titleController;
+  late final TextEditingController _descriptionController;
+  late DateTime _selectedDate;
+  late TimeOfDay _selectedTime;
+  late RepeatType _selectedRepeat;
+  late bool _isMultiTime;
+  late List<TimeSlot> _timeSlots;
+  late bool _isNotificationEnabled;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // DEBUG: Log initialization details
+    debugPrint('📝 ========================================');
+    debugPrint('📝 INITIALIZING EDIT SHEET');
+    debugPrint('📝 Reminder ID: ${widget.reminder.id}');
+    debugPrint('📝 Original scheduledTime: ${widget.reminder.scheduledTime}');
+    debugPrint('📝 Original snoozedUntil: ${widget.reminder.snoozedUntil}');
+    debugPrint('📝 Initializing _selectedDate with scheduledTime');
+    debugPrint('📝 ========================================');
+
+    _titleController = TextEditingController(text: widget.reminder.title);
+    _descriptionController =
+        TextEditingController(text: widget.reminder.description ?? '');
+    _selectedDate = widget.reminder.scheduledTime;
+    _selectedTime = TimeOfDay.fromDateTime(widget.reminder.scheduledTime);
+    _selectedRepeat = widget.reminder.repeatType;
+    _isMultiTime = widget.reminder.hasMultipleTimes;
+    _timeSlots = [...widget.reminder.timeSlots];
+    _isNotificationEnabled = widget.reminder.isNotificationEnabled;
+
+    debugPrint('📝 Initialized _selectedDate: $_selectedDate');
+    debugPrint('📝 Initialized _selectedTime: $_selectedTime');
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+    final topPadding = MediaQuery.of(context).padding.top;
+
+    final modalHeight = keyboardHeight > 0
+        ? screenHeight - topPadding - keyboardHeight - 40
+        : screenHeight * 0.85;
+
+    return Padding(
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        height: modalHeight,
+        margin: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: keyboardHeight > 0 ? 10 : 20,
+          bottom: 16,
+        ),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          children: [
+            _buildHeader(keyboardHeight),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.all(keyboardHeight > 0 ? 12 : 16),
+                child: _buildContent(keyboardHeight),
+              ),
+            ),
+            _buildSaveButton(keyboardHeight),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader(double keyboardHeight) {
+    return Container(
+      padding: EdgeInsets.all(keyboardHeight > 0 ? 12 : 16),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.1),
+            width: 1,
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          Text(
+            'Edit Reminder',
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  fontSize: keyboardHeight > 0 ? 18 : 20,
+                ),
+          ),
+          const Spacer(),
+          IconButton(
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(Icons.close),
+            style: IconButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.surface,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildContent(double keyboardHeight) {
+    return Column(
+      children: [
+        TextFormField(
+          controller: _titleController,
+          decoration: const InputDecoration(
+            labelText: 'Title',
+            hintText: 'What do you want to be reminded about?',
+            prefixIcon: Icon(Icons.title),
+            border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 16),
+        TextFormField(
+          controller: _descriptionController,
+          decoration: const InputDecoration(
+            labelText: 'Description',
+            hintText: 'Add more details...',
+            prefixIcon: Icon(Icons.description_outlined),
+            border: OutlineInputBorder(),
+          ),
+          maxLines: keyboardHeight > 0 ? 2 : 3,
+        ),
+        const SizedBox(height: 20),
+        MultiTimeSection(
+          timeSlots: _timeSlots,
+          onTimeSlotsChanged: (newTimeSlots) {
+            setState(() => _timeSlots = newTimeSlots);
+          },
+          isMultiTime: _isMultiTime,
+          onMultiTimeToggle: (value) {
+            setState(() {
+              _isMultiTime = value;
+              if (!value) _timeSlots.clear();
+            });
+          },
+          initialSingleTime: _selectedTime,
+          onSingleTimeChanged: (newTime) {
+            setState(() {
+              _selectedTime = newTime;
+              _selectedDate = DateTime(
+                _selectedDate.year,
+                _selectedDate.month,
+                _selectedDate.day,
+                newTime.hour,
+                newTime.minute,
+              );
+            });
+          },
+          singleTimeLabel: 'Time',
+          padding: EdgeInsets.zero,
+        ),
+        const SizedBox(height: 20),
+        _buildDateSelector(),
+        const SizedBox(height: 16),
+        _buildRepeatSelector(),
+        const SizedBox(height: 16),
+        _buildNotificationToggle(),
+        SizedBox(height: keyboardHeight > 0 ? 10 : 20),
+      ],
+    );
+  }
+
+  Widget _buildDateSelector() {
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.calendar_today_outlined),
+        title: Text(_isMultiTime ? 'Base Date' : 'Date'),
+        subtitle: Text(
+          _isMultiTime
+              ? '${DateFormat('EEEE, MMMM d, y').format(_selectedDate)} (for all times)'
+              : DateFormat('EEEE, MMMM d, y').format(_selectedDate),
+        ),
+        trailing: const Icon(Icons.edit),
+        onTap: () async {
+          final now = DateTime.now();
+          final initialDate = _selectedDate.isBefore(now) ? now : _selectedDate;
+
+          final date = await showDatePicker(
+            context: context,
+            initialDate: initialDate,
+            firstDate: now,
+            lastDate: DateTime.now().add(const Duration(days: 365)),
+          );
+
+          if (date != null) {
+            setState(() {
+              _selectedDate = DateTime(
+                date.year,
+                date.month,
+                date.day,
+                _selectedTime.hour,
+                _selectedTime.minute,
+              );
+            });
+          }
+        },
+      ),
+    );
+  }
+
+  Widget _buildRepeatSelector() {
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.repeat),
+        title: const Text('Repeat'),
+        subtitle: Text(getRepeatDisplayName(_selectedRepeat)),
+        trailing: const Icon(Icons.edit),
+        onTap: () => _showRepeatOptions(),
+      ),
+    );
+  }
+
+  void _showRepeatOptions() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) {
+        final screenHeight = MediaQuery.of(context).size.height;
+        final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+        final availableHeight = screenHeight -
+            MediaQuery.of(context).padding.top -
+            MediaQuery.of(context).padding.bottom -
+            keyboardHeight -
+            32;
+
+        final isSmallDevice = screenHeight < 700;
+        final isVerySmallDevice = screenHeight < 600;
+        final maxModalHeight = isVerySmallDevice
+            ? availableHeight * 0.85
+            : isSmallDevice
+                ? availableHeight * 0.75
+                : availableHeight * 0.6;
+
+        return Container(
+          margin: EdgeInsets.only(
+            left: isSmallDevice ? 12.0 : 16.0,
+            right: isSmallDevice ? 12.0 : 16.0,
+            top: 16,
+            bottom: 16 + keyboardHeight,
+          ),
+          constraints: BoxConstraints(
+            maxHeight: maxModalHeight,
+            minHeight: 200,
+          ),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: EdgeInsets.all(isVerySmallDevice
+                    ? 12.0
+                    : isSmallDevice
+                        ? 16.0
+                        : 20.0),
+                child: Text(
+                  'Repeat Options',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+              ),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: RepeatType.values.map((repeat) {
+                      return ListTile(
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: isVerySmallDevice ? 4.0 : 8.0,
+                        ),
+                        title: Text(
+                          getRepeatDisplayName(repeat),
+                          style: TextStyle(
+                            fontSize: isVerySmallDevice
+                                ? 14.0
+                                : isSmallDevice
+                                    ? 15.0
+                                    : 16.0,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        subtitle: Text(
+                          getRepeatDescription(repeat),
+                          style: TextStyle(
+                            fontSize: isVerySmallDevice
+                                ? 11.0
+                                : isSmallDevice
+                                    ? 12.0
+                                    : 13.0,
+                            height: isVerySmallDevice ? 1.3 : 1.4,
+                          ),
+                          maxLines: isVerySmallDevice ? 2 : 3,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        leading: Radio<RepeatType>(
+                          value: repeat,
+                          groupValue: _selectedRepeat,
+                          onChanged: (value) {
+                            setState(() => _selectedRepeat = value!);
+                            Navigator.pop(context);
+                          },
+                        ),
+                        onTap: () {
+                          setState(() => _selectedRepeat = repeat);
+                          Navigator.pop(context);
+                        },
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+              SizedBox(height: isVerySmallDevice ? 10 : 20),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildNotificationToggle() {
+    return Card(
+      child: SwitchListTile(
+        title: const Text('Enable Notifications'),
+        subtitle: const Text('Get notified when it\'s time'),
+        value: _isNotificationEnabled,
+        onChanged: (value) {
+          setState(() => _isNotificationEnabled = value);
+        },
+      ),
+    );
+  }
+
+  Widget _buildSaveButton(double keyboardHeight) {
+    return Container(
+      padding: EdgeInsets.all(keyboardHeight > 0 ? 12 : 16),
+      decoration: BoxDecoration(
+        border: Border(
+          top: BorderSide(
+            color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.1),
+            width: 1,
+          ),
+        ),
+      ),
+      child: SizedBox(
+        width: double.infinity,
+        height: 48,
+        child: ElevatedButton(
+          onPressed: () {
+            // DEBUG: Log edit details
+            debugPrint('📝 ========================================');
+            debugPrint('📝 EDITING REMINDER');
+            debugPrint('📝 Original scheduledTime: ${widget.reminder.scheduledTime}');
+            debugPrint('📝 Original snoozedUntil: ${widget.reminder.snoozedUntil}');
+            debugPrint('📝 New scheduledTime (from _selectedDate): $_selectedDate');
+            debugPrint('📝 Clearing snooze: true');
+            debugPrint('📝 ========================================');
+
+            final updatedReminder = widget.reminder.copyWith(
+              title: _titleController.text.trim(),
+              description: _descriptionController.text.trim().isEmpty
+                  ? null
+                  : _descriptionController.text.trim(),
+              scheduledTime: _selectedDate,
+              repeatType: _selectedRepeat,
+              timeSlots: _timeSlots,
+              isMultiTime: _isMultiTime,
+              isNotificationEnabled: _isNotificationEnabled,
+              clearSnooze: true, // Clear snooze state when editing
+            );
+
+            debugPrint('📝 Updated reminder scheduledTime: ${updatedReminder.scheduledTime}');
+            debugPrint('📝 Updated reminder snoozedUntil: ${updatedReminder.snoozedUntil}');
+
+            widget.onSave(updatedReminder);
+            Navigator.pop(context);
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Theme.of(context).colorScheme.primary,
+            foregroundColor: Theme.of(context).colorScheme.onPrimary,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          child: const Text(
+            'Save Changes',
+            style: TextStyle(fontWeight: FontWeight.w600),
+          ),
+        ),
       ),
     );
   }

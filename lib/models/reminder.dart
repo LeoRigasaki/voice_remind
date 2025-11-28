@@ -146,6 +146,7 @@ class Reminder {
   final List<TimeSlot> timeSlots; // New: Multiple time slots
   final bool isMultiTime; // New: UI rendering flag
   final CustomRepeatConfig? customRepeatConfig; // Custom repeat configuration
+  final DateTime? snoozedUntil; // When reminder is snoozed, show this time instead
 
   Reminder({
     String? id,
@@ -161,6 +162,7 @@ class Reminder {
     List<TimeSlot>? timeSlots,
     bool? isMultiTime,
     this.customRepeatConfig,
+    this.snoozedUntil,
   })  : id = id ?? const Uuid().v4(),
         createdAt = createdAt ?? DateTime.now(),
         updatedAt = updatedAt ?? DateTime.now(),
@@ -234,8 +236,10 @@ class Reminder {
     if (hasMultipleTimes) {
       return overallStatus == ReminderStatus.overdue;
     }
+    // FIX: Check snoozedUntil if reminder is snoozed, otherwise check scheduledTime
+    final timeToCheck = snoozedUntil ?? scheduledTime;
     return status == ReminderStatus.pending &&
-        scheduledTime.isBefore(DateTime.now());
+        timeToCheck.isBefore(DateTime.now());
   }
 
   bool get isCompleted {
@@ -306,6 +310,8 @@ class Reminder {
     DateTime? completedAt,
     CustomRepeatConfig? customRepeatConfig,
     bool clearCustomRepeatConfig = false,
+    DateTime? snoozedUntil,
+    bool clearSnooze = false,
   }) {
     return Reminder(
       id: id,
@@ -324,6 +330,7 @@ class Reminder {
       customRepeatConfig: clearCustomRepeatConfig
           ? null
           : (customRepeatConfig ?? this.customRepeatConfig),
+      snoozedUntil: clearSnooze ? null : (snoozedUntil ?? this.snoozedUntil),
     );
   }
 
@@ -343,6 +350,7 @@ class Reminder {
       'timeSlots': timeSlots.map((slot) => slot.toMap()).toList(),
       'isMultiTime': isMultiTime,
       'customRepeatConfig': customRepeatConfig?.toJson(),
+      'snoozedUntil': snoozedUntil?.millisecondsSinceEpoch,
     };
   }
 
@@ -378,6 +386,9 @@ class Reminder {
       timeSlots: timeSlotsConverted,
       isMultiTime: isMultiTimeValue,
       customRepeatConfig: customRepeatConfigValue,
+      snoozedUntil: map['snoozedUntil'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(map['snoozedUntil'])
+          : null,
     );
   }
 
