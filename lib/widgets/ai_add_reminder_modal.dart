@@ -28,11 +28,13 @@ enum VoiceConversationState { idle, listening, thinking, speaking }
 class AIAddReminderModal extends StatefulWidget {
   final Reminder? reminder;
   final ReminderCreationMode initialMode;
+  final Space? preSelectedSpace;
 
   const AIAddReminderModal({
     super.key,
     this.reminder,
     this.initialMode = ReminderCreationMode.manual,
+    this.preSelectedSpace,
   });
 
   @override
@@ -115,6 +117,12 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
   @override
   void initState() {
     super.initState();
+    // Set pre-selected space immediately (synchronously) before async initialization
+    if (widget.preSelectedSpace != null) {
+      _selectedSpace = widget.preSelectedSpace;
+      debugPrint(
+          '🎯 Pre-selected space set in initState: ${_selectedSpace?.name}');
+    }
     _initializeModal();
   }
 
@@ -314,6 +322,13 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
       if (mounted) {
         setState(() {
           _availableSpaces = spaces;
+          // Pre-select space if provided and not already set
+          if (widget.preSelectedSpace != null && _selectedSpace == null) {
+            _selectedSpace = widget.preSelectedSpace;
+            debugPrint(
+                '📍 Pre-selected space in loadSpaces: ${_selectedSpace?.name}');
+          }
+          debugPrint('✅ Spaces loaded: ${_availableSpaces.length} spaces, selected: ${_selectedSpace?.name ?? "none"}');
         });
       }
     } catch (e) {
@@ -546,6 +561,8 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
         );
       }
 
+      debugPrint('💾 Saving manual reminder with space: ${_selectedSpace?.name ?? "none"} (ID: ${_selectedSpace?.id})');
+
       await StorageService.addReminder(reminder);
 
       if (_isNotificationEnabled) {
@@ -705,7 +722,15 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
 
     try {
       for (int index in _selectedReminderIndices) {
-        final reminder = _aiGeneratedReminders[index];
+        final generatedReminder = _aiGeneratedReminders[index];
+
+        // Add pre-selected space to AI-generated reminder
+        final reminder = generatedReminder.copyWith(
+          spaceId: _selectedSpace?.id,
+        );
+
+        debugPrint('💾 Saving AI reminder with space: ${_selectedSpace?.name ?? "none"}');
+
         await StorageService.addReminder(reminder);
 
         if (reminder.isNotificationEnabled) {
@@ -2894,6 +2919,8 @@ class _EditReminderSheetState extends State<_EditReminderSheet> {
   late bool _isMultiTime;
   late List<TimeSlot> _timeSlots;
   late bool _isNotificationEnabled;
+  Space? _selectedSpace;
+  List<Space> _availableSpaces = [];
 
   @override
   void initState() {
@@ -2920,6 +2947,30 @@ class _EditReminderSheetState extends State<_EditReminderSheet> {
 
     debugPrint('📝 Initialized _selectedDate: $_selectedDate');
     debugPrint('📝 Initialized _selectedTime: $_selectedTime');
+
+    // Load spaces and set current space
+    _loadSpaces();
+  }
+
+  Future<void> _loadSpaces() async {
+    try {
+      final spaces = await SpacesService.getSpaces();
+      if (mounted) {
+        setState(() {
+          _availableSpaces = spaces;
+          // Set the reminder's current space
+          if (widget.reminder.spaceId != null) {
+            _selectedSpace = spaces.firstWhere(
+              (space) => space.id == widget.reminder.spaceId,
+              orElse: () => spaces.first,
+            );
+            debugPrint('📝 Loaded reminder space: ${_selectedSpace?.name}');
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading spaces in edit sheet: $e');
+    }
   }
 
   @override
@@ -3061,8 +3112,27 @@ class _EditReminderSheetState extends State<_EditReminderSheet> {
         _buildRepeatSelector(),
         const SizedBox(height: 16),
         _buildNotificationToggle(),
+        const SizedBox(height: 16),
+        _buildSpaceSelector(),
         SizedBox(height: keyboardHeight > 0 ? 10 : 20),
       ],
+    );
+  }
+
+  Widget _buildSpaceSelector() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+        child: SpaceSelectorField(
+          selectedSpace: _selectedSpace,
+          availableSpaces: _availableSpaces,
+          onSpaceChanged: (space) {
+            setState(() {
+              _selectedSpace = space;
+            });
+          },
+        ),
+      ),
     );
   }
 
@@ -3260,9 +3330,12 @@ class _EditReminderSheetState extends State<_EditReminderSheet> {
             // DEBUG: Log edit details
             debugPrint('📝 ========================================');
             debugPrint('📝 EDITING REMINDER');
-            debugPrint('📝 Original scheduledTime: ${widget.reminder.scheduledTime}');
-            debugPrint('📝 Original snoozedUntil: ${widget.reminder.snoozedUntil}');
-            debugPrint('📝 New scheduledTime (from _selectedDate): $_selectedDate');
+            debugPrint(
+                '📝 Original scheduledTime: ${widget.reminder.scheduledTime}');
+            debugPrint(
+                '📝 Original snoozedUntil: ${widget.reminder.snoozedUntil}');
+            debugPrint(
+                '📝 New scheduledTime (from _selectedDate): $_selectedDate');
             debugPrint('📝 Clearing snooze: true');
             debugPrint('📝 ========================================');
 
@@ -3276,11 +3349,14 @@ class _EditReminderSheetState extends State<_EditReminderSheet> {
               timeSlots: _timeSlots,
               isMultiTime: _isMultiTime,
               isNotificationEnabled: _isNotificationEnabled,
+              spaceId: _selectedSpace?.id,
               clearSnooze: true, // Clear snooze state when editing
             );
 
-            debugPrint('📝 Updated reminder scheduledTime: ${updatedReminder.scheduledTime}');
-            debugPrint('📝 Updated reminder snoozedUntil: ${updatedReminder.snoozedUntil}');
+            debugPrint(
+                '📝 Updated reminder scheduledTime: ${updatedReminder.scheduledTime}');
+            debugPrint(
+                '📝 Updated reminder snoozedUntil: ${updatedReminder.snoozedUntil}');
 
             widget.onSave(updatedReminder);
             Navigator.pop(context);

@@ -815,7 +815,8 @@ class NotificationService {
         debugPrint('Custom repeat: Next occurrence at $scheduledTime');
       } else if (scheduledTime
           .isBefore(now.subtract(const Duration(minutes: 5)))) {
-        debugPrint('Skipping notification - time is too far in the past (checked: ${reminder.snoozedUntil != null ? "snoozed" : "scheduled"} time)');
+        debugPrint(
+            'Skipping notification - time is too far in the past (checked: ${reminder.snoozedUntil != null ? "snoozed" : "scheduled"} time)');
         return;
       }
 

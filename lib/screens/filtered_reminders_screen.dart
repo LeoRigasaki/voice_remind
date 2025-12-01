@@ -8,6 +8,7 @@ import '../services/notification_service.dart';
 import 'add_reminder_screen.dart';
 import '../services/spaces_service.dart';
 import '../widgets/reminder_card_widget.dart';
+import '../widgets/ai_add_reminder_modal.dart';
 
 enum FilterType { total, pending, completed, overdue, today, thisWeek, recent }
 
@@ -397,24 +398,19 @@ class _FilteredRemindersScreenState extends State<FilteredRemindersScreen>
     final space = await SpacesService.getSpaceById(_spaceId!);
     if (space == null || !mounted) return;
 
-    final result = await Navigator.push<bool>(
-      context,
-      PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) =>
-            AddReminderScreen(preSelectedSpace: space),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          return SlideTransition(
-            position: animation.drive(
-              Tween(begin: const Offset(0.0, 1.0), end: Offset.zero)
-                  .chain(CurveTween(curve: Curves.easeInOut)),
-            ),
-            child: child,
-          );
-        },
-      ),
+    // Open AI modal with pre-selected space
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return AIAddReminderModal(
+          preSelectedSpace: space,
+        );
+      },
     );
 
-    if (result == true && mounted) {
+    if (mounted) {
       _applyFilter();
     }
   }
