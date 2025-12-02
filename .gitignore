@@ -62,3 +62,7 @@ app.*.map.json
 
 # Secrets and Environment Variables
 .env
+docs/Gemini_Image_Understanding.md
+docs/Gemini_Structured_Output.md
+docs/GroqCloud_OCR_and_Image_Recognition.md
+docs/GroqCloud_Structured_Output.md

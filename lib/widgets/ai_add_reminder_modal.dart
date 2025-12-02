@@ -328,7 +328,8 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
             debugPrint(
                 '📍 Pre-selected space in loadSpaces: ${_selectedSpace?.name}');
           }
-          debugPrint('✅ Spaces loaded: ${_availableSpaces.length} spaces, selected: ${_selectedSpace?.name ?? "none"}');
+          debugPrint(
+              '✅ Spaces loaded: ${_availableSpaces.length} spaces, selected: ${_selectedSpace?.name ?? "none"}');
         });
       }
     } catch (e) {
@@ -561,7 +562,8 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
         );
       }
 
-      debugPrint('💾 Saving manual reminder with space: ${_selectedSpace?.name ?? "none"} (ID: ${_selectedSpace?.id})');
+      debugPrint(
+          '💾 Saving manual reminder with space: ${_selectedSpace?.name ?? "none"} (ID: ${_selectedSpace?.id})');
 
       await StorageService.addReminder(reminder);
 
@@ -729,7 +731,8 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
           spaceId: _selectedSpace?.id,
         );
 
-        debugPrint('💾 Saving AI reminder with space: ${_selectedSpace?.name ?? "none"}');
+        debugPrint(
+            '💾 Saving AI reminder with space: ${_selectedSpace?.name ?? "none"}');
 
         await StorageService.addReminder(reminder);
 

@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'dart:convert';
 import '../models/reminder.dart';
+import '../models/custom_repeat_config.dart';
 import 'storage_service.dart';
 
 class AIReminderService {
@@ -82,12 +83,36 @@ class AIReminderService {
                       'description': Schema(SchemaType.string),
                       'due_date': Schema(SchemaType.string),
                       'repeat_type': Schema(SchemaType.string),
+                      'is_multi_time': Schema(SchemaType.boolean),
+                      'time_slots': Schema(
+                        SchemaType.array,
+                        items: Schema(
+                          SchemaType.object,
+                          properties: {
+                            'time': Schema(SchemaType.string),
+                            'description': Schema(SchemaType.string),
+                          },
+                        ),
+                      ),
+                      'custom_repeat_config': Schema(
+                        SchemaType.object,
+                        properties: {
+                          'interval': Schema(SchemaType.integer),
+                          'frequency': Schema(SchemaType.string),
+                          'days_of_week': Schema(
+                            SchemaType.array,
+                            items: Schema(SchemaType.integer),
+                          ),
+                          'end_date': Schema(SchemaType.string),
+                        },
+                      ),
                     },
                     requiredProperties: [
                       'title',
                       'description',
                       'due_date',
-                      'repeat_type'
+                      'repeat_type',
+                      'is_multi_time'
                     ],
                   ),
                 ),
@@ -285,8 +310,43 @@ class AIReminderService {
                       description: 'Categories or labels',
                     ),
                     'repeat_type': Schema.enumString(
-                      enumValues: ['NONE', 'DAILY', 'WEEKLY', 'MONTHLY'],
+                      enumValues: ['NONE', 'DAILY', 'WEEKLY', 'MONTHLY', 'CUSTOM'],
                       description: 'Recurrence pattern',
+                    ),
+                    'is_multi_time': Schema.boolean(
+                      description: 'True if reminder has multiple time slots per day',
+                    ),
+                    'time_slots': Schema.array(
+                      items: Schema.object(
+                        properties: {
+                          'time': Schema.string(
+                            description: 'Time in HH:MM format (24-hour)',
+                          ),
+                          'description': Schema.string(
+                            description: 'Optional description for this time slot',
+                          ),
+                        },
+                        requiredProperties: ['time'],
+                      ),
+                      description: 'Multiple time slots for multi-time reminders',
+                    ),
+                    'custom_repeat_config': Schema.object(
+                      properties: {
+                        'interval': Schema.integer(
+                          description: 'Repeat interval (e.g., 2 for every 2 days/weeks)',
+                        ),
+                        'frequency': Schema.enumString(
+                          enumValues: ['DAYS', 'WEEKS', 'MONTHS'],
+                          description: 'Frequency unit',
+                        ),
+                        'days_of_week': Schema.array(
+                          items: Schema.integer(),
+                          description: 'Days of week (1=Mon, 7=Sun) for weekly repeats',
+                        ),
+                        'end_date': Schema.string(
+                          description: 'Optional end date for custom repeat',
+                        ),
+                      },
                     ),
                   },
                   requiredProperties: [
@@ -295,7 +355,8 @@ class AIReminderService {
                     'priority',
                     'due_date',
                     'tags',
-                    'repeat_type'
+                    'repeat_type',
+                    'is_multi_time'
                   ],
                 ),
               ),
@@ -348,8 +409,19 @@ EXTRACTION RULES:
 3. Look for: calendar events, messages, notifications, notes, to-do lists
 4. Understand context: "tomorrow" means ${DateFormat('yyyy-MM-dd').format(now.add(Duration(days: 1)))}
 5. If no time specified, default to 9:00 AM
-6. Extract recurring patterns if mentioned
-7. Identify priority from urgency words (urgent, ASAP, important)
+6. Extract recurring patterns and detect custom repeats (e.g., "every Mon & Thu")
+7. Detect multi-time reminders (e.g., "medication 3x daily at 8am, 2pm, 8pm")
+8. Identify priority from urgency words (urgent, ASAP, important)
+
+MULTI-TIME DETECTION:
+- Look for phrases like "X times per day", "twice daily", "every 2 hours"
+- Extract all specific times mentioned
+- Set is_multi_time: true and populate time_slots array
+
+CUSTOM REPEAT PATTERNS:
+- "Every Monday and Thursday" → {interval: 1, frequency: "WEEKS", days_of_week: [1, 4]}
+- "Every 2 weeks" → {interval: 2, frequency: "WEEKS"}
+- Days: 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat, 7=Sun
 
 OUTPUT FORMAT (strict JSON):
 {
@@ -360,7 +432,10 @@ OUTPUT FORMAT (strict JSON):
       "priority": "HIGH|MEDIUM|LOW",
       "due_date": "YYYY-MM-DDTHH:MM:SS",
       "tags": ["category1", "category2"],
-      "repeat_type": "NONE|DAILY|WEEKLY|MONTHLY"
+      "repeat_type": "NONE|DAILY|WEEKLY|MONTHLY|CUSTOM",
+      "is_multi_time": false,
+      "time_slots": [],
+      "custom_repeat_config": null
     }
   ],
   "parsing_confidence": 0.0-1.0,
@@ -437,8 +512,43 @@ Analyze the image according to the user's request:''';
                       description: 'Categories or labels',
                     ),
                     'repeat_type': Schema.enumString(
-                      enumValues: ['NONE', 'DAILY', 'WEEKLY', 'MONTHLY'],
+                      enumValues: ['NONE', 'DAILY', 'WEEKLY', 'MONTHLY', 'CUSTOM'],
                       description: 'Recurrence pattern',
+                    ),
+                    'is_multi_time': Schema.boolean(
+                      description: 'True if reminder has multiple time slots per day',
+                    ),
+                    'time_slots': Schema.array(
+                      items: Schema.object(
+                        properties: {
+                          'time': Schema.string(
+                            description: 'Time in HH:MM format (24-hour)',
+                          ),
+                          'description': Schema.string(
+                            description: 'Optional description for this time slot',
+                          ),
+                        },
+                        requiredProperties: ['time'],
+                      ),
+                      description: 'Multiple time slots for multi-time reminders',
+                    ),
+                    'custom_repeat_config': Schema.object(
+                      properties: {
+                        'interval': Schema.integer(
+                          description: 'Repeat interval (e.g., 2 for every 2 days/weeks)',
+                        ),
+                        'frequency': Schema.enumString(
+                          enumValues: ['DAYS', 'WEEKS', 'MONTHS'],
+                          description: 'Frequency unit',
+                        ),
+                        'days_of_week': Schema.array(
+                          items: Schema.integer(),
+                          description: 'Days of week (1=Mon, 7=Sun) for weekly repeats',
+                        ),
+                        'end_date': Schema.string(
+                          description: 'Optional end date for custom repeat',
+                        ),
+                      },
                     ),
                   },
                   requiredProperties: [
@@ -447,7 +557,8 @@ Analyze the image according to the user's request:''';
                     'priority',
                     'due_date',
                     'tags',
-                    'repeat_type'
+                    'repeat_type',
+                    'is_multi_time'
                   ],
                 ),
               ),
@@ -624,8 +735,55 @@ Analyze the image according to the user's request:''';
                     },
                     'repeat_type': {
                       'type': 'string',
-                      'enum': ['NONE', 'DAILY', 'WEEKLY', 'MONTHLY'],
+                      'enum': ['NONE', 'DAILY', 'WEEKLY', 'MONTHLY', 'CUSTOM'],
                       'description': 'Recurrence pattern'
+                    },
+                    'is_multi_time': {
+                      'type': 'boolean',
+                      'description': 'True if reminder has multiple time slots per day'
+                    },
+                    'time_slots': {
+                      'type': 'array',
+                      'items': {
+                        'type': 'object',
+                        'properties': {
+                          'time': {
+                            'type': 'string',
+                            'description': 'Time in HH:MM format (24-hour)'
+                          },
+                          'description': {
+                            'type': 'string',
+                            'description': 'Optional description for this time slot'
+                          }
+                        },
+                        'required': ['time'],
+                        'additionalProperties': false
+                      },
+                      'description': 'Multiple time slots for multi-time reminders'
+                    },
+                    'custom_repeat_config': {
+                      'type': 'object',
+                      'properties': {
+                        'interval': {
+                          'type': 'integer',
+                          'description': 'Repeat interval (e.g., 2 for every 2 days/weeks)'
+                        },
+                        'frequency': {
+                          'type': 'string',
+                          'enum': ['DAYS', 'WEEKS', 'MONTHS'],
+                          'description': 'Frequency unit'
+                        },
+                        'days_of_week': {
+                          'type': 'array',
+                          'items': {'type': 'integer'},
+                          'description': 'Days of week (1=Mon, 7=Sun) for weekly repeats'
+                        },
+                        'end_date': {
+                          'type': 'string',
+                          'description': 'Optional end date for custom repeat'
+                        }
+                      },
+                      'additionalProperties': false
                     }
                   },
                   'required': [
@@ -634,7 +792,8 @@ Analyze the image according to the user's request:''';
                     'priority',
                     'due_date',
                     'tags',
-                    'repeat_type'
+                    'repeat_type',
+                    'is_multi_time'
                   ],
                   'additionalProperties': false
                 }
@@ -708,12 +867,67 @@ Analyze the image according to the user's request:''';
       final reminders = <Reminder>[];
       for (final data in reminderData) {
         try {
+          // Parse multi-time configuration
+          final isMultiTime = data['is_multi_time'] as bool? ?? false;
+          final timeSlotsData = data['time_slots'] as List?;
+
+          List<TimeSlot>? timeSlots;
+          if (isMultiTime && timeSlotsData != null && timeSlotsData.isNotEmpty) {
+            timeSlots = timeSlotsData.map((slot) {
+              final timeStr = slot['time'] as String;
+              final parts = timeStr.split(':');
+              return TimeSlot(
+                time: TimeOfDay(
+                  hour: int.parse(parts[0]),
+                  minute: int.parse(parts[1]),
+                ),
+                description: slot['description']?.toString(),
+              );
+            }).toList();
+          }
+
+          // Parse custom repeat configuration
+          CustomRepeatConfig? customRepeatConfig;
+          if (data['repeat_type']?.toString().toUpperCase() == 'CUSTOM' &&
+              data['custom_repeat_config'] != null) {
+            final config = data['custom_repeat_config'] as Map<String, dynamic>;
+            final interval = config['interval'] as int? ?? 1;
+            final frequency = config['frequency']?.toString().toUpperCase();
+
+            // Convert interval + frequency to minutes/hours/days
+            int minutes = 0, hours = 0, days = 0;
+            switch (frequency) {
+              case 'DAYS':
+                days = interval;
+                break;
+              case 'WEEKS':
+                days = interval * 7;
+                break;
+              case 'MONTHS':
+                days = interval * 30; // Approximation
+                break;
+            }
+
+            customRepeatConfig = CustomRepeatConfig(
+              minutes: minutes,
+              hours: hours,
+              days: days,
+              specificDays: (config['days_of_week'] as List?)?.cast<int>().toSet(),
+              endDate: config['end_date'] != null
+                  ? DateTime.tryParse(config['end_date'])
+                  : null,
+            );
+          }
+
           final reminder = Reminder(
             title: data['title']?.toString() ?? 'Untitled Reminder',
-            description: data['description']?.toString(),
+            description: data['context']?.toString() ?? data['description']?.toString(),
             scheduledTime: DateTime.parse(data['due_date']),
             repeatType: _parseRepeatType(data['repeat_type']),
             isNotificationEnabled: true,
+            isMultiTime: isMultiTime,
+            timeSlots: timeSlots ?? [],
+            customRepeatConfig: customRepeatConfig,
           );
           reminders.add(reminder);
         } catch (e) {
@@ -859,10 +1073,25 @@ $timeContext
 - Include specific details mentioned by user
 
 ### Repeat Type Rules:
-- "daily" for tasks that should repeat every day
-- "weekly" for tasks that repeat weekly (meetings, appointments)
-- "monthly" for tasks that repeat monthly (bills, reports)
-- "none" for one-time tasks (default)
+- "NONE" for one-time tasks (default)
+- "DAILY" for tasks that repeat every day
+- "WEEKLY" for tasks that repeat weekly (meetings, appointments)
+- "MONTHLY" for tasks that repeat monthly (bills, reports)
+- "CUSTOM" for complex patterns like "every Monday and Thursday" or "every 2 weeks"
+
+### Multi-Time Reminder Detection:
+Detect when a reminder has MULTIPLE time slots per day:
+- "Take medication 3 times daily at 8am, 2pm, and 8pm" → is_multi_time: true, time_slots: ["08:00", "14:00", "20:00"]
+- "Check email twice a day at 9am and 5pm" → is_multi_time: true, time_slots: ["09:00", "17:00"]
+- "Drink water every 2 hours" → is_multi_time: true with appropriate time slots
+- Single-time reminders → is_multi_time: false, time_slots: []
+
+### Custom Repeat Configuration:
+For CUSTOM repeat types, provide configuration:
+- "Every Monday and Thursday" → {interval: 1, frequency: "WEEKS", days_of_week: [1, 4]}
+- "Every 2 weeks" → {interval: 2, frequency: "WEEKS", days_of_week: null}
+- "Every 3 days" → {interval: 3, frequency: "DAYS", days_of_week: null}
+- Days: 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday, 6=Saturday, 7=Sunday
 
 ## OUTPUT FORMAT
 Always respond with valid JSON matching this exact schema:
@@ -870,9 +1099,12 @@ Always respond with valid JSON matching this exact schema:
   "reminders": [
     {
       "title": "Clear, actionable title",
-      "description": "Detailed description with context",
-      "due_date": "YYYY-MM-DD HH:MM",
-      "repeat_type": "none|daily|weekly|monthly"
+      "context": "Detailed description with full context",
+      "due_date": "YYYY-MM-DDTHH:MM:SS",
+      "repeat_type": "NONE|DAILY|WEEKLY|MONTHLY|CUSTOM",
+      "is_multi_time": false,
+      "time_slots": [],
+      "custom_repeat_config": null
     }
   ],
   "parsing_confidence": 0.95,
@@ -880,23 +1112,61 @@ Always respond with valid JSON matching this exact schema:
 }
 
 ## EXAMPLES
-Input: "Call dentist tomorrow morning and buy groceries for Saturday dinner"
+
+Example 1 - Simple reminders:
+Input: "Call dentist tomorrow morning"
 Output: {
-  "reminders": [
-    {
-      "title": "Call dentist",
-      "description": "Schedule or follow up on dental appointment",
-      "due_date": "${DateFormat('yyyy-MM-dd').format(DateTime.now().add(const Duration(days: 1)))} 09:00",
-      "repeat_type": "none"
-    },
-    {
-      "title": "Buy groceries for dinner",
-      "description": "Purchase groceries and ingredients for Saturday dinner",
-      "due_date": "${DateFormat('yyyy-MM-dd').format(DateTime.now().add(Duration(days: DateTime.saturday - DateTime.now().weekday)))} 10:00",
-      "repeat_type": "none"
+  "reminders": [{
+    "title": "Call dentist",
+    "context": "Schedule or follow up on dental appointment",
+    "due_date": "${DateFormat('yyyy-MM-dd').format(DateTime.now().add(const Duration(days: 1)))}T09:00:00",
+    "repeat_type": "NONE",
+    "is_multi_time": false,
+    "time_slots": [],
+    "custom_repeat_config": null
+  }],
+  "parsing_confidence": 0.95,
+  "ambiguities": []
+}
+
+Example 2 - Multi-time reminder:
+Input: "Take medication 3 times daily at 8am, 2pm, and 10pm"
+Output: {
+  "reminders": [{
+    "title": "Take medication",
+    "context": "Take prescribed medication three times throughout the day",
+    "due_date": "${DateFormat('yyyy-MM-dd').format(DateTime.now())}T08:00:00",
+    "repeat_type": "DAILY",
+    "is_multi_time": true,
+    "time_slots": [
+      {"time": "08:00", "description": "Morning dose"},
+      {"time": "14:00", "description": "Afternoon dose"},
+      {"time": "22:00", "description": "Evening dose"}
+    ],
+    "custom_repeat_config": null
+  }],
+  "parsing_confidence": 0.98,
+  "ambiguities": []
+}
+
+Example 3 - Custom repeat:
+Input: "Team meeting every Monday and Thursday at 2pm"
+Output: {
+  "reminders": [{
+    "title": "Team meeting",
+    "context": "Recurring team meeting on Mondays and Thursdays",
+    "due_date": "${DateFormat('yyyy-MM-dd').format(DateTime.now())}T14:00:00",
+    "repeat_type": "CUSTOM",
+    "is_multi_time": false,
+    "time_slots": [],
+    "custom_repeat_config": {
+      "interval": 1,
+      "frequency": "WEEKS",
+      "days_of_week": [1, 4],
+      "end_date": null
     }
-  ],
-  "parsing_confidence": 0.92,
+  }],
+  "parsing_confidence": 0.96,
   "ambiguities": []
 }
 
@@ -937,6 +1207,8 @@ RELATIVE TIME CALCULATIONS:
         return RepeatType.weekly;
       case 'monthly':
         return RepeatType.monthly;
+      case 'custom':
+        return RepeatType.custom;
       default:
         return RepeatType.none;
     }
