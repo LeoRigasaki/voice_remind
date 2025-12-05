@@ -17,31 +17,58 @@ Create reminders using your voice or AI-powered text generation. Speak naturally
 
 ## What VoiceRemind Does
 
-**AI Text:** Type "Remind me to call mom tomorrow at 3pm and buy groceries tonight"  
+**AI Text:** Type "Remind me to call mom tomorrow at 3pm and buy groceries tonight"
 **VoiceRemind:** Creates two separate reminders with correct dates and times
 
-**Voice Input:** Say "Meeting with John next Tuesday at 3 PM"  
+**Voice Input:** Say "Meeting with John next Tuesday at 3 PM"
 **VoiceRemind:** Understands your speech and creates a properly scheduled reminder
 
+**Multi-Time Reminders:** "Take medication 3 times daily at 8am, 2pm, and 8pm"
+**VoiceRemind:** Creates a single reminder with three time slots you can track individually
+
 The app works by using AI to understand natural language and create smart reminders from your speech or text.
+
+```mermaid
+graph TD
+    A[User Input] --> B{Input Type}
+    B -->|Text| C[AI Service]
+    B -->|Voice| D[Voice Service]
+    B -->|Manual| E[Form Input]
+    C --> F[Natural Language Processing]
+    D --> G[Speech-to-Text + AI]
+    E --> H[Direct Input]
+    F --> I[Reminder Creation]
+    G --> I
+    H --> I
+    I --> J[Local Storage]
+    I --> K[Notification Scheduling]
+    K --> L[Alarm/Notification Service]
+```
 
 ## Current Status
 
 **Working Right Now:**
 - AI-powered reminder generation from text (Gemini and Groq support)
-- Voice input with speech recognition
-- Create, edit, and delete reminders manually
-- Get notifications when reminders are due
-- Organize reminders into different spaces
-- Search through your reminders
+- Voice recording with advanced speech-to-text (Groq Whisper API + device native)
+- Image-based reminder extraction (Gemini only)
+- Multi-time reminders (multiple time slots per day with individual tracking)
+- Custom repeat patterns (specific days of week, intervals)
+- Create, edit, delete, and snooze reminders
+- Smart notifications and alarm system
+- Calendar view with Day/Week/Month custom views
+- Organize reminders into Spaces
+- Search and filter reminders
+- Theme support (Nothing-inspired light/dark themes)
+- Auto-update checking
+- Boot reschedule for persistent reminders
 - Full Android support
 - Basic iPhone support
 - Web browser support
 
 **Still Being Improved:**
-- Advanced voice processing features
-- Cloud sync across devices
-- More intelligent scheduling options
+- Cloud sync across devices (currently local-first only)
+- Location-based reminders
+- Advanced AI scheduling suggestions
 
 ## Installation
 
