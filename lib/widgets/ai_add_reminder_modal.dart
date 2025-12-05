@@ -79,7 +79,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
   String _voiceTranscription = '';
   // AI Text state
   final _aiInputController = TextEditingController();
-  File? _selectedImage;
+  List<File> _selectedImages = [];
   final ImagePicker _imagePicker = ImagePicker();
   List<Reminder> _aiGeneratedReminders = [];
   Set<int> _selectedReminderIndices = {};
@@ -464,7 +464,6 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
     _titleController.dispose();
     _descriptionController.dispose();
     _aiInputController.dispose();
-    _selectedImage = null;
     _orbPulseController.dispose();
     _ringController.dispose();
     _waveformController.dispose();
@@ -607,9 +606,9 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
 
   // AI Text methods (enhanced for multi-time support)
   Future<void> _generateReminders() async {
-    // Check if we have either text or image
-    if (_aiInputController.text.trim().isEmpty && _selectedImage == null) {
-      _showError('Please enter text or select an image');
+    // Check if we have either text or images
+    if (_aiInputController.text.trim().isEmpty && _selectedImages.isEmpty) {
+      _showError('Please enter text or select images');
       return;
     }
 
@@ -625,30 +624,44 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
     });
 
     try {
-      AIReminderResponse response;
+      List<Reminder> allReminders = [];
+      double totalConfidence = 0.0;
 
-      // Image mode: use image analysis
-      if (_selectedImage != null) {
-        final imageBytes = await _selectedImage!.readAsBytes();
+      // Image mode: process multiple images sequentially
+      if (_selectedImages.isNotEmpty) {
         final customPrompt = _aiInputController.text.trim();
 
-        response = await AIReminderService.parseRemindersFromImage(
-          imageBytes: imageBytes,
-          customPrompt: customPrompt.isEmpty ? null : customPrompt,
-        );
+        for (int i = 0; i < _selectedImages.length; i++) {
+          final imageBytes = await _selectedImages[i].readAsBytes();
+
+          final response = await AIReminderService.parseRemindersFromImage(
+            imageBytes: imageBytes,
+            customPrompt: customPrompt.isEmpty ? null : customPrompt,
+          );
+
+          allReminders.addAll(response.reminders);
+          totalConfidence += response.confidence;
+        }
+
+        // Average confidence across all images
+        totalConfidence = _selectedImages.isNotEmpty
+            ? totalConfidence / _selectedImages.length
+            : 0.0;
       }
       // Text mode: use text parsing
       else {
-        response = await AIReminderService.parseRemindersFromText(
+        final response = await AIReminderService.parseRemindersFromText(
           _aiInputController.text.trim(),
         );
+        allReminders = response.reminders;
+        totalConfidence = response.confidence;
       }
 
       setState(() {
-        _aiGeneratedReminders = response.reminders;
-        _aiConfidence = response.confidence;
+        _aiGeneratedReminders = allReminders;
+        _aiConfidence = totalConfidence;
         _selectedReminderIndices = Set.from(
-          List.generate(response.reminders.length, (index) => index),
+          List.generate(allReminders.length, (index) => index),
         );
         _showPreview = true;
         _isGenerating = false;
@@ -672,21 +685,28 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
 
   Future<void> _pickImageFromGallery() async {
     try {
-      final XFile? image = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
+      final List<XFile> images = await _imagePicker.pickMultiImage(
         maxWidth: 1920,
         maxHeight: 1920,
         imageQuality: 85,
       );
 
-      if (image != null) {
+      if (images.isNotEmpty) {
+        // Limit to 5 images maximum
+        final imagesToAdd =
+            images.take(5).map((xfile) => File(xfile.path)).toList();
+
         setState(() {
-          _selectedImage = File(image.path);
+          _selectedImages = imagesToAdd;
           _showPreview = false;
         });
+
+        if (images.length > 5) {
+          _showError('Only the first 5 images were selected (maximum limit)');
+        }
       }
     } catch (e) {
-      _showError('Failed to pick image: $e');
+      _showError('Failed to pick images: $e');
     }
   }
 
@@ -701,7 +721,13 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
 
       if (image != null) {
         setState(() {
-          _selectedImage = File(image.path);
+          // Add to existing images if less than 5, otherwise replace all
+          if (_selectedImages.length < 5) {
+            _selectedImages = [..._selectedImages, File(image.path)];
+          } else {
+            _selectedImages = [File(image.path)];
+            _showError('Maximum 5 images allowed. Previous images cleared.');
+          }
           _showPreview = false;
         });
       }
@@ -710,10 +736,12 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
     }
   }
 
-  void _clearImage() {
+  void _removeImage(int index) {
     setState(() {
-      _selectedImage = null;
-      _showPreview = false;
+      _selectedImages = List.from(_selectedImages)..removeAt(index);
+      if (_selectedImages.isEmpty) {
+        _showPreview = false;
+      }
     });
   }
 
@@ -860,7 +888,8 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
 
   bool _canGenerateReminders() {
     return !_isGenerating &&
-        (_aiInputController.text.trim().isNotEmpty || _selectedImage != null) &&
+        (_aiInputController.text.trim().isNotEmpty ||
+            _selectedImages.isNotEmpty) &&
         _aiServiceReady;
   }
 
@@ -1364,35 +1393,73 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
               ],
             ),
 
-            // IMAGE PREVIEW
-            if (_selectedImage != null) ...[
+            // IMAGE PREVIEW - Multiple images in horizontal scroll
+            if (_selectedImages.isNotEmpty) ...[
               const SizedBox(height: 12),
-              Stack(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.file(
-                      _selectedImage!,
-                      height: 120,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: CircleAvatar(
-                      radius: 16,
-                      backgroundColor: Colors.black54,
-                      child: IconButton(
-                        icon: const Icon(Icons.close,
-                            color: Colors.white, size: 16),
-                        onPressed: _clearImage,
-                        padding: EdgeInsets.zero,
+              SizedBox(
+                height: 120,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _selectedImages.length,
+                  itemBuilder: (context, index) {
+                    return Padding(
+                      padding: EdgeInsets.only(
+                        right: index < _selectedImages.length - 1 ? 8 : 0,
                       ),
-                    ),
-                  ),
-                ],
+                      child: Stack(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.file(
+                              _selectedImages[index],
+                              height: 120,
+                              width: 120,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                          Positioned(
+                            top: 4,
+                            right: 4,
+                            child: CircleAvatar(
+                              radius: 12,
+                              backgroundColor: Colors.black54,
+                              child: IconButton(
+                                icon: const Icon(Icons.close,
+                                    color: Colors.white, size: 12),
+                                onPressed: () => _removeImage(index),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                              ),
+                            ),
+                          ),
+                          // Image number badge
+                          Positioned(
+                            bottom: 4,
+                            left: 4,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.black54,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                '${index + 1}/${_selectedImages.length}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
               ),
             ],
 
@@ -1413,7 +1480,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                     .bodyLarge
                     ?.copyWith(height: 1.5, fontSize: 16),
                 decoration: InputDecoration(
-                  hintText: _selectedImage != null
+                  hintText: _selectedImages.isNotEmpty
                       ? 'Optional: Add custom instructions...\n\nExample: "Extract only meetings" or leave empty for automatic analysis'
                       : _aiServiceReady
                           ? 'Describe your reminders here...\n\nExample: Take medicine at 8AM, 2PM, and 8PM daily'
@@ -1532,7 +1599,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                               ),
                               const SizedBox(width: 12),
                               Text(
-                                _selectedImage != null
+                                _selectedImages.isNotEmpty
                                     ? 'ANALYZING...'
                                     : 'GENERATING...',
                                 style: TextStyle(
@@ -1548,7 +1615,7 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Icon(
-                                _selectedImage != null
+                                _selectedImages.isNotEmpty
                                     ? Icons.image_search
                                     : _aiServiceReady
                                         ? Icons.auto_awesome
@@ -1563,8 +1630,10 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                _selectedImage != null
-                                    ? 'ANALYZE SCREENSHOT'
+                                _selectedImages.isNotEmpty
+                                    ? (_selectedImages.length > 1
+                                        ? 'ANALYZE ${_selectedImages.length} IMAGES'
+                                        : 'ANALYZE SCREENSHOT')
                                     : _aiServiceReady
                                         ? 'GENERATE REMINDERS'
                                         : 'SETUP AI FIRST',

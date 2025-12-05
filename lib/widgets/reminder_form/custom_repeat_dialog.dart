@@ -247,7 +247,7 @@ class _CustomRepeatDialogState extends State<CustomRepeatDialog> {
                                   'Minutes',
                                   style: theme.textTheme.bodySmall?.copyWith(
                                     fontWeight: FontWeight.w600,
-                                    color: theme.colorScheme.onSurface.withOpacity(0.7),
+                                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                                   ),
                                 ),
                               ),
@@ -271,7 +271,7 @@ class _CustomRepeatDialogState extends State<CustomRepeatDialog> {
                                   'Hours',
                                   style: theme.textTheme.bodySmall?.copyWith(
                                     fontWeight: FontWeight.w600,
-                                    color: theme.colorScheme.onSurface.withOpacity(0.7),
+                                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                                   ),
                                 ),
                               ),
@@ -295,7 +295,7 @@ class _CustomRepeatDialogState extends State<CustomRepeatDialog> {
                                   'Days',
                                   style: theme.textTheme.bodySmall?.copyWith(
                                     fontWeight: FontWeight.w600,
-                                    color: theme.colorScheme.onSurface.withOpacity(0.7),
+                                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                                   ),
                                 ),
                               ),
@@ -354,7 +354,9 @@ class _CustomRepeatDialogState extends State<CustomRepeatDialog> {
                           vertical: 14,
                         ),
                         decoration: BoxDecoration(
-                          border: Border.all(color: Colors.grey.shade300),
+                          border: Border.all(
+                            color: theme.colorScheme.outline.withValues(alpha: 0.3),
+                          ),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Row(
@@ -362,7 +364,7 @@ class _CustomRepeatDialogState extends State<CustomRepeatDialog> {
                             Icon(
                               Icons.calendar_today,
                               size: 20,
-                              color: theme.primaryColor,
+                              color: theme.colorScheme.primary,
                             ),
                             const SizedBox(width: 12),
                             Expanded(
@@ -374,8 +376,8 @@ class _CustomRepeatDialogState extends State<CustomRepeatDialog> {
                                 style: TextStyle(
                                   fontSize: 16,
                                   color: _endDate != null
-                                      ? Colors.black87
-                                      : Colors.grey.shade600,
+                                      ? theme.colorScheme.onSurface
+                                      : theme.colorScheme.onSurface.withValues(alpha: 0.6),
                                 ),
                               ),
                             ),
@@ -407,7 +409,7 @@ class _CustomRepeatDialogState extends State<CustomRepeatDialog> {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: theme.primaryColor.withOpacity(0.1),
+                          color: theme.colorScheme.primary.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Row(
@@ -502,7 +504,9 @@ class _CustomRepeatDialogState extends State<CustomRepeatDialog> {
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 border: Border(
-                  top: BorderSide(color: Colors.grey.shade300),
+                  top: BorderSide(
+                    color: theme.colorScheme.outline.withValues(alpha: 0.3),
+                  ),
                 ),
               ),
               child: Row(
@@ -550,7 +554,9 @@ class _CustomRepeatDialogState extends State<CustomRepeatDialog> {
       ],
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: TextStyle(color: Colors.grey.shade400),
+        hintStyle: TextStyle(
+          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+        ),
         suffixText: label,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
@@ -571,10 +577,10 @@ class _CustomRepeatDialogState extends State<CustomRepeatDialog> {
       label: Text(label),
       selected: isSelected,
       onSelected: (_) => _toggleDay(day),
-      selectedColor: theme.primaryColor.withOpacity(0.2),
-      checkmarkColor: theme.primaryColor,
+      selectedColor: theme.colorScheme.primary.withValues(alpha: 0.2),
+      checkmarkColor: theme.colorScheme.primary,
       labelStyle: TextStyle(
-        color: isSelected ? theme.primaryColor : Colors.black87,
+        color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurface,
         fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
       ),
     );

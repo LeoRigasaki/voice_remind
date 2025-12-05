@@ -111,7 +111,8 @@ class _ReminderCardWidgetState extends State<ReminderCardWidget> {
       return activeSlot?.formattedTime ?? '';
     }
     // Show snoozed time if reminder is snoozed
-    final displayTime = widget.reminder.snoozedUntil ?? widget.reminder.scheduledTime;
+    final displayTime =
+        widget.reminder.snoozedUntil ?? widget.reminder.scheduledTime;
     return DateFormat('h:mm a').format(displayTime);
   }
 
@@ -153,7 +154,8 @@ class _ReminderCardWidgetState extends State<ReminderCardWidget> {
       return false;
     }
     // Use snoozed time if available, otherwise use scheduled time
-    final timeToCheck = widget.reminder.snoozedUntil ?? widget.reminder.scheduledTime;
+    final timeToCheck =
+        widget.reminder.snoozedUntil ?? widget.reminder.scheduledTime;
     return !widget.reminder.isCompleted && timeToCheck.isBefore(DateTime.now());
   }
 

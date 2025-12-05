@@ -1,11 +1,14 @@
 // [lib/screens]/calendar_screen.dart
 import 'package:flutter/material.dart';
-import 'package:kalender/kalender.dart' as kalender;
 import 'package:intl/intl.dart';
 import '../widgets/calendar_view_widget.dart';
+import '../widgets/custom_calendar/custom_calendar_month_view.dart';
+import '../widgets/custom_calendar/custom_calendar_day_view.dart';
+import '../widgets/custom_calendar/custom_calendar_week_view.dart';
 import '../models/calendar_event.dart';
+import '../models/reminder.dart';
 import '../services/calendar_service.dart';
-import '../widgets/quick_add_event_dialog.dart';
+import 'add_reminder_screen.dart';
 
 /// Responsive calendar screen with enhanced UI and theme reactivity
 /// Always shows today's date when opened
@@ -19,13 +22,10 @@ class CalendarScreen extends StatefulWidget {
 class _CalendarScreenState extends State<CalendarScreen>
     with TickerProviderStateMixin {
   late TabController _viewTabController;
-  late AnimationController _fabAnimationController;
   late AnimationController _headerAnimationController;
-  late Animation<double> _fabScaleAnimation;
   late Animation<double> _headerFadeAnimation;
 
   // Calendar view configurations
-  late List<kalender.ViewConfiguration> _viewConfigurations;
   int _currentViewIndex = 1; // Start with week view
 
   // Calendar state - Always start with today
@@ -36,6 +36,12 @@ class _CalendarScreenState extends State<CalendarScreen>
   // References to calendar widgets
   final GlobalKey<CalendarViewWidgetState> _calendarKey =
       GlobalKey<CalendarViewWidgetState>();
+  final GlobalKey<CustomCalendarDayViewState> _customDayKey =
+      GlobalKey<CustomCalendarDayViewState>();
+  final GlobalKey<CustomCalendarWeekViewState> _customWeekKey =
+      GlobalKey<CustomCalendarWeekViewState>();
+  final GlobalKey<CustomCalendarMonthViewState> _customMonthKey =
+      GlobalKey<CustomCalendarMonthViewState>();
 
   // Responsive breakpoints
   static const double _tabletBreakpoint = 600;
@@ -53,28 +59,15 @@ class _CalendarScreenState extends State<CalendarScreen>
 
   void _initializeAnimations() {
     _viewTabController = TabController(
-      length: 4,
+      length: 3,
       vsync: this,
       initialIndex: _currentViewIndex,
-    );
-
-    _fabAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 400),
-      vsync: this,
     );
 
     _headerAnimationController = AnimationController(
       duration: const Duration(milliseconds: 600),
       vsync: this,
     );
-
-    _fabScaleAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _fabAnimationController,
-      curve: Curves.elasticOut,
-    ));
 
     _headerFadeAnimation = Tween<double>(
       begin: 0.0,
@@ -96,28 +89,9 @@ class _CalendarScreenState extends State<CalendarScreen>
 
     // Start animations
     _headerAnimationController.forward();
-    Future.delayed(const Duration(milliseconds: 300), () {
-      if (mounted) {
-        _fabAnimationController.forward();
-      }
-    });
   }
 
-  void _initializeViewConfigurations() {
-    _viewConfigurations = [
-      // Day view
-      kalender.MultiDayViewConfiguration.singleDay(),
-
-      // Week view
-      kalender.MultiDayViewConfiguration.week(),
-
-      // Month view
-      kalender.MonthViewConfiguration.singleMonth(),
-
-      // Schedule view
-      kalender.ScheduleViewConfiguration.continuous(),
-    ];
-  }
+  void _initializeViewConfigurations() {}
 
   /// Ensure calendar is showing today's date
   void _ensureShowingToday() {
@@ -164,7 +138,6 @@ class _CalendarScreenState extends State<CalendarScreen>
   @override
   void dispose() {
     _viewTabController.dispose();
-    _fabAnimationController.dispose();
     _headerAnimationController.dispose();
     super.dispose();
   }
@@ -180,10 +153,6 @@ class _CalendarScreenState extends State<CalendarScreen>
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           body:
               isDesktop ? _buildDesktopLayout() : _buildMobileLayout(isTablet),
-          floatingActionButton: _buildFloatingActionButton(),
-          floatingActionButtonLocation: isTablet
-              ? FloatingActionButtonLocation.endFloat
-              : FloatingActionButtonLocation.centerFloat,
         );
       },
     );
@@ -596,7 +565,6 @@ class _CalendarScreenState extends State<CalendarScreen>
           Tab(text: 'Day'),
           Tab(text: 'Week'),
           Tab(text: 'Month'),
-          Tab(text: 'Agenda'),
         ],
       ),
     );
@@ -605,9 +573,10 @@ class _CalendarScreenState extends State<CalendarScreen>
   Widget _buildNavigationControls(bool isTablet) {
     return Row(
       children: [
+        // Previous button
         _buildNavButton(
           icon: Icons.chevron_left,
-          onTap: () => _calendarKey.currentState?.navigateToPrevious(),
+          onTap: () => _navigateToPrevious(),
           isTablet: isTablet,
         ),
 
@@ -616,9 +585,8 @@ class _CalendarScreenState extends State<CalendarScreen>
         _buildNavButton(
           icon: Icons.today,
           onTap: () {
-            // Enhanced today button - always go to today
             _ensureShowingToday();
-            _calendarKey.currentState?.navigateToToday();
+            _navigateToToday();
           },
           isToday: true, // Special styling for today button
           isTablet: isTablet,
@@ -626,9 +594,10 @@ class _CalendarScreenState extends State<CalendarScreen>
 
         SizedBox(width: isTablet ? 12 : 8),
 
+        // Next button
         _buildNavButton(
           icon: Icons.chevron_right,
-          onTap: () => _calendarKey.currentState?.navigateToNext(),
+          onTap: () => _navigateToNext(),
           isTablet: isTablet,
         ),
 
@@ -704,29 +673,49 @@ class _CalendarScreenState extends State<CalendarScreen>
   Widget _buildCalendarView(bool isTablet) {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: isTablet ? 16 : 8),
-      child: CalendarViewWidget(
-        key: _calendarKey,
-        viewConfiguration: _viewConfigurations[_currentViewIndex],
-        onEventTapped: _onEventTapped,
-        onEventEdit: _onEventEdit,
-        onEventDelete: _onEventDelete,
-        onDateSelected: _onDateSelected,
-      ),
+      child: _buildCustomCalendarView(),
     );
   }
 
-  Widget _buildFloatingActionButton() {
-    return ScaleTransition(
-      scale: _fabScaleAnimation,
-      child: FloatingActionButton.extended(
-        onPressed: _showQuickAddDialog,
-        icon: const Icon(Icons.add),
-        label: const Text('Add Reminder'),
-        backgroundColor: Theme.of(context).colorScheme.primary,
-        foregroundColor: Theme.of(context).colorScheme.onPrimary,
-        elevation: 4,
-      ),
-    );
+  Widget _buildCustomCalendarView() {
+    switch (_currentViewIndex) {
+      case 0: // Day
+        return CustomCalendarDayView(
+          key: _customDayKey,
+          initialDate: _currentDate,
+          onDateSelected: _onDateSelected,
+          onReminderEdit: (reminder) => _editReminder(reminder),
+          onReminderDelete: (reminder) => _deleteReminder(reminder),
+          onAddToSpace: (reminderIds) => _addToSpace(reminderIds),
+        );
+      case 1: // Week
+        return CustomCalendarWeekView(
+          key: _customWeekKey,
+          initialDate: _currentDate,
+          onDateSelected: _onDateSelected,
+          onReminderEdit: (reminder) => _editReminder(reminder),
+          onReminderDelete: (reminder) => _deleteReminder(reminder),
+          onAddToSpace: (reminderIds) => _addToSpace(reminderIds),
+        );
+      case 2: // Month
+        return CustomCalendarMonthView(
+          key: _customMonthKey,
+          initialDate: _currentDate,
+          onDateSelected: _onDateSelected,
+          onReminderEdit: (reminder) => _editReminder(reminder),
+          onReminderDelete: (reminder) => _deleteReminder(reminder),
+          onAddToSpace: (reminderIds) => _addToSpace(reminderIds),
+        );
+      default:
+        return CustomCalendarMonthView(
+          key: _customMonthKey,
+          initialDate: _currentDate,
+          onDateSelected: _onDateSelected,
+          onReminderEdit: (reminder) => _editReminder(reminder),
+          onReminderDelete: (reminder) => _deleteReminder(reminder),
+          onAddToSpace: (reminderIds) => _addToSpace(reminderIds),
+        );
+    }
   }
 
   /// Check if we're currently showing today's date
@@ -750,26 +739,9 @@ class _CalendarScreenState extends State<CalendarScreen>
         return '${DateFormat('MMM d').format(startOfWeek)} - ${DateFormat('MMM d, y').format(endOfWeek)}';
       case 2: // Month
         return DateFormat('MMMM y').format(_currentDate);
-      case 3: // Schedule
-        return 'Schedule View';
       default:
         return DateFormat('MMMM y').format(_currentDate);
     }
-  }
-
-  void _onEventTapped(CalendarEvent event) {
-    debugPrint('Event tapped: ${event.title}');
-    // Event details are now handled by CalendarViewWidget
-  }
-
-  void _onEventEdit(CalendarEvent event) {
-    debugPrint('Event edit: ${event.title}');
-    // Edit handling is done in CalendarViewWidget
-  }
-
-  void _onEventDelete(CalendarEvent event) {
-    debugPrint('Event delete: ${event.title}');
-    // Delete handling is done in CalendarViewWidget
   }
 
   void _onDateSelected(DateTime date) {
@@ -779,14 +751,102 @@ class _CalendarScreenState extends State<CalendarScreen>
     CalendarService.instance.updateSelectedDate(date);
   }
 
-  Future<void> _showQuickAddDialog() async {
-    // Show dialog with current date as default
-    await showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (context) => QuickAddEventDialog(
-        initialDateTime: _currentDate,
+  Future<void> _editReminder(Reminder reminder) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AddReminderScreen(
+          reminder: reminder,
+        ),
       ),
     );
+  }
+
+  Future<void> _deleteReminder(Reminder reminder) async {
+    // Delete is handled by ReminderCardWidget
+    // Just here for reference
+  }
+
+  Future<void> _addToSpace(List<String> reminderIds) async {
+    // Add to Space is handled by ReminderCardWidget
+    // Just here for reference
+  }
+
+  void _navigateToPrevious() {
+    switch (_currentViewIndex) {
+      case 0: // Day
+        _customDayKey.currentState?.navigateToPreviousDay();
+        final newDate = _customDayKey.currentState?.currentDate;
+        if (newDate != null) {
+          setState(() {
+            _currentDate = newDate;
+          });
+        }
+        break;
+      case 1: // Week
+        _customWeekKey.currentState?.navigateToPreviousWeek();
+        final newWeek = _customWeekKey.currentState?.currentWeekStart;
+        if (newWeek != null) {
+          setState(() {
+            _currentDate = newWeek;
+          });
+        }
+        break;
+      case 2: // Month
+        _customMonthKey.currentState?.navigateToPreviousMonth();
+        final newMonth = _customMonthKey.currentState?.currentMonth;
+        if (newMonth != null) {
+          setState(() {
+            _currentDate = newMonth;
+          });
+        }
+        break;
+    }
+  }
+
+  void _navigateToNext() {
+    switch (_currentViewIndex) {
+      case 0: // Day
+        _customDayKey.currentState?.navigateToNextDay();
+        final newDate = _customDayKey.currentState?.currentDate;
+        if (newDate != null) {
+          setState(() {
+            _currentDate = newDate;
+          });
+        }
+        break;
+      case 1: // Week
+        _customWeekKey.currentState?.navigateToNextWeek();
+        final newWeek = _customWeekKey.currentState?.currentWeekStart;
+        if (newWeek != null) {
+          setState(() {
+            _currentDate = newWeek;
+          });
+        }
+        break;
+      case 2: // Month
+        _customMonthKey.currentState?.navigateToNextMonth();
+        final newMonth = _customMonthKey.currentState?.currentMonth;
+        if (newMonth != null) {
+          setState(() {
+            _currentDate = newMonth;
+          });
+        }
+        break;
+    }
+  }
+
+  void _navigateToToday() {
+    switch (_currentViewIndex) {
+      case 0: // Day
+        _customDayKey.currentState?.navigateToToday();
+        break;
+      case 1: // Week
+        _customWeekKey.currentState?.navigateToToday();
+        break;
+      case 2: // Month
+        _customMonthKey.currentState?.navigateToToday();
+        break;
+    }
   }
 }
