@@ -148,59 +148,100 @@ Future<void> _rescheduleAllPendingReminders() async {
 
     for (final reminder in pendingReminders) {
       try {
+        // CRITICAL FIX: Skip snoozed reminders - they already have a temporary notification
+        if (reminder.snoozedUntil != null) {
+          debugPrint(
+              '⏭️ Skipping snoozed reminder: ${reminder.title} (snoozed until: ${reminder.snoozedUntil})');
+          rescheduled++; // Count as rescheduled since it's already scheduled
+          continue;
+        }
+
         // For overdue repeating reminders, calculate next occurrence
         DateTime scheduleTime = reminder.scheduledTime;
 
         if (scheduleTime.isBefore(now) &&
             reminder.repeatType != RepeatType.none) {
-          debugPrint(
-              '⚠️ Reminder "${reminder.title}" is overdue, calculating next occurrence...');
+          // CRITICAL FIX: For multi-time reminders, check if any slot is still pending today
+          bool shouldShiftToNextDay = true;
 
-          missedRecurring.add(reminder);
-          missedCount++;
-
-          // Keep adding repeat interval until we get a future date
-          while (scheduleTime.isBefore(now)) {
-            switch (reminder.repeatType) {
-              case RepeatType.daily:
-                scheduleTime = scheduleTime.add(const Duration(days: 1));
-                break;
-              case RepeatType.weekly:
-                scheduleTime = scheduleTime.add(const Duration(days: 7));
-                break;
-              case RepeatType.monthly:
-                scheduleTime = DateTime(
-                  scheduleTime.year,
-                  scheduleTime.month + 1,
-                  scheduleTime.day,
-                  scheduleTime.hour,
-                  scheduleTime.minute,
+          if (reminder.hasMultipleTimes) {
+            // Check if any slot is still pending and in the future today
+            for (final timeSlot in reminder.timeSlots) {
+              if (timeSlot.status == ReminderStatus.pending) {
+                final slotTime = DateTime(
+                  now.year,
+                  now.month,
+                  now.day,
+                  timeSlot.time.hour,
+                  timeSlot.time.minute,
                 );
-                break;
-              case RepeatType.custom:
-                // Custom repeat handled by notification service
-                if (reminder.customRepeatConfig != null) {
-                  scheduleTime = scheduleTime.add(
-                    Duration(minutes: reminder.customRepeatConfig!.totalMinutes),
-                  );
+
+                if (slotTime.isAfter(now)) {
+                  // Found a pending slot that's still in the future today!
+                  shouldShiftToNextDay = false;
+                  debugPrint(
+                      '✅ Multi-time reminder has pending slot at ${timeSlot.formattedTime} still today - NOT shifting');
+                  break;
                 }
-                break;
-              case RepeatType.none:
-                break;
+              }
             }
           }
 
-          // Update the reminder with the new time
-          final updatedReminder = reminder.copyWith(
-            scheduledTime: scheduleTime,
-            updatedAt: DateTime.now(),
-          );
+          if (shouldShiftToNextDay) {
+            debugPrint(
+                '⚠️ Reminder "${reminder.title}" is overdue, calculating next occurrence...');
 
-          await StorageService.updateReminder(updatedReminder);
-          await NotificationService.scheduleReminder(updatedReminder);
+            missedRecurring.add(reminder);
+            missedCount++;
 
-          debugPrint(
-              '✅ Rescheduled (missed recurring): ${reminder.title} @ $scheduleTime');
+            // Keep adding repeat interval until we get a future date
+            while (scheduleTime.isBefore(now)) {
+              switch (reminder.repeatType) {
+                case RepeatType.daily:
+                  scheduleTime = scheduleTime.add(const Duration(days: 1));
+                  break;
+                case RepeatType.weekly:
+                  scheduleTime = scheduleTime.add(const Duration(days: 7));
+                  break;
+                case RepeatType.monthly:
+                  scheduleTime = DateTime(
+                    scheduleTime.year,
+                    scheduleTime.month + 1,
+                    scheduleTime.day,
+                    scheduleTime.hour,
+                    scheduleTime.minute,
+                  );
+                  break;
+                case RepeatType.custom:
+                  // Custom repeat handled by notification service
+                  if (reminder.customRepeatConfig != null) {
+                    scheduleTime = scheduleTime.add(
+                      Duration(minutes: reminder.customRepeatConfig!.totalMinutes),
+                    );
+                  }
+                  break;
+                case RepeatType.none:
+                  break;
+              }
+            }
+
+            // Update the reminder with the new time
+            final updatedReminder = reminder.copyWith(
+              scheduledTime: scheduleTime,
+              updatedAt: DateTime.now(),
+            );
+
+            await StorageService.updateReminder(updatedReminder);
+            await NotificationService.scheduleReminder(updatedReminder);
+
+            debugPrint(
+                '✅ Rescheduled (missed recurring): ${reminder.title} @ $scheduleTime');
+          } else {
+            // Has pending slots today - just reschedule as-is
+            await NotificationService.scheduleReminder(reminder);
+            debugPrint(
+                '✅ Rescheduled: ${reminder.title} (has pending slots today)');
+          }
         } else {
           // Not overdue, just reschedule as-is
           await NotificationService.scheduleReminder(reminder);

@@ -627,26 +627,23 @@ class _AIAddReminderModalState extends State<AIAddReminderModal>
       List<Reminder> allReminders = [];
       double totalConfidence = 0.0;
 
-      // Image mode: process multiple images sequentially
+      // Image mode: process all images in a single context
       if (_selectedImages.isNotEmpty) {
         final customPrompt = _aiInputController.text.trim();
 
-        for (int i = 0; i < _selectedImages.length; i++) {
-          final imageBytes = await _selectedImages[i].readAsBytes();
+        // Read all images into a list
+        final imageBytesList = await Future.wait(
+          _selectedImages.map((image) => image.readAsBytes()),
+        );
 
-          final response = await AIReminderService.parseRemindersFromImage(
-            imageBytes: imageBytes,
-            customPrompt: customPrompt.isEmpty ? null : customPrompt,
-          );
+        // Send all images in a single context so AI can analyze them together
+        final response = await AIReminderService.parseRemindersFromImage(
+          imageBytesList: imageBytesList,
+          customPrompt: customPrompt.isEmpty ? null : customPrompt,
+        );
 
-          allReminders.addAll(response.reminders);
-          totalConfidence += response.confidence;
-        }
-
-        // Average confidence across all images
-        totalConfidence = _selectedImages.isNotEmpty
-            ? totalConfidence / _selectedImages.length
-            : 0.0;
+        allReminders = response.reminders;
+        totalConfidence = response.confidence;
       }
       // Text mode: use text parsing
       else {

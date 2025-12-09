@@ -254,9 +254,10 @@ class AIReminderService {
     }
   }
 
-  /// Parse reminders from image with optional custom prompt
+  /// Parse reminders from image(s) with optional custom prompt
+  /// Supports multiple images in a single context
   static Future<AIReminderResponse> parseRemindersFromImage({
-    required Uint8List imageBytes,
+    required List<Uint8List> imageBytesList,
     String? customPrompt,
   }) async {
     if (!canGenerateReminders) {
@@ -264,12 +265,8 @@ class AIReminderService {
           'AI Service not ready. Please configure an API key in Settings.');
     }
 
-    if (_currentProvider != 'gemini') {
-      throw Exception('Image analysis requires Gemini provider');
-    }
-
-    if (_model == null) {
-      throw Exception('Gemini model not initialized');
+    if (imageBytesList.isEmpty) {
+      throw Exception('At least one image is required');
     }
 
     // Use custom prompt if provided, otherwise use default
@@ -278,12 +275,43 @@ class AIReminderService {
         : _buildImageAnalysisPromptWithCustomText(customPrompt!);
 
     try {
-      final imagePart = DataPart('image/jpeg', imageBytes);
+      if (_currentProvider == 'gemini') {
+        return await _parseImageWithGemini(imageBytesList, prompt);
+      } else if (_currentProvider == 'groq') {
+        return await _parseImageWithGroq(imageBytesList, prompt);
+      } else {
+        throw Exception('Unknown provider: $_currentProvider');
+      }
+    } catch (e) {
+      if (e.toString().contains('API_KEY_INVALID')) {
+        throw Exception(
+            'Invalid $_currentProvider API key. Please check your API key in Settings.');
+      }
+      rethrow;
+    }
+  }
+
+  static Future<AIReminderResponse> _parseImageWithGemini(
+      List<Uint8List> imageBytesList, String prompt) async {
+    if (_model == null) {
+      throw Exception('Gemini model not initialized');
+    }
+
+    try {
+      // Create text part
       final textPart = TextPart(prompt);
+
+      // Create image parts for all images
+      final imageParts = imageBytesList
+          .map((imageBytes) => DataPart('image/jpeg', imageBytes))
+          .toList();
+
+      // Combine text and all images in a single content
+      final parts = [textPart, ...imageParts];
 
       final response = await _model!.generateContent(
         [
-          Content.multi([textPart, imagePart])
+          Content.multi(parts)
         ],
         generationConfig: GenerationConfig(
           responseMimeType: 'application/json',
@@ -310,11 +338,18 @@ class AIReminderService {
                       description: 'Categories or labels',
                     ),
                     'repeat_type': Schema.enumString(
-                      enumValues: ['NONE', 'DAILY', 'WEEKLY', 'MONTHLY', 'CUSTOM'],
+                      enumValues: [
+                        'NONE',
+                        'DAILY',
+                        'WEEKLY',
+                        'MONTHLY',
+                        'CUSTOM'
+                      ],
                       description: 'Recurrence pattern',
                     ),
                     'is_multi_time': Schema.boolean(
-                      description: 'True if reminder has multiple time slots per day',
+                      description:
+                          'True if reminder has multiple time slots per day',
                     ),
                     'time_slots': Schema.array(
                       items: Schema.object(
@@ -323,17 +358,20 @@ class AIReminderService {
                             description: 'Time in HH:MM format (24-hour)',
                           ),
                           'description': Schema.string(
-                            description: 'Optional description for this time slot',
+                            description:
+                                'Optional description for this time slot',
                           ),
                         },
                         requiredProperties: ['time'],
                       ),
-                      description: 'Multiple time slots for multi-time reminders',
+                      description:
+                          'Multiple time slots for multi-time reminders',
                     ),
                     'custom_repeat_config': Schema.object(
                       properties: {
                         'interval': Schema.integer(
-                          description: 'Repeat interval (e.g., 2 for every 2 days/weeks)',
+                          description:
+                              'Repeat interval (e.g., 2 for every 2 days/weeks)',
                         ),
                         'frequency': Schema.enumString(
                           enumValues: ['DAYS', 'WEEKS', 'MONTHS'],
@@ -341,7 +379,8 @@ class AIReminderService {
                         ),
                         'days_of_week': Schema.array(
                           items: Schema.integer(),
-                          description: 'Days of week (1=Mon, 7=Sun) for weekly repeats',
+                          description:
+                              'Days of week (1=Mon, 7=Sun) for weekly repeats',
                         ),
                         'end_date': Schema.string(
                           description: 'Optional end date for custom repeat',
@@ -387,6 +426,201 @@ class AIReminderService {
       if (e.toString().contains('API_KEY_INVALID')) {
         throw Exception(
             'Invalid Gemini API key. Please check your API key in Settings.');
+      }
+      rethrow;
+    }
+  }
+
+  static Future<AIReminderResponse> _parseImageWithGroq(
+      List<Uint8List> imageBytesList, String prompt) async {
+    if (_currentApiKey == null) {
+      throw Exception('Groq API key not available');
+    }
+
+    // Check image limit (max 5 images for GroqCloud)
+    if (imageBytesList.length > 5) {
+      throw Exception('GroqCloud supports a maximum of 5 images per request');
+    }
+
+    // Build content array with text and all images
+    final contentList = <Map<String, dynamic>>[];
+
+    // Add text prompt first
+    contentList.add({'type': 'text', 'text': prompt});
+
+    // Add all images
+    for (final imageBytes in imageBytesList) {
+      final base64Image = base64Encode(imageBytes);
+      contentList.add({
+        'type': 'image_url',
+        'image_url': {
+          'url': 'data:image/jpeg;base64,$base64Image',
+        }
+      });
+    }
+
+    final requestBody = {
+      'model':
+          'meta-llama/llama-4-scout-17b-16e-instruct', // Vision-capable model
+      'messages': [
+        {
+          'role': 'user',
+          'content': contentList,
+        }
+      ],
+      'response_format': {
+        'type': 'json_schema',
+        'json_schema': {
+          'name': 'reminder_extraction',
+          'schema': {
+            'type': 'object',
+            'properties': {
+              'reminders': {
+                'type': 'array',
+                'items': {
+                  'type': 'object',
+                  'properties': {
+                    'title': {
+                      'type': 'string',
+                      'description': 'Brief task description'
+                    },
+                    'context': {
+                      'type': 'string',
+                      'description': 'Full context from image'
+                    },
+                    'priority': {
+                      'type': 'string',
+                      'enum': ['HIGH', 'MEDIUM', 'LOW'],
+                      'description': 'Task priority level'
+                    },
+                    'due_date': {
+                      'type': 'string',
+                      'description': 'ISO 8601 datetime string'
+                    },
+                    'tags': {
+                      'type': 'array',
+                      'items': {'type': 'string'},
+                      'description': 'Categories or labels'
+                    },
+                    'repeat_type': {
+                      'type': 'string',
+                      'enum': ['NONE', 'DAILY', 'WEEKLY', 'MONTHLY', 'CUSTOM'],
+                      'description': 'Recurrence pattern'
+                    },
+                    'is_multi_time': {
+                      'type': 'boolean',
+                      'description':
+                          'True if reminder has multiple time slots per day'
+                    },
+                    'time_slots': {
+                      'type': 'array',
+                      'items': {
+                        'type': 'object',
+                        'properties': {
+                          'time': {
+                            'type': 'string',
+                            'description': 'Time in HH:MM format (24-hour)'
+                          },
+                          'description': {
+                            'type': 'string',
+                            'description':
+                                'Optional description for this time slot'
+                          }
+                        },
+                        'required': ['time'],
+                        'additionalProperties': false
+                      },
+                      'description':
+                          'Multiple time slots for multi-time reminders'
+                    },
+                    'custom_repeat_config': {
+                      'type': 'object',
+                      'properties': {
+                        'interval': {
+                          'type': 'integer',
+                          'description':
+                              'Repeat interval (e.g., 2 for every 2 days/weeks)'
+                        },
+                        'frequency': {
+                          'type': 'string',
+                          'enum': ['DAYS', 'WEEKS', 'MONTHS'],
+                          'description': 'Frequency unit'
+                        },
+                        'days_of_week': {
+                          'type': 'array',
+                          'items': {'type': 'integer'},
+                          'description':
+                              'Days of week (1=Mon, 7=Sun) for weekly repeats'
+                        },
+                        'end_date': {
+                          'type': 'string',
+                          'description': 'Optional end date for custom repeat'
+                        }
+                      },
+                      'additionalProperties': false
+                    }
+                  },
+                  'required': [
+                    'title',
+                    'context',
+                    'priority',
+                    'due_date',
+                    'tags',
+                    'repeat_type',
+                    'is_multi_time'
+                  ],
+                  'additionalProperties': false
+                }
+              },
+              'parsing_confidence': {
+                'type': 'number',
+                'minimum': 0,
+                'maximum': 1,
+                'description': 'Confidence score between 0 and 1'
+              },
+              'ambiguities': {
+                'type': 'array',
+                'items': {'type': 'string'},
+                'description': 'List of unclear items'
+              }
+            },
+            'required': ['reminders', 'parsing_confidence', 'ambiguities'],
+            'additionalProperties': false
+          }
+        }
+      },
+      'temperature': 0.1,
+    };
+
+    try {
+      final response = await http.post(
+        Uri.parse('https://api.groq.com/openai/v1/chat/completions'),
+        headers: {
+          'Authorization': 'Bearer $_currentApiKey',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(requestBody),
+      );
+
+      if (response.statusCode == 401) {
+        throw Exception(
+            'Invalid Groq API key. Please check your API key in Settings.');
+      }
+
+      if (response.statusCode != 200) {
+        throw Exception(
+            'Groq API error: ${response.statusCode} - ${response.body}');
+      }
+
+      final data = jsonDecode(response.body);
+      final content = data['choices'][0]['message']['content'];
+
+      return _parseResponse(content);
+    } catch (e) {
+      if (e.toString().contains('401') ||
+          e.toString().contains('unauthorized')) {
+        throw Exception(
+            'Invalid Groq API key. Please check your API key in Settings.');
       }
       rethrow;
     }
@@ -512,11 +746,18 @@ Analyze the image according to the user's request:''';
                       description: 'Categories or labels',
                     ),
                     'repeat_type': Schema.enumString(
-                      enumValues: ['NONE', 'DAILY', 'WEEKLY', 'MONTHLY', 'CUSTOM'],
+                      enumValues: [
+                        'NONE',
+                        'DAILY',
+                        'WEEKLY',
+                        'MONTHLY',
+                        'CUSTOM'
+                      ],
                       description: 'Recurrence pattern',
                     ),
                     'is_multi_time': Schema.boolean(
-                      description: 'True if reminder has multiple time slots per day',
+                      description:
+                          'True if reminder has multiple time slots per day',
                     ),
                     'time_slots': Schema.array(
                       items: Schema.object(
@@ -525,17 +766,20 @@ Analyze the image according to the user's request:''';
                             description: 'Time in HH:MM format (24-hour)',
                           ),
                           'description': Schema.string(
-                            description: 'Optional description for this time slot',
+                            description:
+                                'Optional description for this time slot',
                           ),
                         },
                         requiredProperties: ['time'],
                       ),
-                      description: 'Multiple time slots for multi-time reminders',
+                      description:
+                          'Multiple time slots for multi-time reminders',
                     ),
                     'custom_repeat_config': Schema.object(
                       properties: {
                         'interval': Schema.integer(
-                          description: 'Repeat interval (e.g., 2 for every 2 days/weeks)',
+                          description:
+                              'Repeat interval (e.g., 2 for every 2 days/weeks)',
                         ),
                         'frequency': Schema.enumString(
                           enumValues: ['DAYS', 'WEEKS', 'MONTHS'],
@@ -543,7 +787,8 @@ Analyze the image according to the user's request:''';
                         ),
                         'days_of_week': Schema.array(
                           items: Schema.integer(),
-                          description: 'Days of week (1=Mon, 7=Sun) for weekly repeats',
+                          description:
+                              'Days of week (1=Mon, 7=Sun) for weekly repeats',
                         ),
                         'end_date': Schema.string(
                           description: 'Optional end date for custom repeat',
@@ -740,7 +985,8 @@ Analyze the image according to the user's request:''';
                     },
                     'is_multi_time': {
                       'type': 'boolean',
-                      'description': 'True if reminder has multiple time slots per day'
+                      'description':
+                          'True if reminder has multiple time slots per day'
                     },
                     'time_slots': {
                       'type': 'array',
@@ -753,20 +999,23 @@ Analyze the image according to the user's request:''';
                           },
                           'description': {
                             'type': 'string',
-                            'description': 'Optional description for this time slot'
+                            'description':
+                                'Optional description for this time slot'
                           }
                         },
                         'required': ['time'],
                         'additionalProperties': false
                       },
-                      'description': 'Multiple time slots for multi-time reminders'
+                      'description':
+                          'Multiple time slots for multi-time reminders'
                     },
                     'custom_repeat_config': {
                       'type': 'object',
                       'properties': {
                         'interval': {
                           'type': 'integer',
-                          'description': 'Repeat interval (e.g., 2 for every 2 days/weeks)'
+                          'description':
+                              'Repeat interval (e.g., 2 for every 2 days/weeks)'
                         },
                         'frequency': {
                           'type': 'string',
@@ -776,7 +1025,8 @@ Analyze the image according to the user's request:''';
                         'days_of_week': {
                           'type': 'array',
                           'items': {'type': 'integer'},
-                          'description': 'Days of week (1=Mon, 7=Sun) for weekly repeats'
+                          'description':
+                              'Days of week (1=Mon, 7=Sun) for weekly repeats'
                         },
                         'end_date': {
                           'type': 'string',
@@ -872,7 +1122,9 @@ Analyze the image according to the user's request:''';
           final timeSlotsData = data['time_slots'] as List?;
 
           List<TimeSlot>? timeSlots;
-          if (isMultiTime && timeSlotsData != null && timeSlotsData.isNotEmpty) {
+          if (isMultiTime &&
+              timeSlotsData != null &&
+              timeSlotsData.isNotEmpty) {
             timeSlots = timeSlotsData.map((slot) {
               final timeStr = slot['time'] as String;
               final parts = timeStr.split(':');
@@ -912,7 +1164,8 @@ Analyze the image according to the user's request:''';
               minutes: minutes,
               hours: hours,
               days: days,
-              specificDays: (config['days_of_week'] as List?)?.cast<int>().toSet(),
+              specificDays:
+                  (config['days_of_week'] as List?)?.cast<int>().toSet(),
               endDate: config['end_date'] != null
                   ? DateTime.tryParse(config['end_date'])
                   : null,
@@ -921,7 +1174,8 @@ Analyze the image according to the user's request:''';
 
           final reminder = Reminder(
             title: data['title']?.toString() ?? 'Untitled Reminder',
-            description: data['context']?.toString() ?? data['description']?.toString(),
+            description:
+                data['context']?.toString() ?? data['description']?.toString(),
             scheduledTime: DateTime.parse(data['due_date']),
             repeatType: _parseRepeatType(data['repeat_type']),
             isNotificationEnabled: true,

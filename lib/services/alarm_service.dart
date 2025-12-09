@@ -295,11 +295,11 @@ class AlarmService {
         debugPrint('🔄 This is a repeating reminder: ${reminder.repeatType}');
 
         // For repeating reminders, update to next occurrence instead of completing
-        if (timeSlotId != null && reminder.hasMultipleTimes) {
+        if (timeSlotId != null && activeReminder.hasMultipleTimes) {
           // Multi-time repeating reminder
           debugPrint('📋 Marking time slot as completed: $timeSlotId');
 
-          final updatedSlots = reminder.timeSlots.map((slot) {
+          final updatedSlots = activeReminder.timeSlots.map((slot) {
             if (slot.id == timeSlotId) {
               debugPrint('✅ Updating slot ${slot.id} to completed');
               return slot.copyWith(status: ReminderStatus.completed);
@@ -311,7 +311,7 @@ class AlarmService {
           final allCompleted = updatedSlots
               .every((slot) => slot.status == ReminderStatus.completed);
 
-          if (allCompleted && reminder.repeatType != RepeatType.none) {
+          if (allCompleted && activeReminder.repeatType != RepeatType.none) {
             // Reset all slots for next occurrence
             debugPrint('🔄 All slots completed, resetting for next occurrence');
             final resetSlots = updatedSlots.map((slot) {
@@ -323,12 +323,12 @@ class AlarmService {
 
             // Calculate next occurrence
             final nextScheduledTime = _calculateNextOccurrence(
-              reminder.scheduledTime,
-              reminder.repeatType,
-              customRepeatConfig: reminder.customRepeatConfig,
+              activeReminder.scheduledTime,
+              activeReminder.repeatType,
+              customRepeatConfig: activeReminder.customRepeatConfig,
             );
 
-            final updatedReminder = reminder.copyWith(
+            final updatedReminder = activeReminder.copyWith(
               timeSlots: resetSlots,
               scheduledTime: nextScheduledTime,
               updatedAt: DateTime.now(),
@@ -341,7 +341,7 @@ class AlarmService {
             await _rescheduleRepeatingReminder(updatedReminder);
           } else {
             // Just update this slot
-            final updatedReminder = reminder.copyWith(
+            final updatedReminder = activeReminder.copyWith(
               timeSlots: updatedSlots,
             );
 
@@ -353,12 +353,12 @@ class AlarmService {
           debugPrint('📋 Updating to next occurrence for repeating reminder');
 
           final nextScheduledTime = _calculateNextOccurrence(
-            reminder.scheduledTime,
-            reminder.repeatType,
-            customRepeatConfig: reminder.customRepeatConfig,
+            activeReminder.scheduledTime,
+            activeReminder.repeatType,
+            customRepeatConfig: activeReminder.customRepeatConfig,
           );
 
-          final updatedReminder = reminder.copyWith(
+          final updatedReminder = activeReminder.copyWith(
             scheduledTime: nextScheduledTime,
             status: ReminderStatus.pending,
             completedAt: null,
@@ -373,10 +373,10 @@ class AlarmService {
         }
       } else {
         // Non-repeating reminder - mark as completed
-        if (timeSlotId != null && reminder.hasMultipleTimes) {
+        if (timeSlotId != null && activeReminder.hasMultipleTimes) {
           debugPrint('📋 Marking time slot as completed: $timeSlotId');
 
-          final updatedSlots = reminder.timeSlots.map((slot) {
+          final updatedSlots = activeReminder.timeSlots.map((slot) {
             if (slot.id == timeSlotId) {
               debugPrint('✅ Updating slot ${slot.id} to completed');
               return slot.copyWith(status: ReminderStatus.completed);
@@ -384,7 +384,7 @@ class AlarmService {
             return slot;
           }).toList();
 
-          final updatedReminder = reminder.copyWith(
+          final updatedReminder = activeReminder.copyWith(
             timeSlots: updatedSlots,
           );
 
@@ -393,7 +393,7 @@ class AlarmService {
         } else {
           debugPrint('📋 Marking entire reminder as completed');
 
-          final updatedReminder = reminder.copyWith(
+          final updatedReminder = activeReminder.copyWith(
             status: ReminderStatus.completed,
           );
 
